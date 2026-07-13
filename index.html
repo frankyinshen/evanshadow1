@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- 影子跟读 Pro V73.0 | build:20260713 | 新增：播单句/循环单句/预习/AI模式播放扩边(padding)，避免掐头去尾；修复：seek后未等playing事件就开始计时导致句尾提前截断 -->
+<!-- 影子跟读 Pro V73.1 | build:20260713 | 修复：播单句/循环单句改用currentTime实时位置判断收尾(不再靠setTimeout猜时长)，解决部分iPhone机型因硬件音频延迟导致的结尾丢词；新增：导出字幕自动沿用原文件名、编辑页"自动联动下一句起始时间"开关、预习进度改为从1计数、"下一句"到底时提示 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V73.0</title>
+<title>影子跟读 Pro V73.1</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
@@ -260,7 +260,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V73.0</div>
+    <div class="nav-title">🎧 影子跟读 V73.1</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -321,6 +321,10 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <input type="range" id="threshold-range" min="0.01" max="0.1" step="0.01" value="0.02" style="flex:1" oninput="ui.updateThresh(this.value)">
                 <span id="threshold-val" style="font-family:monospace;font-size:12px;">0.02</span>
                 <button class="btn-mini" onclick="app.applyReAnalyze()">执行</button>
+            </div>
+            <div class="slider-row" style="justify-content:space-between;">
+                <span style="font-size:13px;font-weight:600;color:#555">🔗 改结束时间时自动联动下一句开始时间</span>
+                <button id="btn-auto-sync-next" class="btn-mini" style="background:var(--green);flex-shrink:0;" onclick="app.toggleAutoSyncNext()">已开启</button>
             </div>
             <div style="text-align:center;margin-top:10px;font-size:12px;color:#666">共 <span id="row-count">0</span> 句</div>
         </div>
@@ -574,6 +578,7 @@ const CONST = {
     SESSION:  'shadow_v68_session_id',
     PREVIEW:  'shadow_v72_preview',   // 预习重点句持久化 key
     PADDING:  'shadow_v73_padding',   // 播放扩边(padding)设置持久化 key
+    AUTOSYNC: 'shadow_v74_autosync',  // "自动联动下一句起始时间"开关持久化 key
     PROXY: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='],
     SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/'
 };
@@ -588,6 +593,8 @@ const state = {
     playbackRate: 1.0,
     padPre: 120,   // 单句播放"首部扩边"，单位 ms，默认 120ms
     padPost: 200,  // 单句播放"尾部扩边"，单位 ms，默认 200ms
+    subFileNames: {1:'', 2:'', 3:''}, // 记录字幕1/2/3的原始文件名（本地导入时填充），导出时优先复用
+    autoSyncNextStart: true, // 编辑页：修改结束时间时是否自动联动修改下一句起始时间
     _audioObjectUrl: null,
     _recordObjectUrl: null
 };
@@ -759,26 +766,10 @@ const engine = {
         const s = state.segments[i], a = document.getElementById('main-audio');
         if (!a.src) return ui.toast("音频未就绪");
         // 编辑页"试听"：保持精确的原始边界（不加padding），方便核对拆分/合并点位；
-        // 但同样修复"seek后立刻掐时间"的问题——等真正开始播放(playing事件)后再倒计时。
+        // 用 currentTime 实时位置判断收尾（原理见下面 _playSegmentTimed 的注释）。
         a.playbackRate = state.playbackRate;
         a.currentTime = s.start;
-        const realDuration = ((s.end - s.start) * 1000) / state.playbackRate;
-        let started = false, fallbackTimer = null;
-        const startTiming = () => {
-            if (started) return;
-            started = true;
-            if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-            a.removeEventListener('playing', startTiming);
-            this._pendingPlayCleanup = null;
-            this.editorTimer = setTimeout(() => a.pause(), realDuration);
-        };
-        this._pendingPlayCleanup = () => {
-            started = true;
-            if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-            a.removeEventListener('playing', startTiming);
-        };
-        a.addEventListener('playing', startTiming);
-        fallbackTimer = setTimeout(startTiming, 400);
+        this._watchUntil(s.end, () => { try { a.pause(); } catch(e) {} });
         const playP = a.play();
         if (playP && playP.catch) playP.catch(e => console.error(e));
     },
@@ -802,32 +793,47 @@ const engine = {
         if (isFinite(audioDur)) end = Math.min(end, audioDur);
         return { start, end };
     },
-    // 跳转+倒计时播放一个"窗口"（win = {start,end}，可以是原始片段也可以是padding后的窗口）。
-    // 【关键修复】不再是"调用play()的瞬间就开始算倒计时"，而是等浏览器真正触发 playing 事件
-    // （即seek+缓冲完成、声音真正开始播放）后才开始计时，避免因为seek/缓冲延迟导致
-    // 倒计时提前跑完、句尾被硬生生掐断的问题。加 400ms 兜底超时，防止极端情况下 playing 不触发。
+    // 【关键修复 v73.1】用 requestAnimationFrame 持续比对音频"真实播放位置"(currentTime)来判断
+    // 一段是否播完，而不是用 setTimeout 倒计时"猜"一个固定时长。
+    // 原因：setTimeout 方案假设"墙上时钟走过的时间"严格等于"音频真实播放推进的时间"，但不同设备
+    // 的音频输出硬件管线延迟不一样（实测：同一份代码，iPad 播放完整，部分 iPhone 机型结尾会丢词），
+    // 用固定时长倒计时在这类设备上会在音频真正播完之前就提前 pause()。
+    // 改成直接盯着 currentTime 之后，不管硬件延迟多少，只要真实位置还没到终点就继续等，从根源上和
+    // 设备无关——这跟 AI 模式里 _startPlayWatcher 一直好用是同一个原理。
+    _watchUntil(endTime, onReach) {
+        const a = document.getElementById('main-audio');
+        let rafId = null, stopped = false;
+        const cleanup = () => {
+            stopped = true;
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+            if (this._pendingPlayCleanup === cleanup) this._pendingPlayCleanup = null;
+        };
+        this._pendingPlayCleanup = cleanup;
+        const watch = () => {
+            if (stopped) return;
+            const reachedEnd = !a.paused && a.currentTime >= endTime;
+            const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
+            if (reachedEnd || audioFullyEnded) {
+                cleanup();
+                onReach();
+                return;
+            }
+            rafId = requestAnimationFrame(watch);
+        };
+        rafId = requestAnimationFrame(watch);
+        return cleanup;
+    },
+    // 跳转播放一个"窗口"（win = {start,end}，可以是原始片段也可以是padding后的窗口），
+    // 播放到真实到达终点时触发 onEnd（见 _watchUntil 的注释，设备无关，不受硬件延迟影响）。
     _playSegmentTimed(win, onEnd) {
         const a = document.getElementById('main-audio');
         if (this._pendingPlayCleanup) { this._pendingPlayCleanup(); this._pendingPlayCleanup = null; }
         a.currentTime = win.start;
         a.playbackRate = state.playbackRate;
-        const duration = Math.max(50, (win.end - win.start) * 1000 / state.playbackRate);
-        let started = false, fallbackTimer = null;
-        const startTiming = () => {
-            if (started) return;
-            started = true;
-            if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-            a.removeEventListener('playing', startTiming);
-            this._pendingPlayCleanup = null;
-            this.segTimer = setTimeout(() => { this.segTimer = null; onEnd(); }, duration);
-        };
-        this._pendingPlayCleanup = () => {
-            started = true;
-            if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-            a.removeEventListener('playing', startTiming);
-        };
-        a.addEventListener('playing', startTiming);
-        fallbackTimer = setTimeout(startTiming, 400);
+        this._watchUntil(win.end, () => {
+            try { a.pause(); } catch(e) {}
+            onEnd();
+        });
         const playP = a.play();
         if (playP && playP.catch) playP.catch(e => { console.error(e); ui.toast("播放失败"); });
     },
@@ -964,6 +970,13 @@ const ui = {
         const padPreVal = document.getElementById('pad-pre-val'), padPostVal = document.getElementById('pad-post-val');
         if (padPreVal) padPreVal.innerText = state.padPre + 'ms';
         if (padPostVal) padPostVal.innerText = state.padPost + 'ms';
+
+        // 恢复"自动联动下一句起始时间"开关
+        try {
+            const savedAutoSync = localStorage.getItem(CONST.AUTOSYNC);
+            state.autoSyncNextStart = (savedAutoSync === null) ? true : savedAutoSync === '1';
+        } catch(e) { state.autoSyncNextStart = true; }
+        app.updateAutoSyncBtn();
 
         const p = new URLSearchParams(location.search);
         if (p.get('mp3')) {
@@ -1264,8 +1277,9 @@ const app = {
             }
             localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
-            // 新音频加载后，清除旧的预习数据
+            // 新音频加载后，清除旧的预习数据 & 本地导入字幕文件名记录（网络URL方式加载的文件名会在导出时直接从输入框读取，无需在这里记录）
             previewMode.clearForNewAudio(mp3);
+            state.subFileNames = {1:'', 2:'', 3:''};
             ui.renderEditor(); ui.updateAudioStatus();
             ui.toast("✅ 全部就绪，正在跳转...");
             app.switchView('practice');
@@ -1298,6 +1312,8 @@ const app = {
         if (state.currIndex < state.segments.length-1) {
             state.userBlurState = state.permBlurMode==='show' ? false : true;
             this.loadItem(state.currIndex+1, true);
+        } else {
+            ui.toast('已经是最后一句了');
         }
     },
     prev() {
@@ -1312,13 +1328,26 @@ const app = {
         state.userBlurState = state.permBlurMode==='show' ? false : true;
         this.loadItem(parseInt(v), true);
     },
+    toggleAutoSyncNext() {
+        state.autoSyncNextStart = !state.autoSyncNextStart;
+        this.updateAutoSyncBtn();
+        try { localStorage.setItem(CONST.AUTOSYNC, state.autoSyncNextStart ? '1' : '0'); } catch(e) {}
+        ui.toast(state.autoSyncNextStart ? '✅ 已开启：改结束时间会自动同步下一句起始时间' : '⏸️ 已关闭：下一句起始时间需要手动修改');
+    },
+    updateAutoSyncBtn() {
+        const btn = document.getElementById('btn-auto-sync-next');
+        if (!btn) return;
+        if (state.autoSyncNextStart) { btn.innerText = '已开启'; btn.style.background = 'var(--green)'; }
+        else { btn.innerText = '已关闭'; btn.style.background = '#9AA0A6'; }
+    },
     updateSeg(i,k,v) {
     if(k.startsWith('text')) {
         state.segments[i][k]=v;
     } else {
         state.segments[i][k]=parseFloat(v);
-        // 修改结束时间时，自动把下一句的开始时间设为 end+0.01（仅为方便，用户仍可在下一句手动改）
-        if (k === 'end' && i + 1 < state.segments.length && !isNaN(state.segments[i].end)) {
+        // 修改结束时间时，若"自动联动下一句起始时间"开关处于开启状态，才自动把下一句的开始时间设为 end+0.01；
+        // 关闭时不做任何联动，下一句的起始时间需要用户自己手动改。
+        if (state.autoSyncNextStart && k === 'end' && i + 1 < state.segments.length && !isNaN(state.segments[i].end)) {
             const newStart = Math.round((state.segments[i].end + 0.01) * 100) / 100;
             state.segments[i+1].start = newStart;
             const nextStartInput = document.getElementById('start-input-' + (i+1));
@@ -1409,12 +1438,34 @@ const app = {
         const b = new Blob([JSON.stringify(data, null, 2)]);
         const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='shadow_v73.json'; a.click();
     },
+    // 从URL里提取文件名（去掉query/hash，做URL解码），取不到返回空字符串
+    extractFilenameFromUrl(url) {
+        if (!url) return '';
+        try {
+            let clean = url.split('?')[0].split('#')[0];
+            let name = clean.substring(clean.lastIndexOf('/') + 1).trim();
+            try { name = decodeURIComponent(name); } catch(e) {}
+            return name;
+        } catch(e) { return ''; }
+    },
     exportSRT(slot) {
         if (!state.segments.length) return ui.toast("无数据");
         const key = slot===2?'text2':slot===3?'text3':'text';
         if (!state.segments.some(s=>s[key])) return ui.toast(`字幕${slot}无内容`);
         let c = ""; state.segments.forEach((s,i) => { c+=`${i+1}\n${fmtTime(s.start,true)} --> ${fmtTime(s.end,true)}\n${s[key]||''}\n\n`; });
-        const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.download=`sub_${slot}.srt`; a.click();
+        // 文件名尽量沿用"当初加载进来的那份字幕"的原文件名，下载后不用再手动改名：
+        // 1) 优先看字幕链接输入框里当前的URL（网络链接方式加载/恢复的场景）
+        // 2) 其次看本地导入字幕时记录下来的文件名
+        // 3) 都没有（比如是自动断句生成的）就退回到用音频文件名拼一个，实在没有音频名才用默认的 sub_N.srt
+        const urlInput = document.getElementById('url-srt-' + slot);
+        let filename = this.extractFilenameFromUrl(urlInput ? urlInput.value : '');
+        if (!filename) filename = state.subFileNames[slot] || '';
+        if (!filename) {
+            const audioBase = this.extractFilenameFromUrl(document.getElementById('url-audio').value).replace(/\.[^.]+$/, '');
+            filename = audioBase ? `${audioBase}_sub${slot}.srt` : `sub_${slot}.srt`;
+        }
+        if (!/\.(srt|txt)$/i.test(filename)) filename += '.srt';
+        const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.download=filename; a.click();
     },
     loadProject(el) {
         const f = el.files[0]; if (!f) return;
@@ -1452,6 +1503,7 @@ const app = {
             text = text.replace(/^\uFEFF/, '');
             const n = parseSRT(text);
             if(k===0) state.segments=n; else app.mergeSub(n,k===1?'text2':'text3');
+            state.subFileNames[k+1] = f.name; // 记录本地导入的字幕文件名，导出时优先复用
             ui.renderEditor();
         };
         r.readAsArrayBuffer(f);
@@ -1694,9 +1746,9 @@ const previewMode = {
         const t2el = document.getElementById('preview-sentence-text2');
         t2el.innerText = (state.activeSub === 0 && text2 && text2 !== text) ? text2 : '';
 
-        // 进度文本
+        // 进度文本（跟上面 #${idx+1} 的句子编号保持一致，从1开始计数，避免出现"进度0/12"这种错位）
         document.getElementById('preview-progress-text').innerText =
-            `进度 ${idx}/${state.segments.length}  ⭐${this.starredIndices.length}`;
+            `进度 ${idx+1}/${state.segments.length}  ⭐${this.starredIndices.length}`;
 
         // 播放提示
         document.getElementById('preview-play-hint').innerText = '▶ 正在播放...';
@@ -2147,7 +2199,11 @@ const aiMode = {
         const a = document.getElementById('main-audio');
         const watch = () => {
             if (!this.active) { this._playRafId = null; return; }
-            if (!a.paused && a.currentTime < endTime) {
+            // 只有"确实播放到了终点"或"音频真的播完了"才算结束；单纯 paused 为真（比如 play() 刚调用、
+            // 状态还没完全同步的极早期帧）不当作结束信号，避免极端情况下提前跳过内容。
+            const reachedEnd = !a.paused && a.currentTime >= endTime;
+            const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
+            if (!reachedEnd && !audioFullyEnded) {
                 this._playRafId = requestAnimationFrame(watch);
                 return;
             }
