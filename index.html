@@ -132,6 +132,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 #btn-record { grid-row: 5 / 7; grid-column: 1; width: 100%; height: 100%; border-radius: 10px; }
 #btn-play-once { grid-row: 1 / 4; grid-column: 2; width: 100%; height: 100%; font-size: 16px; }
 .btn-next-grid { grid-row: 4 / 7; grid-column: 2; width: 100%; height: 100%; font-size: 18px; font-weight: 700; background: #FFF; border: 1px solid #E0E0E0; }
+.btn-next-grid.is-last { background: var(--red); color: #fff; border-color: var(--red); animation: pulse 2s infinite; }
 /* 重点句页按钮 grid 定位（与练习页保持一致） */
 #focus-btn-loop { grid-row: 1 / 3; grid-column: 1; width: 100%; height: 100%; }
 #focus-btn-play-once { grid-row: 1 / 4; grid-column: 2; width: 100%; height: 100%; font-size: 16px; }
@@ -447,7 +448,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <button class="btn-action btn-orange" id="btn-loop" onclick="engine.toggleLoop()">🔁 循环单句</button>
                     <button class="btn-action btn-blue" id="btn-play-once" onclick="engine.playOnce()">▶ 播单句</button>
                     <button class="btn-action btn-nav btn-prev-grid" onclick="app.prev()">← 上一句</button>
-                    <button class="btn-action btn-nav btn-next-grid" onclick="app.next()">下一句 →</button>
+                    <button id="btn-next" class="btn-action btn-nav btn-next-grid" onclick="app.next()">下一句 →</button>
                     <button class="btn-record" id="btn-record" onclick="recorder.toggle()">🎤 按下开始录音</button>
                 </div>
             </div>
@@ -1087,21 +1088,20 @@ const ui = {
     },
     updatePractice(idx) {
         if (!state.segments[idx]) return;
-        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
-        const txt = document.getElementById('practice-text-display');
-        const content = state.segments[idx][key] || "(无内容)";
-        txt.innerText = content;
-        this.fitText(txt);
-        const toggleBtn = document.getElementById('text-toggle-btn');
-        if (state.userBlurState) { txt.classList.add("blur"); toggleBtn.innerText = "👁 显示"; }
-        else { txt.classList.remove("blur"); toggleBtn.innerText = "🙈 隐藏"; }
-        txt.className = content === "(无内容)" ? "practice-text empty" : "practice-text";
-        if (state.userBlurState) txt.classList.add('blur');
+        ...
         document.getElementById('jump-select').value = idx;
         if (!state.hasShownHint) {
             const hint = document.getElementById('click-hint'); hint.classList.add('show');
             setTimeout(() => { hint.classList.remove('show'); state.hasShownHint = true; }, 3000);
         }
+        this.updateNextButtonState(idx);
+    },
+    updateNextButtonState(idx) {
+        const btn = document.getElementById('btn-next');
+        if (!btn) return;
+        const isLast = state.segments.length > 0 && idx >= state.segments.length - 1;
+        btn.classList.toggle('is-last', isLast);
+        btn.innerText = isLast ? '已是最后一句' : '下一句 →';
     },
     updatePermButtons() {
         const bs = document.getElementById('btn-perm-show'), bh = document.getElementById('btn-perm-hide');
