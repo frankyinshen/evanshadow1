@@ -1086,16 +1086,25 @@ const ui = {
         state.segments.forEach((_,i) => { const o = document.createElement('option'); o.value = i; o.text = `第 ${i+1} 句`; sel.appendChild(o); });
         app.save();
     },
-    updatePractice(idx) {
-        if (!state.segments[idx]) return;
-        ...
-        document.getElementById('jump-select').value = idx;
-        if (!state.hasShownHint) {
-            const hint = document.getElementById('click-hint'); hint.classList.add('show');
-            setTimeout(() => { hint.classList.remove('show'); state.hasShownHint = true; }, 3000);
-        }
-        this.updateNextButtonState(idx);
-    },
+        updatePractice(idx) {
+            if (!state.segments[idx]) return;
+            const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
+            const txt = document.getElementById('practice-text-display');
+            const content = state.segments[idx][key] || "(无内容)";
+            txt.innerText = content;
+            this.fitText(txt);
+            const toggleBtn = document.getElementById('text-toggle-btn');
+            if (state.userBlurState) { txt.classList.add("blur"); toggleBtn.innerText = "👁 显示"; }
+            else { txt.classList.remove("blur"); toggleBtn.innerText = "🙈 隐藏"; }
+            txt.className = content === "(无内容)" ? "practice-text empty" : "practice-text";
+            if (state.userBlurState) txt.classList.add('blur');
+            document.getElementById('jump-select').value = idx;
+            if (!state.hasShownHint) {
+                const hint = document.getElementById('click-hint'); hint.classList.add('show');
+                setTimeout(() => { hint.classList.remove('show'); state.hasShownHint = true; }, 3000);
+            }
+            this.updateNextButtonState(idx);
+        },
     updateNextButtonState(idx) {
         const btn = document.getElementById('btn-next');
         if (!btn) return;
