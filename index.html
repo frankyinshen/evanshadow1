@@ -330,7 +330,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <span style="font-size:13px;font-weight:600;color:#555">🔗 改结束时间时自动联动下一句开始时间</span>
                 <button id="btn-auto-sync-next" class="btn-mini" style="background:var(--green);flex-shrink:0;" onclick="app.toggleAutoSyncNext()">已开启</button>
             </div>
-            <div style="text-align:center;margin-top:10px;font-size:12px;color:#666"> <span id="row-count">0</span> 句</div>
+            <div style="text-align:center;margin-top:10px;font-size:12px;color:#666">共 <span id="row-count">0</span> 句</div>
         </div>
         <div id="editor-list"></div>
         <div style="text-align:center;padding:20px;">
@@ -580,9 +580,9 @@ const CONST = {
     HIST:     'shadow_v50_hist',
     INPUTS:   'shadow_v50_inputs',
     SESSION:  'shadow_v68_session_id',
-    PREVIEW:  'shadow_v72_preview',   // 预习重点句持久化 key
-    PADDING:  'shadow_v73_padding',   // 播放扩边(padding)设置持久化 key
-    AUTOSYNC: 'shadow_v74_autosync',  // "自动联动下一句起始时间"开关持久化 key
+    PREVIEW:  'shadow_v72_preview',
+    PADDING:  'shadow_v73_padding',
+    AUTOSYNC: 'shadow_v74_autosync',
     PROXY: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='],
     SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/'
 };
@@ -595,10 +595,10 @@ const state = {
     hasShownHint: false,
     permBlurMode: 'none',
     playbackRate: 1.0,
-    padPre: 120,   // 单句播放"首部扩边"，单位 ms，默认 120ms
-    padPost: 200,  // 单句播放"尾部扩边"，单位 ms，默认 200ms
-    subFileNames: {1:'', 2:'', 3:''}, // 记录字幕1/2/3的原始文件名（本地导入时填充），导出时优先复用
-    autoSyncNextStart: true, // 编辑页：修改结束时间时是否自动联动修改下一句起始时间
+    padPre: 120,
+    padPost: 200,
+    subFileNames: {1:'', 2:'', 3:''},
+    autoSyncNextStart: true,
     _audioObjectUrl: null,
     _recordObjectUrl: null
 };
@@ -630,9 +630,9 @@ const serverBrowser = {
         let dp = url.replace(CONST.SERVER_BROWSER_BASE_URL, '/'); if (!dp.startsWith('/')) dp = '/' + dp;
         try { dp = decodeURIComponent(dp); } catch(e) {}
         pathEl.textContent = dp;
-        fetch(url).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+        fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(html => this.parseAndRender(html, url))
-            .catch(e => { listEl.innerHTML = `<div class="browser-item loading" style="color:red;">加载失败: ${e.message}</div>`; });
+            .catch(e => { listEl.innerHTML = '<div class="browser-item loading" style="color:red;">加载失败: ' + e.message + '</div>'; });
     },
     parseAndRender(html, baseUrl) {
         const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -669,7 +669,7 @@ const serverBrowser = {
         if (!display.length && q) { listEl.innerHTML += '<div class="browser-item loading">没有找到匹配的音频</div>'; }
         display.forEach(f => {
             const item = document.createElement('div'); item.className = 'browser-item';
-            item.innerHTML = `<span class="browser-item-icon">${f.isDirectory ? '📁' : '🎵'}</span><span class="browser-item-name">${f.name}</span>`;
+            item.innerHTML = '<span class="browser-item-icon">' + (f.isDirectory ? '📁' : '🎵') + '</span><span class="browser-item-name">' + f.name + '</span>';
             item.onclick = () => f.isDirectory ? this.navigate(f.url) : this.selectFile(f);
             listEl.appendChild(item);
         });
@@ -723,10 +723,6 @@ const net = {
     },
     async fetchBlobSmart(url) { return this.fetchCommon(url, 'blob'); },
     async fetchTextSmart(url) { return this.fetchCommon(url, 'text'); },
-    // 等待 <audio> 元素真正加载到"可寻址"状态（readyState >= HAVE_METADATA）。
-    // 刚设置完 src 时，浏览器可能还没消化音频数据；此时若直接 seek 到非 0 的时间点再 play，
-    // 部分浏览器会静默卡住（不报错、不出声）。等 loadedmetadata 触发后再放行可以避免这个问题。
-    // 加超时保护，避免极端情况下永久卡住加载流程。
     waitAudioReady(audioEl, timeoutMs = 4000) {
         return new Promise((resolve) => {
             if (audioEl.readyState >= 1) { resolve(); return; }
@@ -754,7 +750,6 @@ const engine = {
         this.mode = 'IDLE'; this.isWaiting = false;
         if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; }
         if (this.segTimer) { clearTimeout(this.segTimer); this.segTimer = null; }
-        // 清理上一次尚未触发的"等待playing事件"监听器，避免残留监听器在下一次播放时重复触发
         if (this._pendingPlayCleanup) { this._pendingPlayCleanup(); this._pendingPlayCleanup = null; }
         const a = document.getElementById('main-audio'), r = document.getElementById('record-audio');
         try { a.pause(); } catch(e) {}
@@ -769,17 +764,12 @@ const engine = {
         this.stopAll();
         const s = state.segments[i], a = document.getElementById('main-audio');
         if (!a.src) return ui.toast("音频未就绪");
-        // 编辑页"试听"：保持精确的原始边界（不加padding），方便核对拆分/合并点位；
-        // 用 currentTime 实时位置判断收尾（原理见下面 _playSegmentTimed 的注释）。
         a.playbackRate = state.playbackRate;
         a.currentTime = s.start;
         this._watchUntil(s.end, () => { try { a.pause(); } catch(e) {} });
         const playP = a.play();
         if (playP && playP.catch) playP.catch(e => console.error(e));
     },
-    // 计算某一句"实际播放窗口"（动态边界防碰撞算法）：
-    // 在用户设定的 padPre/padPost 基础上，用前后相邻句子的间隔做防碰撞收窄，
-    // 绝不会让实际播放窗口跟相邻句子重叠，也绝不修改 state.segments 里的原始字幕时间戳。
     getPaddedWindow(idx) {
         const segs = state.segments, cur = segs[idx];
         if (!cur) return { start: 0, end: 0 };
@@ -797,13 +787,6 @@ const engine = {
         if (isFinite(audioDur)) end = Math.min(end, audioDur);
         return { start, end };
     },
-    // 【关键修复 v73.3】用 requestAnimationFrame 持续比对音频"真实播放位置"(currentTime)来判断
-    // 一段是否播完，而不是用 setTimeout 倒计时"猜"一个固定时长。
-    // 原因：setTimeout 方案假设"墙上时钟走过的时间"严格等于"音频真实播放推进的时间"，但不同设备
-    // 的音频输出硬件管线延迟不一样（实测：同一份代码，iPad 播放完整，部分 iPhone 机型结尾会丢词），
-    // 用固定时长倒计时在这类设备上会在音频真正播完之前就提前 pause()。
-    // 改成直接盯着 currentTime 之后，不管硬件延迟多少，只要真实位置还没到终点就继续等，从根源上和
-    // 设备无关——这跟 AI 模式里 _startPlayWatcher 一直好用是同一个原理。
     _watchUntil(endTime, onReach) {
         const a = document.getElementById('main-audio');
         let rafId = null, stopped = false;
@@ -827,8 +810,6 @@ const engine = {
         rafId = requestAnimationFrame(watch);
         return cleanup;
     },
-    // 跳转播放一个"窗口"（win = {start,end}，可以是原始片段也可以是padding后的窗口），
-    // 播放到真实到达终点时触发 onEnd（见 _watchUntil 的注释，设备无关，不受硬件延迟影响）。
     _playSegmentTimed(win, onEnd) {
         const a = document.getElementById('main-audio');
         if (this._pendingPlayCleanup) { this._pendingPlayCleanup(); this._pendingPlayCleanup = null; }
@@ -847,7 +828,6 @@ const engine = {
         if (a.paused) return;
         const ct = a.currentTime;
         if (this.mode === 'LOOP_RANGE') {
-            // 范围循环：只在开始/循环回起点时跳转一次，中途连续播放，字幕跟着当前位置切换
             const endL = parseInt(document.getElementById('loop-end').value) - 1;
             const startL = parseInt(document.getElementById('loop-start').value) - 1;
             const ai = state.segments.findIndex((s, i) => i >= startL && i <= endL && ct >= s.start && ct < s.end);
@@ -862,7 +842,6 @@ const engine = {
             if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); }
             if (a.ended || (a.duration > 0 && ct >= a.duration - 0.5)) { a.currentTime = 0; a.play(); state.currIndex = 0; ui.updatePractice(0); }
         }
-        // PLAY_ONCE / LOOP_ONE / PREVIEW_PLAY 已改用"跳转+倒计时"驱动（见 _playSegmentTimed），不再依赖这里的 currentTime 比较
     },
     startWait(cb) {
         this.isWaiting = true;
@@ -874,7 +853,6 @@ const engine = {
         this.stopAll();
         if (!this.check()) return;
         this.mode = 'PLAY_ONCE';
-        // 优先激活 focus-btn-play-once，若不在 focus 则激活 btn-play-once
         if (document.getElementById('preview-view').classList.contains('active')) {
             document.getElementById('focus-btn-play-once').classList.add('active');
         } else {
@@ -962,7 +940,6 @@ const ui = {
         const slider = document.getElementById('ai-threshold');
         if (slider) { const pct = ((slider.value - slider.min) / (slider.max - slider.min)) * 100; slider.style.setProperty('--fill', pct + '%'); }
 
-        // 恢复"播放扩边"设置
         try {
             const savedPad = JSON.parse(localStorage.getItem(CONST.PADDING) || '{}');
             state.padPre  = (typeof savedPad.pre  === 'number') ? savedPad.pre  : 120;
@@ -975,7 +952,6 @@ const ui = {
         if (padPreVal) padPreVal.innerText = state.padPre + 'ms';
         if (padPostVal) padPostVal.innerText = state.padPost + 'ms';
 
-        // 恢复"自动联动下一句起始时间"开关
         try {
             const savedAutoSync = localStorage.getItem(CONST.AUTOSYNC);
             state.autoSyncNextStart = (savedAutoSync === null) ? true : savedAutoSync === '1';
@@ -1018,7 +994,6 @@ const ui = {
         }
         this.updateAudioStatus();
         this.updatePermButtons();
-        // 恢复预习徽章
         previewMode.loadFromStorage();
         previewMode.updateBadge();
     },
@@ -1073,41 +1048,39 @@ const ui = {
         document.getElementById('row-count').innerText = state.segments.length;
         state.segments.forEach((s, i) => {
             const d = document.createElement('div'); d.className = 'sub-item';
-            d.innerHTML = `
-                <div class="sub-meta"><span class="idx-badge">#${i+1}</span><div><input type="number" id="start-input-${i}" class="time-input" value="${s.start.toFixed(2)}" step="0.1" onchange="app.updateSeg(${i},'start',this.value)"> - <input type="number" id="end-input-${i}" class="time-input" value="${s.end.toFixed(2)}" step="0.1" onchange="app.updateSeg(${i},'end',this.value)"></div></div>
-                ${s.text!==undefined?`<div class="sub-text-block"><span class="sub-label">SUB 1</span><textarea class="sub-line" onchange="app.updateSeg(${i},'text',this.value)">${ui.escapeHTML(s.text)}</textarea></div>`:''}
-                ${s.text2!==undefined?`<div class="sub-text-block"><span class="sub-label secondary">SUB 2</span><textarea class="sub-line" onchange="app.updateSeg(${i},'text2',this.value)">${ui.escapeHTML(s.text2)}</textarea></div>`:''}
-                ${s.text3!==undefined?`<div class="sub-text-block"><span class="sub-label secondary">SUB 3</span><textarea class="sub-line" onchange="app.updateSeg(${i},'text3',this.value)">${ui.escapeHTML(s.text3)}</textarea></div>`:''}
-                <div class="sub-actions"><button class="action-btn btn-play-sm" onclick="engine.playSegment(${i})">▶ 试听</button><button class="action-btn btn-split" onclick="app.splitSeg(${i})">✂️ 拆分</button><button class="action-btn btn-merge" onclick="app.mergeSeg(${i})">🖇️ 合并</button><button class="action-btn btn-del" onclick="app.delSeg(${i})">❌ 删除</button></div>
-            `;
+            d.innerHTML = '<div class="sub-meta"><span class="idx-badge">#' + (i+1) + '</span><div><input type="number" id="start-input-' + i + '" class="time-input" value="' + s.start.toFixed(2) + '" step="0.1" onchange="app.updateSeg(' + i + ',\'start\',this.value)"> - <input type="number" id="end-input-' + i + '" class="time-input" value="' + s.end.toFixed(2) + '" step="0.1" onchange="app.updateSeg(' + i + ',\'end\',this.value)"></div></div>' +
+                (s.text!==undefined?'<div class="sub-text-block"><span class="sub-label">SUB 1</span><textarea class="sub-line" onchange="app.updateSeg(' + i + ',\'text\',this.value)">' + ui.escapeHTML(s.text) + '</textarea></div>':'') +
+                (s.text2!==undefined?'<div class="sub-text-block"><span class="sub-label secondary">SUB 2</span><textarea class="sub-line" onchange="app.updateSeg(' + i + ',\'text2\',this.value)">' + ui.escapeHTML(s.text2) + '</textarea></div>':'') +
+                (s.text3!==undefined?'<div class="sub-text-block"><span class="sub-label secondary">SUB 3</span><textarea class="sub-line" onchange="app.updateSeg(' + i + ',\'text3\',this.value)">' + ui.escapeHTML(s.text3) + '</textarea></div>':'') +
+                '<div class="sub-actions"><button class="action-btn btn-play-sm" onclick="engine.playSegment(' + i + ')">▶ 试听</button><button class="action-btn btn-split" onclick="app.splitSeg(' + i + ')">✂️ 拆分</button><button class="action-btn btn-merge" onclick="app.mergeSeg(' + i + ')">🖇️ 合并</button><button class="action-btn btn-del" onclick="app.delSeg(' + i + ')">❌ 删除</button></div>';
             l.appendChild(d);
         });
         document.getElementById('loop-start').max = state.segments.length;
         document.getElementById('loop-end').max = state.segments.length;
         document.getElementById('loop-end').value = state.segments.length;
         const sel = document.getElementById('jump-select'); sel.innerHTML = '';
-        state.segments.forEach((_,i) => { const o = document.createElement('option'); o.value = i; o.text = `第 ${i+1} 句`; sel.appendChild(o); });
+        state.segments.forEach((_,i) => { const o = document.createElement('option'); o.value = i; o.text = '第 ' + (i+1) + ' 句'; sel.appendChild(o); });
         app.save();
     },
-        updatePractice(idx) {
-            if (!state.segments[idx]) return;
-            const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
-            const txt = document.getElementById('practice-text-display');
-            const content = state.segments[idx][key] || "(无内容)";
-            txt.innerText = content;
-            this.fitText(txt);
-            const toggleBtn = document.getElementById('text-toggle-btn');
-            if (state.userBlurState) { txt.classList.add("blur"); toggleBtn.innerText = "👁 显示"; }
-            else { txt.classList.remove("blur"); toggleBtn.innerText = "🙈 隐藏"; }
-            txt.className = content === "(无内容)" ? "practice-text empty" : "practice-text";
-            if (state.userBlurState) txt.classList.add('blur');
-            document.getElementById('jump-select').value = idx;
-            if (!state.hasShownHint) {
-                const hint = document.getElementById('click-hint'); hint.classList.add('show');
-                setTimeout(() => { hint.classList.remove('show'); state.hasShownHint = true; }, 3000);
-            }
-            this.updateNextButtonState(idx);
-        },
+    updatePractice(idx) {
+        if (!state.segments[idx]) return;
+        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
+        const txt = document.getElementById('practice-text-display');
+        const content = state.segments[idx][key] || "(无内容)";
+        txt.innerText = content;
+        this.fitText(txt);
+        const toggleBtn = document.getElementById('text-toggle-btn');
+        if (state.userBlurState) { txt.classList.add("blur"); toggleBtn.innerText = "👁 显示"; }
+        else { txt.classList.remove("blur"); toggleBtn.innerText = "🙈 隐藏"; }
+        txt.className = content === "(无内容)" ? "practice-text empty" : "practice-text";
+        if (state.userBlurState) txt.classList.add('blur');
+        document.getElementById('jump-select').value = idx;
+        if (!state.hasShownHint) {
+            const hint = document.getElementById('click-hint'); hint.classList.add('show');
+            setTimeout(() => { hint.classList.remove('show'); state.hasShownHint = true; }, 3000);
+        }
+        this.updateNextButtonState(idx);
+    },
     updateNextButtonState(idx) {
         const btn = document.getElementById('btn-next');
         if (!btn) return;
@@ -1151,7 +1124,7 @@ const ui = {
         });
         const a = document.getElementById('main-audio');
         a.playbackRate = rate;
-        ui.toast(`播放速率: ${rate}×`);
+        ui.toast('播放速率: ' + rate + '×');
     },
     updatePadding(type, v) {
         v = parseInt(v, 10) || 0;
@@ -1207,7 +1180,7 @@ const app = {
         const upd = () => {
             const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
             if (!rem) { disp.innerText=''; disp.style.display='none'; clearInterval(this.sleepIntervalId); this.sleepIntervalId = null; }
-            else { disp.innerText=`⏳ ${Math.floor(rem/60)}:${(rem%60).toString().padStart(2,'0')}`; }
+            else { disp.innerText = '⏳ ' + Math.floor(rem/60) + ':' + (rem%60).toString().padStart(2,'0'); }
         };
         upd();
         this.sleepIntervalId = setInterval(upd, 1000);
@@ -1216,7 +1189,7 @@ const app = {
             disp.style.display='none';
             if (this.sleepIntervalId) { clearInterval(this.sleepIntervalId); this.sleepIntervalId = null; }
         }, mins*60*1000);
-        ui.toast(`⏳ 倒计时 ${mins} 分钟开始`);
+        ui.toast('⏳ 倒计时 ' + mins + ' 分钟开始');
     },
     saveInput() {
         localStorage.setItem(CONST.INPUTS, JSON.stringify({
@@ -1267,7 +1240,6 @@ const app = {
             document.getElementById('main-audio').src = state._audioObjectUrl;
             ui.toast("✅ 音频下载成功！正在获取字幕...");
             const lt = async u => u ? await net.fetchTextSmart(u) : null;
-            // 与字幕下载并行等待音频真正可寻址，避免进入练习页后"播单句/下一句"首次点击没反应
             const audioReadyPromise = net.waitAudioReady(document.getElementById('main-audio'));
             const [t1,t2,t3] = await Promise.all([lt(s1),lt(s2),lt(s3)]);
             await audioReadyPromise;
@@ -1289,7 +1261,6 @@ const app = {
             }
             localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
-            // 新音频加载后，清除旧的预习数据 & 本地导入字幕文件名记录（网络URL方式加载的文件名会在导出时直接从输入框读取，无需在这里记录）
             previewMode.clearForNewAudio(mp3);
             state.subFileNames = {1:'', 2:'', 3:''};
             ui.renderEditor(); ui.updateAudioStatus();
@@ -1307,7 +1278,6 @@ const app = {
         const pv = document.getElementById('practice-view');
         pv.style.display = v==='practice' ? 'flex' : 'none';
         pv.classList.toggle('active', v==='practice');
-        // 预习视图切走时确保隐藏
         const pvw = document.getElementById('preview-view');
         pvw.style.display = 'none';
         pvw.classList.remove('active');
@@ -1353,21 +1323,19 @@ const app = {
         else { btn.innerText = '已关闭'; btn.style.background = '#9AA0A6'; }
     },
     updateSeg(i,k,v) {
-    if(k.startsWith('text')) {
-        state.segments[i][k]=v;
-    } else {
-        state.segments[i][k]=parseFloat(v);
-        // 修改结束时间时，若"自动联动下一句起始时间"开关处于开启状态，才自动把下一句的开始时间设为 end+0.01；
-        // 关闭时不做任何联动，下一句的起始时间需要用户自己手动改。
-        if (state.autoSyncNextStart && k === 'end' && i + 1 < state.segments.length && !isNaN(state.segments[i].end)) {
-            const newStart = Math.round((state.segments[i].end + 0.01) * 100) / 100;
-            state.segments[i+1].start = newStart;
-            const nextStartInput = document.getElementById('start-input-' + (i+1));
-            if (nextStartInput) nextStartInput.value = newStart.toFixed(2);
+        if(k.startsWith('text')) {
+            state.segments[i][k]=v;
+        } else {
+            state.segments[i][k]=parseFloat(v);
+            if (state.autoSyncNextStart && k === 'end' && i + 1 < state.segments.length && !isNaN(state.segments[i].end)) {
+                const newStart = Math.round((state.segments[i].end + 0.01) * 100) / 100;
+                state.segments[i+1].start = newStart;
+                const nextStartInput = document.getElementById('start-input-' + (i+1));
+                if (nextStartInput) nextStartInput.value = newStart.toFixed(2);
+            }
         }
-    }
-    this.save();
-},
+        this.save();
+    },
     delSeg(i) { state.segments.splice(i,1); ui.renderEditor(); },
     splitSeg(i) {
         const t = document.getElementById('main-audio').currentTime;
@@ -1418,7 +1386,7 @@ const app = {
 
         if (mainAudio.src && mainAudio.src !== location.href) {
             ui.updateAudioStatus();
-            ui.toast(`✅ 已恢复到第 ${i + 1} 句`);
+            ui.toast('✅ 已恢复到第 ' + (i + 1) + ' 句');
             app.switchView('practice');
         } else if (mp3) {
             ui.toast('⏳ 正在重新加载音频，请稍候...');
@@ -1426,9 +1394,9 @@ const app = {
                 if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
                 state._audioObjectUrl = URL.createObjectURL(ab);
                 mainAudio.src = state._audioObjectUrl;
-                await net.waitAudioReady(mainAudio); // 同样预热，避免恢复进度后首次操作没反应
+                await net.waitAudioReady(mainAudio);
                 ui.updateAudioStatus();
-                ui.toast(`✅ 音频就绪，已恢复到第 ${i + 1} 句`);
+                ui.toast('✅ 音频就绪，已恢复到第 ' + (i + 1) + ' 句');
                 app.switchView('practice');
             }).catch(e => {
                 ui.toast('❌ 音频重载失败：' + e.message);
@@ -1441,16 +1409,10 @@ const app = {
     },
     exportProject() {
         const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
-        const data = {
-            version: 73,
-            segments: state.segments,
-            idx: state.currIndex,
-            inputs: inputs
-        };
+        const data = { version: 73, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
         const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='shadow_v73.json'; a.click();
     },
-    // 从URL里提取文件名（去掉query/hash，做URL解码），取不到返回空字符串
     extractFilenameFromUrl(url) {
         if (!url) return '';
         try {
@@ -1463,18 +1425,14 @@ const app = {
     exportSRT(slot) {
         if (!state.segments.length) return ui.toast("无数据");
         const key = slot===2?'text2':slot===3?'text3':'text';
-        if (!state.segments.some(s=>s[key])) return ui.toast(`字幕${slot}无内容`);
-        let c = ""; state.segments.forEach((s,i) => { c+=`${i+1}\n${fmtTime(s.start,true)} --> ${fmtTime(s.end,true)}\n${s[key]||''}\n\n`; });
-        // 文件名尽量沿用"当初加载进来的那份字幕"的原文件名，下载后不用再手动改名：
-        // 1) 优先看字幕链接输入框里当前的URL（网络链接方式加载/恢复的场景）
-        // 2) 其次看本地导入字幕时记录下来的文件名
-        // 3) 都没有（比如是自动断句生成的）就退回到用音频文件名拼一个，实在没有音频名才用默认的 sub_N.srt
+        if (!state.segments.some(s=>s[key])) return ui.toast('字幕' + slot + '无内容');
+        let c = ""; state.segments.forEach((s,i) => { c += (i+1) + '\n' + fmtTime(s.start,true) + ' --> ' + fmtTime(s.end,true) + '\n' + (s[key]||'') + '\n\n'; });
         const urlInput = document.getElementById('url-srt-' + slot);
         let filename = this.extractFilenameFromUrl(urlInput ? urlInput.value : '');
         if (!filename) filename = state.subFileNames[slot] || '';
         if (!filename) {
             const audioBase = this.extractFilenameFromUrl(document.getElementById('url-audio').value).replace(/\.[^.]+$/, '');
-            filename = audioBase ? `${audioBase}_sub${slot}.srt` : `sub_${slot}.srt`;
+            filename = audioBase ? (audioBase + '_sub' + slot + '.srt') : ('sub_' + slot + '.srt');
         }
         if (!/\.(srt|txt)$/i.test(filename)) filename += '.srt';
         const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.download=filename; a.click();
@@ -1507,15 +1465,11 @@ const app = {
             const buf = e.target.result;
             const uint8 = new Uint8Array(buf);
             let text;
-            try {
-                text = new TextDecoder('utf-8', { fatal: true }).decode(uint8);
-            } catch(err) {
-                text = new TextDecoder('gbk').decode(uint8);
-            }
+            try { text = new TextDecoder('utf-8', { fatal: true }).decode(uint8); } catch(err) { text = new TextDecoder('gbk').decode(uint8); }
             text = text.replace(/^\uFEFF/, '');
             const n = parseSRT(text);
             if(k===0) state.segments=n; else app.mergeSub(n,k===1?'text2':'text3');
-            state.subFileNames[k+1] = f.name; // 记录本地导入的字幕文件名，导出时优先复用
+            state.subFileNames[k+1] = f.name;
             ui.renderEditor();
         };
         r.readAsArrayBuffer(f);
@@ -1526,12 +1480,10 @@ const app = {
 //  RECORDER
 // ============================================================
 const recorder = {
-    rec: null, chunks: [], stream: null, isRec: false,
-    _isInitializing: false,
+    rec: null, chunks: [], stream: null, isRec: false, _isInitializing: false,
     async toggle() {
         if (aiMode.active) { ui.toast('AI模式运行中，请先停止AI模式'); return; }
         if (this._isInitializing) return;
-        // 确定当前活跃的录音按钮（练习页或预习重点句页）
         const inPreview = document.getElementById('preview-view').classList.contains('active');
         const btn = inPreview ? document.getElementById('focus-btn-record') : document.getElementById('btn-record');
         if (!this.isRec) {
@@ -1582,146 +1534,60 @@ const recorder = {
 //  PREVIEW MODE — 预习模式
 // ============================================================
 const previewMode = {
-    // 当前预习游标
-    cursorIdx: 0,
-    // 重点句索引列表（持久化）
-    starredIndices: [],
-    // 已完成预习的句子数
-    previewedCount: 0,
-    // 重点句练习时的游标（在 starredIndices 中的位置）
-    focusCursor: 0,
-    // 是否已完成全部预习
-    previewDone: false,
-    // 播放结束后是否自动进行下一步（用于自动播放逻辑）
-    _autoAdvance: false,
-    // 当前音频 URL key（用于持久化分类）
-    _audioKey: '',
-
-    // ── 持久化 ──
-    _getKey() {
-        const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
-        return (inputs.mp3 || '').trim();
-    },
+    cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '',
+    _getKey() { const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}'); return (inputs.mp3 || '').trim(); },
     loadFromStorage() {
-        const key = this._getKey();
-        if (!key) return;
-        this._audioKey = key;
+        const key = this._getKey(); if (!key) return; this._audioKey = key;
         try {
-            const raw = localStorage.getItem(CONST.PREVIEW);
-            if (!raw) return;
-            const all = JSON.parse(raw);
-            const data = all[key];
-            if (!data) return;
-            this.starredIndices = data.starred || [];
-            this.previewedCount = data.previewedCount || 0;
-            this.previewDone = data.done || false;
-            this.cursorIdx = data.cursor || 0;
+            const raw = localStorage.getItem(CONST.PREVIEW); if (!raw) return; const all = JSON.parse(raw); const data = all[key]; if (!data) return;
+            this.starredIndices = data.starred || []; this.previewedCount = data.previewedCount || 0; this.previewDone = data.done || false; this.cursorIdx = data.cursor || 0;
         } catch(e) {}
     },
     saveToStorage() {
-        const key = this._getKey();
-        if (!key) return;
-        this._audioKey = key;
+        const key = this._getKey(); if (!key) return; this._audioKey = key;
         try {
-            let all = {};
-            try { all = JSON.parse(localStorage.getItem(CONST.PREVIEW) || '{}'); } catch(e) {}
-            all[key] = {
-                starred: this.starredIndices,
-                previewedCount: this.previewedCount,
-                done: this.previewDone,
-                cursor: this.cursorIdx
-            };
+            let all = {}; try { all = JSON.parse(localStorage.getItem(CONST.PREVIEW) || '{}'); } catch(e) {}
+            all[key] = { starred: this.starredIndices, previewedCount: this.previewedCount, done: this.previewDone, cursor: this.cursorIdx };
             localStorage.setItem(CONST.PREVIEW, JSON.stringify(all));
         } catch(e) {}
     },
     clearForNewAudio(mp3Url) {
-        // 新音频加载时重置预习状态（不清除其他音频的历史记录）
-        this.starredIndices = [];
-        this.previewedCount = 0;
-        this.previewDone = false;
-        this.cursorIdx = 0;
-        this.focusCursor = 0;
-        this._audioKey = mp3Url;
-        this.updateBadge();
+        this.starredIndices = []; this.previewedCount = 0; this.previewDone = false; this.cursorIdx = 0; this.focusCursor = 0; this._audioKey = mp3Url; this.updateBadge();
     },
-
-    // ── 获取辅助字幕（优先 text2，若没有则用 text3） ──
     _getSub2(seg) {
         if (!seg) return '';
         if (seg.text2 && seg.text2.trim()) return seg.text2;
         if (seg.text3 && seg.text3.trim()) return seg.text3;
         return '';
     },
-
-    // ── 徽章更新 ──
     updateBadge() {
-        const badge = document.getElementById('preview-badge');
-        const hint = document.getElementById('preview-focus-hint');
-        const gotoBtn = document.getElementById('btn-goto-focus');
-        if (!badge) return;
-        const cnt = this.starredIndices.length;
-        if (cnt > 0) {
-            badge.innerText = cnt;
-            badge.classList.add('show');
-        } else {
-            badge.classList.remove('show');
-        }
+        const badge = document.getElementById('preview-badge'); const hint = document.getElementById('preview-focus-hint'); const gotoBtn = document.getElementById('btn-goto-focus');
+        if (!badge) return; const cnt = this.starredIndices.length;
+        if (cnt > 0) { badge.innerText = cnt; badge.classList.add('show'); } else { badge.classList.remove('show'); }
         if (this.previewDone && cnt > 0) {
-            if (hint) { hint.style.display = 'inline'; hint.innerText = `已标记 ${cnt} 个重点句`; }
+            if (hint) { hint.style.display = 'inline'; hint.innerText = '已标记 ' + cnt + ' 个重点句'; }
             if (gotoBtn) gotoBtn.style.display = 'inline-block';
-        } else {
-            if (hint) hint.style.display = 'none';
-            if (gotoBtn) gotoBtn.style.display = 'none';
-        }
+        } else { if (hint) hint.style.display = 'none'; if (gotoBtn) gotoBtn.style.display = 'none'; }
     },
-
-    // ── 进入预习模式 ──
     start() {
         if (!state.segments.length) return ui.toast('请先加载内容');
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
-
-        engine.stopAll();
-        aiMode.active && aiMode.stop();
-
-        // 从持久化恢复
-        this.loadFromStorage();
-        this._updateEarlyBtn();
-
-        // 显示预习视图，隐藏其他视图
+        engine.stopAll(); aiMode.active && aiMode.stop();
+        this.loadFromStorage(); this._updateEarlyBtn();
         document.getElementById('editor-view').style.display = 'none';
         document.getElementById('practice-view').style.display = 'none';
         document.getElementById('practice-view').classList.remove('active');
-        const pvw = document.getElementById('preview-view');
-        pvw.style.display = 'flex';
-        pvw.classList.add('active');
-
-        // 如果已经完成过预习且有重点句，直接进入重点句视图
-        if (this.previewDone && this.starredIndices.length > 0) {
-            this._showFocusPhase();
-            return;
-        }
-
-        // 否则进入逐句听阶段
-        this._showListenPhase();
-        this._gotoSentence(this.cursorIdx);
+        const pvw = document.getElementById('preview-view'); pvw.style.display = 'flex'; pvw.classList.add('active');
+        if (this.previewDone && this.starredIndices.length > 0) { this._showFocusPhase(); return; }
+        this._showListenPhase(); this._gotoSentence(this.cursorIdx);
     },
-
     exit() {
-        engine.stopAll();
-        this.saveToStorage();
-        this.updateBadge();
-        // 回到练习页
-        const pvw = document.getElementById('preview-view');
-        pvw.style.display = 'none';
-        pvw.classList.remove('active');
-        const pv = document.getElementById('practice-view');
-        pv.style.display = 'flex';
-        pv.classList.add('active');
+        engine.stopAll(); this.saveToStorage(); this.updateBadge();
+        const pvw = document.getElementById('preview-view'); pvw.style.display = 'none'; pvw.classList.remove('active');
+        const pv = document.getElementById('practice-view'); pv.style.display = 'flex'; pv.classList.add('active');
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.onclick.toString().includes('practice')));
         ui.updatePractice(state.currIndex);
     },
-
-    // ── 阶段切换 ──
     _showListenPhase() {
         document.getElementById('preview-listen-phase').style.display = 'flex';
         document.getElementById('preview-focus-phase').style.display = 'none';
@@ -1729,932 +1595,380 @@ const previewMode = {
     },
     _showFocusPhase() {
         document.getElementById('preview-listen-phase').style.display = 'none';
-        const fp = document.getElementById('preview-focus-phase');
-        fp.style.display = 'flex';
-        fp.classList.add('active');
+        const fp = document.getElementById('preview-focus-phase'); fp.style.display = 'flex'; fp.classList.add('active');
         this._renderFocusList();
-        if (this.starredIndices.length > 0) {
-            this.focusCursor = 0;
-            this._jumpToFocusSentence(this.starredIndices[0]);
-        }
-        // 如果还有未听完的句子，显示"继续预习"按钮；否则隐藏
+        if (this.starredIndices.length > 0) { this.focusCursor = 0; this._jumpToFocusSentence(this.starredIndices[0]); }
         const continueBtn = document.getElementById('btn-continue-preview');
-        if (continueBtn) {
-            continueBtn.style.display = this.cursorIdx < state.segments.length ? 'block' : 'none';
-        }
+        if (continueBtn) { continueBtn.style.display = this.cursorIdx < state.segments.length ? 'block' : 'none'; }
     },
-
-    // ── 跳到某句进行预习 ──
     _gotoSentence(idx) {
-        if (idx >= state.segments.length) {
-            // 全部预习完：先把游标归位到"末尾"，避免"继续预习"按钮误判还有剩余句子
-            this.cursorIdx = state.segments.length;
-            this._finishListenPhase();
-            return;
-        }
-        this.cursorIdx = idx;
-        state.currIndex = idx;
-        const seg = state.segments[idx];
-        
-        // 用户要求：默认只显示字幕1，点击后显示辅助字幕
-        const text = seg.text || '(无内容)';
-        const text2 = this._getSub2(seg);
-
-        document.getElementById('preview-sentence-num').innerText = `#${idx+1} / ${state.segments.length}`;
+        if (idx >= state.segments.length) { this.cursorIdx = state.segments.length; this._finishListenPhase(); return; }
+        this.cursorIdx = idx; state.currIndex = idx; const seg = state.segments[idx];
+        const text = seg.text || '(无内容)'; const text2 = this._getSub2(seg);
+        document.getElementById('preview-sentence-num').innerText = '#' + (idx+1) + ' / ' + state.segments.length;
         document.getElementById('preview-sentence-text').innerText = text;
-        
         const t2el = document.getElementById('preview-sentence-text2');
-        t2el.innerText = (text2 && text2 !== text) ? text2 : '';
-        t2el.style.display = 'none'; // 默认隐藏，点击屏幕后展开
-        
-        // 进度文本
-        document.getElementById('preview-progress-text').innerText =
-            `进度 ${idx+1}/${state.segments.length}  ⭐${this.starredIndices.length}`;
-
-        // 播放提示
+        t2el.innerText = (text2 && text2 !== text) ? text2 : ''; t2el.style.display = 'none';
+        document.getElementById('preview-progress-text').innerText = '进度 ' + (idx+1) + '/' + state.segments.length + '  ⭐' + this.starredIndices.length;
         document.getElementById('preview-play-hint').innerText = '▶ 正在播放...';
-
-        // 自动播放这句
-        this._playCurrentSentence();
-        this.saveToStorage();
+        this._playCurrentSentence(); this.saveToStorage();
     },
-
     _playCurrentSentence() {
         const seg = state.segments[this.cursorIdx];
         if (!seg || !document.getElementById('main-audio').src) return;
-        engine.stopAll();
-        engine.mode = 'PREVIEW_PLAY';
+        engine.stopAll(); engine.mode = 'PREVIEW_PLAY';
         document.getElementById('preview-play-hint').innerText = '▶ 正在播放...';
         const win = engine.getPaddedWindow(this.cursorIdx);
         engine._playSegmentTimed(win, () => {
             if (engine.mode !== 'PREVIEW_PLAY') return;
-            document.getElementById('main-audio').pause();
-            engine.mode = 'IDLE';
-            this._onPlayEnd();
+            document.getElementById('main-audio').pause(); engine.mode = 'IDLE'; this._onPlayEnd();
         });
     },
-
-    // 播放结束回调
-    _onPlayEnd() {
-        document.getElementById('preview-play-hint').innerText = '✅ 播放完毕，请做出选择';
-    },
-
-    replayCurrentSentence() {
-        this._playCurrentSentence();
-    },
-
-    // ── 逐句听阶段：点击屏幕临时显示翻译 ──
+    _onPlayEnd() { document.getElementById('preview-play-hint').innerText = '✅ 播放完毕，请做出选择'; },
+    replayCurrentSentence() { this._playCurrentSentence(); },
     toggleTempSub2() {
         const t2El = document.getElementById('preview-sentence-text2');
-        if (!t2El.innerText.trim()) return; // 没有翻译不响应
+        if (!t2El.innerText.trim()) return;
         t2El.style.display = t2El.style.display === 'none' ? 'block' : 'none';
     },
-
-    // ── 标记操作 ──
-    markKnow() {
-        this.previewedCount++;
-        this._gotoSentence(this.cursorIdx + 1);
-    },
+    markKnow() { this.previewedCount++; this._gotoSentence(this.cursorIdx + 1); },
     markStar() {
-        if (!this.starredIndices.includes(this.cursorIdx)) {
-            this.starredIndices.push(this.cursorIdx);
-        }
-        this.previewedCount++;
-        ui.toast('⭐ 已加入重点句');
-        this._updateEarlyBtn(); 
-        this._gotoSentence(this.cursorIdx + 1);
+        if (!this.starredIndices.includes(this.cursorIdx)) { this.starredIndices.push(this.cursorIdx); }
+        this.previewedCount++; ui.toast('⭐ 已加入重点句'); this._updateEarlyBtn(); this._gotoSentence(this.cursorIdx + 1);
     },
-    prevSentence() {
-        if (this.cursorIdx <= 0) { ui.toast('已经是第一句了'); return; }
-        this._gotoSentence(this.cursorIdx - 1);
-    },
-
-    // ── 预习完成 ──
+    prevSentence() { if (this.cursorIdx <= 0) { ui.toast('已经是第一句了'); return; } this._gotoSentence(this.cursorIdx - 1); },
     _finishListenPhase() {
-        engine.stopAll();
-        this.previewDone = true;
-        this.saveToStorage();
-        this.updateBadge();
-
-        const cnt = this.starredIndices.length;
-        const total = state.segments.length;
+        engine.stopAll(); this.previewDone = true; this.saveToStorage(); this.updateBadge();
+        const cnt = this.starredIndices.length; const total = state.segments.length;
         const statsEl = document.getElementById('preview-done-stats');
         statsEl.innerHTML = '共预习 <strong>' + total + '</strong> 句<br>标记重点句 <strong>' + cnt + '</strong> 个';
-
         const focusBtn = document.getElementById('preview-done-btn-focus');
-        if (cnt === 0) {
-            focusBtn.style.display = 'none';
-        } else {
-            focusBtn.style.display = 'block';
-            focusBtn.innerText = `⭐ 开始重点句练习（${cnt} 句）`;
-        }
-
+        if (cnt === 0) { focusBtn.style.display = 'none'; } else { focusBtn.style.display = 'block'; focusBtn.innerText = '⭐ 开始重点句练习（' + cnt + ' 句）'; }
         document.getElementById('preview-done-modal').style.display = 'flex';
     },
-
-    closeDoneModal() {
-        document.getElementById('preview-done-modal').style.display = 'none';
-    },
-    closeDoneAndFocus() {
-        this.closeDoneModal();
-        this._showFocusPhase();
-    },
-    closeDoneAndPractice() {
-        this.closeDoneModal();
-        this.exit();
-        app.switchView('practice');
-    },
-
-    // ── 重点句练习阶段 ──
+    closeDoneModal() { document.getElementById('preview-done-modal').style.display = 'none'; },
+    closeDoneAndFocus() { this.closeDoneModal(); this._showFocusPhase(); },
+    closeDoneAndPractice() { this.closeDoneModal(); this.exit(); app.switchView('practice'); },
     _renderFocusList() {
-        const list = document.getElementById('focus-list');
-        list.innerHTML = '';
+        const list = document.getElementById('focus-list'); list.innerHTML = '';
         const label = document.getElementById('focus-count-label');
         label.innerText = '共 ' + this.starredIndices.length + ' 句';
-        // 清空按钮
         if (this.starredIndices.length > 0) {
             const clearBtn = document.createElement('button');
             clearBtn.innerText = '🗑 清空全部重点句';
             clearBtn.style.cssText = 'width:100%;padding:8px;border:1px solid #ffb3b3;background:#fff0f0;color:#c5221f;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;';
             clearBtn.onclick = () => {
                 if (confirm('确认清空全部重点句？')) {
-                    this.starredIndices = [];
-                    this.focusCursor = 0;
-                    this.previewDone = false;
-                    this.cursorIdx = 0;
-                    this.saveToStorage();
-                    this.updateBadge();
-                    this._renderFocusList();
+                    this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0;
+                    this.saveToStorage(); this.updateBadge(); this._renderFocusList();
                 }
             };
             list.appendChild(clearBtn);
         }
-
         this.starredIndices.forEach((segIdx, i) => {
-            const seg = state.segments[segIdx];
-            if (!seg) return;
-            const text = seg.text || '(无内容)';
-            const text2 = this._getSub2(seg);
-
-            const item = document.createElement('div');
-            item.className = 'focus-item';
-            item.id = `focus-item-${i}`;
-
-            const checkDone = document.createElement('div');
-            checkDone.className = 'focus-check';
-            checkDone.dataset.idx = i;
+            const seg = state.segments[segIdx]; if (!seg) return;
+            const text = seg.text || '(无内容)'; const text2 = this._getSub2(seg);
+            const item = document.createElement('div'); item.className = 'focus-item'; item.id = 'focus-item-' + i;
+            const checkDone = document.createElement('div'); checkDone.className = 'focus-check'; checkDone.dataset.idx = i;
             checkDone.onclick = (e) => { e.stopPropagation(); this._toggleFocusDone(i, checkDone, item); };
-
-            const numEl = document.createElement('div');
-            numEl.className = 'focus-num';
-            numEl.innerText = `#${segIdx+1}`;
-
-            const leftCol = document.createElement('div');
-            leftCol.className = 'focus-item-left';
-            leftCol.appendChild(checkDone);
-            leftCol.appendChild(numEl);
-
-            const body = document.createElement('div');
-            body.className = 'focus-item-body';
-            const textEl = document.createElement('div');
-            textEl.className = 'focus-item-text';
-            textEl.innerText = text;
-            body.appendChild(textEl);
-            
-            // 生成翻译的 DOM 节点（默认隐藏）
+            const numEl = document.createElement('div'); numEl.className = 'focus-num'; numEl.innerText = '#' + (segIdx+1);
+            const leftCol = document.createElement('div'); leftCol.className = 'focus-item-left'; leftCol.appendChild(checkDone); leftCol.appendChild(numEl);
+            const body = document.createElement('div'); body.className = 'focus-item-body';
+            const textEl = document.createElement('div'); textEl.className = 'focus-item-text'; textEl.innerText = text; body.appendChild(textEl);
             let text2El = null;
             if (text2 && text2 !== text) {
-                text2El = document.createElement('div');
-                text2El.className = 'focus-item-text2';
-                text2El.innerText = text2;
-                text2El.style.display = 'none';
-                body.appendChild(text2El);
+                text2El = document.createElement('div'); text2El.className = 'focus-item-text2'; text2El.innerText = text2; text2El.style.display = 'none'; body.appendChild(text2El);
             }
-
-            // 右侧按钮组（播放、翻译、删除）竖向排列
-            const actions = document.createElement('div');
-            actions.className = 'focus-item-actions';
-
-            const playIcon = document.createElement('button');
-            playIcon.className = 'focus-item-play';
-            playIcon.innerText = '▶';
-            playIcon.onclick = (e) => { e.stopPropagation(); this.focusCursor = i; this._jumpToFocusSentence(segIdx); };
-            actions.appendChild(playIcon);
-
-            // 独立的翻译按钮
+            const actions = document.createElement('div'); actions.className = 'focus-item-actions';
+            const playIcon = document.createElement('button'); playIcon.className = 'focus-item-play'; playIcon.innerText = '▶';
+            playIcon.onclick = (e) => { e.stopPropagation(); this.focusCursor = i; this._jumpToFocusSentence(segIdx); }; actions.appendChild(playIcon);
             if (text2El) {
-                const transBtn = document.createElement('button');
-                transBtn.className = 'focus-item-play translate-btn';
-                transBtn.innerText = '译';
-                transBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    text2El.style.display = text2El.style.display === 'none' ? 'block' : 'none';
-                };
-                actions.appendChild(transBtn);
+                const transBtn = document.createElement('button'); transBtn.className = 'focus-item-play translate-btn'; transBtn.innerText = '译';
+                transBtn.onclick = (e) => { e.stopPropagation(); text2El.style.display = text2El.style.display === 'none' ? 'block' : 'none'; }; actions.appendChild(transBtn);
             }
-
-            const delIcon = document.createElement('button');
-            delIcon.className = 'focus-item-play del-btn';
-            delIcon.innerText = '✕';
+            const delIcon = document.createElement('button'); delIcon.className = 'focus-item-play del-btn'; delIcon.innerText = '✕';
             delIcon.onclick = (e) => {
-                e.stopPropagation();
-                this.starredIndices.splice(i, 1);
+                e.stopPropagation(); this.starredIndices.splice(i, 1);
                 this.focusCursor = Math.min(this.focusCursor, this.starredIndices.length - 1);
-                if (this.starredIndices.length === 0) {
-                    this.previewDone = false;
-                    this.cursorIdx = 0;
-                }
-                this.saveToStorage();
-                this.updateBadge();
-                this._renderFocusList();
+                if (this.starredIndices.length === 0) { this.previewDone = false; this.cursorIdx = 0; }
+                this.saveToStorage(); this.updateBadge(); this._renderFocusList();
             };
             actions.appendChild(delIcon);
-
-            item.appendChild(leftCol);
-            item.appendChild(body);
-            item.appendChild(actions);
-            // 点击整行也跳转播放
+            item.appendChild(leftCol); item.appendChild(body); item.appendChild(actions);
             item.onclick = () => { this.focusCursor = i; this._jumpToFocusSentence(segIdx); };
             list.appendChild(item);
         });
     },
-
     _toggleFocusDone(i, checkEl, itemEl) {
         const isDone = checkEl.classList.contains('checked');
-        if (isDone) {
-            checkEl.classList.remove('checked');
-            checkEl.innerText = '';
-            itemEl.classList.remove('done');
-            // 移除删除线
-            const textEl = itemEl.querySelector('.focus-item-text');
-            if (textEl) textEl.style.textDecoration = '';
-        } else {
-            checkEl.classList.add('checked');
-            checkEl.innerText = '✓';
-            itemEl.classList.add('done');
-            // 加删除线
-            const textEl = itemEl.querySelector('.focus-item-text');
-            if (textEl) textEl.style.textDecoration = 'line-through';
-        }
+        if (isDone) { checkEl.classList.remove('checked'); checkEl.innerText = ''; itemEl.classList.remove('done'); const textEl = itemEl.querySelector('.focus-item-text'); if (textEl) textEl.style.textDecoration = ''; }
+        else { checkEl.classList.add('checked'); checkEl.innerText = '✓'; itemEl.classList.add('done'); const textEl = itemEl.querySelector('.focus-item-text'); if (textEl) textEl.style.textDecoration = 'line-through'; }
     },
-
     _jumpToFocusSentence(segIdx) {
-        engine.stopAll();
-        state.currIndex = segIdx;
-        // 高亮当前项
-        document.querySelectorAll('.focus-item').forEach((el, i) => {
-            el.classList.toggle('playing', this.starredIndices[i] === segIdx);
-        });
-        // 滚动到该项
-        const curItem = document.getElementById(`focus-item-${this.focusCursor}`);
+        engine.stopAll(); state.currIndex = segIdx;
+        document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', this.starredIndices[i] === segIdx); });
+        const curItem = document.getElementById('focus-item-' + this.focusCursor);
         if (curItem) curItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        // 更新"正在练习"提示
         const text = state.segments[segIdx].text || '';
         const nowEl = document.getElementById('focus-now-playing');
-        nowEl.innerText = `▶ 第 ${segIdx+1} 句：${text.length > 40 ? text.substring(0, 40) + '...' : text}`;
+        nowEl.innerText = '▶ 第 ' + (segIdx+1) + ' 句：' + (text.length > 40 ? text.substring(0, 40) + '...' : text);
         nowEl.classList.add('show');
-        // 播放
         engine.playOnce();
     },
-
-    focusNext() {
-        if (!this.starredIndices.length) return;
-        this.focusCursor = (this.focusCursor + 1) % this.starredIndices.length;
-        this._jumpToFocusSentence(this.starredIndices[this.focusCursor]);
-    },
-    focusPrev() {
-        if (!this.starredIndices.length) return;
-        this.focusCursor = (this.focusCursor - 1 + this.starredIndices.length) % this.starredIndices.length;
-        this._jumpToFocusSentence(this.starredIndices[this.focusCursor]);
-    },
-
-    // 从重点句练习直接进入正式练习
+    focusNext() { if (!this.starredIndices.length) return; this.focusCursor = (this.focusCursor + 1) % this.starredIndices.length; this._jumpToFocusSentence(this.starredIndices[this.focusCursor]); },
+    focusPrev() { if (!this.starredIndices.length) return; this.focusCursor = (this.focusCursor - 1 + this.starredIndices.length) % this.starredIndices.length; this._jumpToFocusSentence(this.starredIndices[this.focusCursor]); },
     exitFocusToSwitcher() {
-        engine.stopAll();
-        this.saveToStorage();
-        this.updateBadge();
-        const pvw = document.getElementById('preview-view');
-        pvw.style.display = 'none';
-        pvw.classList.remove('active');
+        engine.stopAll(); this.saveToStorage(); this.updateBadge();
+        const pvw = document.getElementById('preview-view'); pvw.style.display = 'none'; pvw.classList.remove('active');
         app.switchView('practice');
     },
-
-    // 从练习页"查看重点句"按钮入口
     enterFocusPhase() {
         if (!state.segments.length) return ui.toast('请先加载内容');
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         if (!this.starredIndices.length) return ui.toast('还没有标记重点句，请先进行预习');
-
         engine.stopAll();
         document.getElementById('editor-view').style.display = 'none';
         document.getElementById('practice-view').style.display = 'none';
         document.getElementById('practice-view').classList.remove('active');
-        const pvw = document.getElementById('preview-view');
-        pvw.style.display = 'flex';
-        pvw.classList.add('active');
+        const pvw = document.getElementById('preview-view'); pvw.style.display = 'flex'; pvw.classList.add('active');
         this._showFocusPhase();
     },
-
     _updateEarlyBtn() {
-        const cnt = this.starredIndices.length;
-        const wrap = document.getElementById('preview-goto-focus-btn-wrap');
-        const countEl = document.getElementById('preview-early-count');
-        if (wrap) wrap.style.display = cnt > 0 ? 'block' : 'none';
-        if (countEl) countEl.innerText = cnt;
+        const cnt = this.starredIndices.length; const wrap = document.getElementById('preview-goto-focus-btn-wrap'); const countEl = document.getElementById('preview-early-count');
+        if (wrap) wrap.style.display = cnt > 0 ? 'block' : 'none'; if (countEl) countEl.innerText = cnt;
     },
-
-    earlyFinish() {
-        engine.stopAll();
-        this.previewDone = true;
-        this.saveToStorage();
-        this.updateBadge();
-        this._showFocusPhase();
-    },
-
+    earlyFinish() { engine.stopAll(); this.previewDone = true; this.saveToStorage(); this.updateBadge(); this._showFocusPhase(); },
     tryExit() {
         if (this.starredIndices.length > 0) {
-            const cnt = this.starredIndices.length;
-            const statsEl = document.getElementById('preview-done-stats');
+            const cnt = this.starredIndices.length; const statsEl = document.getElementById('preview-done-stats');
             statsEl.innerHTML = '已预习 <strong>' + this.cursorIdx + '</strong> 句<br>标记重点句 <strong>' + cnt + '</strong> 个';
-            const focusBtn = document.getElementById('preview-done-btn-focus');
-            focusBtn.style.display = 'block';
-            focusBtn.innerText = `⭐ 去练习重点句（${cnt} 句）`;
+            const focusBtn = document.getElementById('preview-done-btn-focus'); focusBtn.style.display = 'block';
+            focusBtn.innerText = '⭐ 去练习重点句（' + cnt + ' 句）';
             document.getElementById('preview-done-modal').style.display = 'flex';
-        } else {
-            this.exit();
-        }
+        } else { this.exit(); }
     },
-
     continueListen() {
-        if (this.cursorIdx >= state.segments.length) {
-            ui.toast('所有句子已预习完毕');
-            return;
-        }
-        this.previewDone = false;
-        this.saveToStorage();
-        this._showListenPhase();
-        this._updateEarlyBtn();
-        this._gotoSentence(this.cursorIdx);
+        if (this.cursorIdx >= state.segments.length) { ui.toast('所有句子已预习完毕'); return; }
+        this.previewDone = false; this.saveToStorage(); this._showListenPhase(); this._updateEarlyBtn(); this._gotoSentence(this.cursorIdx);
     }
 };
 
 // ============================================================
-//  AI MODE —— V70 修复版（完整保留）
+//  AI MODE
 // ============================================================
 const aiMode = {
-    active: false,
-    failCount: 0,
-    maxFails: 3,
-    threshold: 100,
-    recognition: null,
-    audioCtx: null,
-    _cycleTimer: null,
-    _listenTimeout: null,
-    _playRafId: null,
-    _warmSR: null,
-    manualPracticeMode: false,
-    failedSentences: [],
-    reviewMode: false,
-    reviewQueue: [],
-    _prevPermBlurMode: 'none',
-
-    toggle() {
-        if (this.active) this.stop();
-        else this.start();
-    },
-
-    updateThreshold(v) {
-        this.threshold = parseInt(v);
-        document.getElementById('ai-threshold-val').innerText = v + '%';
-        const slider = document.getElementById('ai-threshold');
-        const pct = ((v - slider.min) / (slider.max - slider.min)) * 100;
-        slider.style.setProperty('--fill', pct + '%');
-    },
-
+    active: false, failCount: 0, maxFails: 3, threshold: 100, recognition: null, audioCtx: null, _cycleTimer: null, _listenTimeout: null, _playRafId: null, _warmSR: null, manualPracticeMode: false, failedSentences: [], reviewMode: false, reviewQueue: [], _prevPermBlurMode: 'none',
+    toggle() { if (this.active) this.stop(); else this.start(); },
+    updateThreshold(v) { this.threshold = parseInt(v); document.getElementById('ai-threshold-val').innerText = v + '%'; const slider = document.getElementById('ai-threshold'); const pct = ((v - slider.min) / (slider.max - slider.min)) * 100; slider.style.setProperty('--fill', pct + '%'); },
     async start() {
         if (!state.segments.length) return ui.toast('请先加载内容');
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SR) return ui.toast('❌ 浏览器不支持语音识别 (需 iOS Safari 14.5+ 或 Chrome)');
-
         try {
             if (!this.audioCtx) this.audioCtx = new(window.AudioContext||window.webkitAudioContext)();
             if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
-            const ctx = this.audioCtx;
-            const osc = ctx.createOscillator();
-            const g = ctx.createGain();
-            osc.connect(g); g.connect(ctx.destination);
-            g.gain.setValueAtTime(0.001, ctx.currentTime);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.05);
+            const ctx = this.audioCtx; const osc = ctx.createOscillator(); const g = ctx.createGain(); osc.connect(g); g.connect(ctx.destination);
+            g.gain.setValueAtTime(0.001, ctx.currentTime); osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.05);
         } catch(e) { console.warn('AudioContext unlock warn:', e); }
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-            stream.getTracks().forEach(t=>t.stop());
-        } catch(e) { ui.toast('❌ 麦克风权限被拒绝'); return; }
-
+        try { const stream = await navigator.mediaDevices.getUserMedia({audio:true}); stream.getTracks().forEach(t=>t.stop()); } catch(e) { ui.toast('❌ 麦克风权限被拒绝'); return; }
         engine.stopAll(true);
-
-        this.active = true;
-        if (!this.reviewMode) {
-            this.failedSentences = [];
-        }
-        this.failCount = 0;
-        this.manualPracticeMode = false;
-        this._setBtn('running');
-        document.getElementById('ai-mode-bar').classList.add('ai-running');
-        document.getElementById('ai-mode-bar').classList.remove('ai-manual');
-        document.getElementById('btn-ai-resume').style.display = 'none';
-        document.getElementById('text-container').classList.remove('ai-manual');
-        this.setStatus('🚀 启动中', '');
-
-        this._prevPermBlurMode = state.permBlurMode;
-        state.permBlurMode = 'hide';
-        state.userBlurState = true;
-        ui.updatePermButtons();
-        ui.updatePractice(state.currIndex);
-
+        this.active = true; if (!this.reviewMode) { this.failedSentences = []; } this.failCount = 0; this.manualPracticeMode = false; this._setBtn('running');
+        document.getElementById('ai-mode-bar').classList.add('ai-running'); document.getElementById('ai-mode-bar').classList.remove('ai-manual');
+        document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('🚀 启动中', '');
+        this._prevPermBlurMode = state.permBlurMode; state.permBlurMode = 'hide'; state.userBlurState = true; ui.updatePermButtons(); ui.updatePractice(state.currIndex);
         setTimeout(() => this.runCycle(), 400);
     },
-
     stop() {
-        const wasManual = this.manualPracticeMode;
-        this.active = false;
-        this.manualPracticeMode = false;
-        this.reviewMode = false;
+        this.active = false; this.manualPracticeMode = false; this.reviewMode = false;
         if (this._cycleTimer) { clearTimeout(this._cycleTimer); this._cycleTimer = null; }
         if (this._listenTimeout) { clearTimeout(this._listenTimeout); this._listenTimeout = null; }
         if (this._playRafId) { cancelAnimationFrame(this._playRafId); this._playRafId = null; }
         if (this.recognition) { try { this.recognition.abort(); } catch(e) {} this.recognition = null; }
         if (this._warmSR) { try { this._warmSR.abort(); } catch(e) {} this._warmSR = null; }
-        engine.stopAll();
-        this._setBtn('idle');
+        engine.stopAll(); this._setBtn('idle');
         document.getElementById('ai-mode-bar').classList.remove('ai-running', 'ai-manual');
-        document.getElementById('btn-ai-resume').style.display = 'none';
-        document.getElementById('text-container').classList.remove('ai-manual');
-        this.setStatus('待机', '');
-
+        document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('待机', '');
         state.permBlurMode = this._prevPermBlurMode;
         if (state.permBlurMode === 'show') state.userBlurState = false;
         else if (state.permBlurMode === 'hide') state.userBlurState = true;
-        ui.updatePermButtons();
-        ui.updatePractice(state.currIndex);
+        ui.updatePermButtons(); ui.updatePractice(state.currIndex);
     },
-
     runCycle() {
         if (!this.active) return;
-
         if (this.reviewMode && this.reviewQueue.length === 0) {
-            this.active = false;
-            this._setBtn('idle');
-            document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
-            this.setStatus('复习完成', 'success');
-            this.playBeep('complete');
-            state.permBlurMode = this._prevPermBlurMode;
-            if (state.permBlurMode === 'show') state.userBlurState = false;
-            ui.updatePermButtons(); ui.updatePractice(state.currIndex);
-            setTimeout(() => this.showRoundComplete(true), 800);
-            return;
+            this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
+            this.setStatus('复习完成', 'success'); this.playBeep('complete');
+            state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
+            ui.updatePermButtons(); ui.updatePractice(state.currIndex); setTimeout(() => this.showRoundComplete(true), 800); return;
         }
-
-        const idx = this.reviewMode ? this.reviewQueue[0] : state.currIndex;
-        state.currIndex = idx;
-        state.userBlurState = true;
-        ui.updatePractice(idx);
-        this.setStatus('▶ 播放中', '');
-
-        const seg = state.segments[idx];
-        if (!seg) { this.stop(); return; }
-
-        const a = document.getElementById('main-audio');
-        this._preWarmSR();
-        const win = engine.getPaddedWindow(idx);
-        a.currentTime = win.start;
-        a.playbackRate = state.playbackRate;
-        const playP = a.play();
-        if (playP) playP.catch(e => { console.error('AI play failed:', e); this.stop(); });
-
+        const idx = this.reviewMode ? this.reviewQueue[0] : state.currIndex; state.currIndex = idx; state.userBlurState = true; ui.updatePractice(idx); this.setStatus('▶ 播放中', '');
+        const seg = state.segments[idx]; if (!seg) { this.stop(); return; }
+        const a = document.getElementById('main-audio'); this._preWarmSR();
+        const win = engine.getPaddedWindow(idx); a.currentTime = win.start; a.playbackRate = state.playbackRate;
+        const playP = a.play(); if (playP) playP.catch(e => { console.error('AI play failed:', e); this.stop(); });
         this._startPlayWatcher(win.end);
     },
-
     _startPlayWatcher(endTime) {
         if (this._playRafId) { cancelAnimationFrame(this._playRafId); this._playRafId = null; }
         const a = document.getElementById('main-audio');
         const watch = () => {
             if (!this.active) { this._playRafId = null; return; }
-            const reachedEnd = !a.paused && a.currentTime >= endTime;
-            const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
-            if (!reachedEnd && !audioFullyEnded) {
-                this._playRafId = requestAnimationFrame(watch);
-                return;
-            }
-            try { a.pause(); } catch(e) {}
-            this._playRafId = null;
-            this.startListening();
+            const reachedEnd = !a.paused && a.currentTime >= endTime; const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
+            if (!reachedEnd && !audioFullyEnded) { this._playRafId = requestAnimationFrame(watch); return; }
+            try { a.pause(); } catch(e) {} this._playRafId = null; this.startListening();
         };
         this._playRafId = requestAnimationFrame(watch);
     },
-
     _preWarmSR() {
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) return;
-        try {
-            if (this._warmSR) { try { this._warmSR.abort(); } catch(e) {} }
-            this._warmSR = new SR();
-            this._warmSR.lang = 'en-US';
-            this._warmSR.continuous = false;
-            this._warmSR.interimResults = false;
-            this._warmSR.maxAlternatives = 3;
-        } catch(e) { this._warmSR = null; }
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return;
+        try { if (this._warmSR) { try { this._warmSR.abort(); } catch(e) {} } this._warmSR = new SR(); this._warmSR.lang = 'en-US'; this._warmSR.continuous = false; this._warmSR.interimResults = false; this._warmSR.maxAlternatives = 3; } catch(e) { this._warmSR = null; }
     },
-
     startListening() {
-        if (!this.active) return;
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        this.setStatus('👂 正在听...', 'listening');
-
-        const r = this._warmSR || new SR();
-        this._warmSR = null;
-        r.lang = 'en-US';
-        r.continuous = false;
-        r.interimResults = false;
-        r.maxAlternatives = 3;
-        this.recognition = r;
-
-        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
-        const refText = state.segments[state.currIndex][key] || '';
-        const wordCount = refText.trim().split(/\s+/).filter(Boolean).length;
-        const dynamicTimeout = Math.min(25000, Math.max(12000, wordCount * 1200));
-
-        let settled = false;
-        let retried = false;
-        const settle = fn => { if (settled) return; settled = true; clearTimeout(this._listenTimeout); fn(); };
-
+        if (!this.active) return; const SR = window.SpeechRecognition || window.webkitSpeechRecognition; this.setStatus('👂 正在听...', 'listening');
+        const r = this._warmSR || new SR(); this._warmSR = null; r.lang = 'en-US'; r.continuous = false; r.interimResults = false; r.maxAlternatives = 3; this.recognition = r;
+        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text'); const refText = state.segments[state.currIndex][key] || '';
+        const wordCount = refText.trim().split(/\s+/).filter(Boolean).length; const dynamicTimeout = Math.min(25000, Math.max(12000, wordCount * 1200));
+        let settled = false; let retried = false; const settle = fn => { if (settled) return; settled = true; clearTimeout(this._listenTimeout); fn(); };
         r.onresult = e => settle(() => {
-            const ref = this._normalize(refText);
-            let best = { sim: -1, t: '' };
-            for (let i = 0; i < e.results[0].length; i++) {
-                const t = this._normalize(e.results[0][i].transcript);
-                const s = this._similarity(ref, t);
-                if (s > best.sim) best = { sim: s, t };
-            }
+            const ref = this._normalize(refText); let best = { sim: -1, t: '' };
+            for (let i = 0; i < e.results[0].length; i++) { const t = this._normalize(e.results[0][i].transcript); const s = this._similarity(ref, t); if (s > best.sim) best = { sim: s, t }; }
             this.evaluate(best.sim * 100, best.t);
         });
-
         r.onerror = e => settle(() => {
-            console.warn('SR error:', e.error);
-            if (e.error === 'no-speech') {
-                this.setStatus('🔇 未听到', 'fail');
-            } else if (e.error === 'aborted') {
-                return;
-            } else {
-                this.setStatus(`⚠️ ${e.error}`, 'fail');
-            }
-            this._scheduleOnFail();
+            console.warn('SR error:', e.error); if (e.error === 'no-speech') { this.setStatus('🔇 未听到', 'fail'); } else if (e.error === 'aborted') { return; } else { this.setStatus('⚠️ ' + e.error, 'fail'); } this._scheduleOnFail();
         });
-
         r.onend = () => {
             if (!settled && !retried) {
-                retried = true;
-                console.log('[AI] onend 无结果，自动重试一次...');
+                retried = true; console.log('[AI] onend 无结果，自动重试一次...');
                 try {
-                    const r2 = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                    r2.lang = 'en-US'; r2.continuous = false; r2.interimResults = false; r2.maxAlternatives = 3;
-                    r2.onresult = r.onresult;
-                    r2.onerror = e => settle(() => { this.setStatus(`⚠️ ${e.error}`, 'fail'); this._scheduleOnFail(); });
-                    r2.onend = () => settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); });
-                    this.recognition = r2;
-                    r2.start();
-                } catch(e) {
-                    settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); });
-                }
+                    const r2 = new (window.SpeechRecognition || window.webkitSpeechRecognition)(); r2.lang = 'en-US'; r2.continuous = false; r2.interimResults = false; r2.maxAlternatives = 3;
+                    r2.onresult = r.onresult; r2.onerror = e => settle(() => { this.setStatus('⚠️ ' + e.error, 'fail'); this._scheduleOnFail(); });
+                    r2.onend = () => settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); }); this.recognition = r2; r2.start();
+                } catch(e) { settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); }); }
                 return;
             }
             settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); });
         };
-
-        this._listenTimeout = setTimeout(() => settle(() => {
-            try { r.abort(); } catch(e) {}
-            this.setStatus(`⏱ 超时(${(dynamicTimeout/1000).toFixed(0)}s)`, 'fail');
-            this._scheduleOnFail();
-        }), dynamicTimeout);
-
-        try { r.start(); } catch(e) {
-            settle(() => { this.setStatus('❌ 启动失败', 'fail'); this._scheduleOnFail(); });
-        }
+        this._listenTimeout = setTimeout(() => settle(() => { try { r.abort(); } catch(e) {} this.setStatus('⏱ 超时(' + (dynamicTimeout/1000).toFixed(0) + 's)', 'fail'); this._scheduleOnFail(); }), dynamicTimeout);
+        try { r.start(); } catch(e) { settle(() => { this.setStatus('❌ 启动失败', 'fail'); this._scheduleOnFail(); }); }
     },
-
     evaluate(simPct, transcript) {
-        const pass = simPct >= this.threshold;
-        const icon = pass ? '✅' : '❌';
-        this.setStatus(`${icon} ${simPct.toFixed(0)}%`, pass ? 'success' : 'fail');
-        console.log(`[AI] 识别: "${transcript}" | 相似度: ${simPct.toFixed(1)}% | 阈值: ${this.threshold}% | ${pass?'通过':'失败'}`);
-
+        const pass = simPct >= this.threshold; const icon = pass ? '✅' : '❌'; this.setStatus(icon + ' ' + simPct.toFixed(0) + '%', pass ? 'success' : 'fail');
+        console.log('[AI] 识别: "' + transcript + '" | 相似度: ' + simPct.toFixed(1) + '% | 阈值: ' + this.threshold + '% | ' + (pass?'通过':'失败'));
         if (pass) {
-            this.failCount = 0;
-            if (this.reviewMode) this.reviewQueue.shift();
-            this.playBeep('success');
+            this.failCount = 0; if (this.reviewMode) this.reviewQueue.shift(); this.playBeep('success');
             this._cycleTimer = setTimeout(() => {
-                if (!this.active) return;
-                if (this.reviewMode) { this.runCycle(); return; }
-                if (state.currIndex < state.segments.length - 1) {
-                    state.currIndex++;
-                    this.runCycle();
-                } else {
-                    this.active = false;
-                    this._setBtn('idle');
-                    document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
-                    this.setStatus('🎊 完成！', 'success');
-                    this.playBeep('complete');
-                    state.permBlurMode = this._prevPermBlurMode;
-                    if (state.permBlurMode === 'show') state.userBlurState = false;
-                    ui.updatePermButtons(); ui.updatePractice(state.currIndex);
-                    setTimeout(() => this.showRoundComplete(), 1000);
+                if (!this.active) return; if (this.reviewMode) { this.runCycle(); return; }
+                if (state.currIndex < state.segments.length - 1) { state.currIndex++; this.runCycle(); }
+                else {
+                    this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
+                    this.setStatus('🎊 完成！', 'success'); this.playBeep('complete');
+                    state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
+                    ui.updatePermButtons(); ui.updatePractice(state.currIndex); setTimeout(() => this.showRoundComplete(), 1000);
                 }
             }, 800);
-
         } else {
-            if (this.failCount === 0 && !this.reviewMode) {
-                this.failCount = 1;
-                this.playBeep('fail');
-                this._enterManualPractice();
-            } else {
-                this._scheduleOnFail();
-            }
+            if (this.failCount === 0 && !this.reviewMode) { this.failCount = 1; this.playBeep('fail'); this._enterManualPractice(); } else { this._scheduleOnFail(); }
         }
     },
-
     _enterManualPractice() {
-        this.manualPracticeMode = true;
-        document.getElementById('ai-mode-bar').classList.remove('ai-running');
-        document.getElementById('ai-mode-bar').classList.add('ai-manual');
-        document.getElementById('btn-ai-resume').style.display = 'block';
-        document.getElementById('text-container').classList.add('ai-manual');
-        this.setStatus('👆 手动复习', 'manual');
+        this.manualPracticeMode = true; document.getElementById('ai-mode-bar').classList.remove('ai-running'); document.getElementById('ai-mode-bar').classList.add('ai-manual');
+        document.getElementById('btn-ai-resume').style.display = 'block'; document.getElementById('text-container').classList.add('ai-manual'); this.setStatus('👆 手动复习', 'manual');
         ui.toast('💡 可点"循环单句"/"播单句"练习，完成后点"继续AI →"');
     },
-
     resumeFromManual() {
-        if (!this.active || !this.manualPracticeMode) return;
-        this.manualPracticeMode = false;
-        engine.stopAll();
-        state.userBlurState = true;
-        ui.updatePractice(state.currIndex);
-        document.getElementById('ai-mode-bar').classList.add('ai-running');
-        document.getElementById('ai-mode-bar').classList.remove('ai-manual');
-        document.getElementById('btn-ai-resume').style.display = 'none';
-        document.getElementById('text-container').classList.remove('ai-manual');
-        this.setStatus('▶ 继续中...', '');
+        if (!this.active || !this.manualPracticeMode) return; this.manualPracticeMode = false; engine.stopAll(); state.userBlurState = true; ui.updatePractice(state.currIndex);
+        document.getElementById('ai-mode-bar').classList.add('ai-running'); document.getElementById('ai-mode-bar').classList.remove('ai-manual');
+        document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('▶ 继续中...', '');
         this._cycleTimer = setTimeout(() => this.runCycle(), 600);
     },
-
     _scheduleOnFail() {
-        this.failCount++;
-        this.playBeep('fail');
-
+        this.failCount++; this.playBeep('fail');
         if (this.failCount >= this.maxFails) {
-            this.failCount = 0;
-            this.setStatus('⏭ 跳过', 'fail');
-            this.playBeep('skip');
-
+            this.failCount = 0; this.setStatus('⏭ 跳过', 'fail'); this.playBeep('skip');
             if (this.reviewMode) {
-                // 复习模式：跳过当前这句（仍计入未通过），继续复习队列中的下一句
-                const skippedIdx = this.reviewQueue.shift();
-                if (skippedIdx !== undefined && !this.failedSentences.includes(skippedIdx)) {
-                    this.failedSentences.push(skippedIdx);
-                }
-                this._cycleTimer = setTimeout(() => {
-                    if (!this.active) return;
-                    this.runCycle(); // runCycle 会自动判断 reviewQueue 是否为空并显示"复习完成"
-                }, 1500);
+                const skippedIdx = this.reviewQueue.shift(); if (skippedIdx !== undefined && !this.failedSentences.includes(skippedIdx)) { this.failedSentences.push(skippedIdx); }
+                this._cycleTimer = setTimeout(() => { if (!this.active) return; this.runCycle(); }, 1500);
             } else {
-                if (!this.failedSentences.includes(state.currIndex)) {
-                    this.failedSentences.push(state.currIndex);
-                }
+                if (!this.failedSentences.includes(state.currIndex)) { this.failedSentences.push(state.currIndex); }
                 this._cycleTimer = setTimeout(() => {
                     if (!this.active) return;
-                    if (state.currIndex < state.segments.length - 1) {
-                        state.currIndex++;
-                        this.runCycle();
-                    } else {
-                        this.active = false;
-                        this._setBtn('idle');
-                        document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
-                        this.setStatus('完成', 'success');
-                        state.permBlurMode = this._prevPermBlurMode;
-                        if (state.permBlurMode === 'show') state.userBlurState = false;
-                        ui.updatePermButtons(); ui.updatePractice(state.currIndex);
-                        setTimeout(() => this.showRoundComplete(), 800);
+                    if (state.currIndex < state.segments.length - 1) { state.currIndex++; this.runCycle(); }
+                    else {
+                        this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual'); this.setStatus('完成', 'success');
+                        state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
+                        ui.updatePermButtons(); ui.updatePractice(state.currIndex); setTimeout(() => this.showRoundComplete(), 800);
                     }
                 }, 1500);
             }
-        } else {
-            this._cycleTimer = setTimeout(() => {
-                if (!this.active) return;
-                this.runCycle();
-            }, 900);
-        }
+        } else { this._cycleTimer = setTimeout(() => { if (!this.active) return; this.runCycle(); }, 900); }
     },
-
     showRoundComplete(isReview = false) {
-        const total = state.segments.length;
-        const failedCount = this.failedSentences.length;
-        const passedCount = total - failedCount;
+        const total = state.segments.length; const failedCount = this.failedSentences.length; const passedCount = total - failedCount;
         const accuracy = total > 0 ? Math.round(passedCount / total * 100) : 100;
-
         let emoji, title, msg;
         if (isReview) {
             const stillFailed = this.failedSentences.length;
-            if (stillFailed === 0) {
-                emoji = '🏅'; title = '复习大获全胜！';
-                msg = '太了不起了！所有错误的句子全部通关，你的坚持没有白费！';
-            } else {
-                emoji = '💪'; title = '复习完成！';
-                msg = `还有 ${stillFailed} 句需要继续磨练，但每次练习都是进步！';
-            }
+            if (stillFailed === 0) { emoji = '🏅'; title = '复习大获全胜！'; msg = '太了不起了！所有错误的句子全部通关，你的坚持没有白费！'; }
+            else { emoji = '💪'; title = '复习完成！'; msg = '还有 ' + stillFailed + ' 句需要继续磨练，但每次练习都是进步！'; }
         } else {
-            if (accuracy >= 97) {
-                emoji = '🏆'; title = '完美表现！近乎满分！';
-                msg = '你的发音令人叹服，几乎每一句都无懈可击！继续保持这份完美！';
-            } else if (accuracy >= 85) {
-                emoji = '🌟'; title = '非常出色！';
-                msg = '你的英语口语真的很棒！这样的水平已经超越了大多数人，为你骄傲！';
-            } else if (accuracy >= 70) {
-                emoji = '💪'; title = '很有进步！';
-                msg = '基础扎实，继续坚持跟读练习，你会越来越强！语感正在悄悄提升！';
-            } else if (accuracy >= 50) {
-                emoji = '📈'; title = '不错的开始！';
-                msg = '每一次开口都是勇气，继续跟读，进步会越来越快！不要放弃！';
-            } else {
-                emoji = '🌱'; title = '勇于开口就是进步！';
-                msg = '英语学习从来都不是一朝一夕，每一次练习都在积累！继续加油！';
-            }
+            if (accuracy >= 97) { emoji = '🏆'; title = '完美表现！近乎满分！'; msg = '你的发音令人叹服，几乎每一句都无懈可击！继续保持这份完美！'; }
+            else if (accuracy >= 85) { emoji = '🌟'; title = '非常出色！'; msg = '你的英语口语真的很棒！这样的水平已经超越了大多数人，为你骄傲！'; }
+            else if (accuracy >= 70) { emoji = '💪'; title = '很有进步！'; msg = '基础扎实，继续坚持跟读练习，你会越来越强！语感正在悄悄提升！'; }
+            else if (accuracy >= 50) { emoji = '📈'; title = '不错的开始！'; msg = '每一次开口都是勇气，继续跟读，进步会越来越快！不要放弃！'; }
+            else { emoji = '🌱'; title = '勇于开口就是进步！'; msg = '英语学习从来都不是一朝一夕，每一次练习都在积累！继续加油！'; }
         }
-
-        document.getElementById('round-emoji').innerText = emoji;
-        document.getElementById('round-title').innerText = title;
+        document.getElementById('round-emoji').innerText = emoji; document.getElementById('round-title').innerText = title;
         document.getElementById('round-stats').innerText = '共 ' + total + ' 句 · 通过 ' + passedCount + ' 句 · 正确率 ' + accuracy + '%';
         document.getElementById('round-msg').innerText = msg;
-
-        const fill = document.getElementById('round-accuracy-fill');
-        fill.style.width = '0%';
-        setTimeout(() => { fill.style.width = accuracy + '%'; }, 100);
-
+        const fill = document.getElementById('round-accuracy-fill'); fill.style.width = '0%'; setTimeout(() => { fill.style.width = accuracy + '%'; }, 100);
         const reviewBtn = document.getElementById('round-review-btn');
-        if (!isReview && this.failedSentences.length > 0) {
-            reviewBtn.style.display = 'block';
-            reviewBtn.innerText = `💪 再次练习错误句子 (${this.failedSentences.length} 句)`;
-        } else {
-            reviewBtn.style.display = 'none';
-        }
-
+        if (!isReview && this.failedSentences.length > 0) { reviewBtn.style.display = 'block'; reviewBtn.innerText = '💪 再次练习错误句子 (' + this.failedSentences.length + ' 句)'; }
+        else { reviewBtn.style.display = 'none'; }
         document.getElementById('ai-round-modal').style.display = 'flex';
     },
-
-    closeRoundModal() {
-        document.getElementById('ai-round-modal').style.display = 'none';
-    },
-
+    closeRoundModal() { document.getElementById('ai-round-modal').style.display = 'none'; },
     startReview() {
-        if (!this.failedSentences.length) return;
-        this.closeRoundModal();
-        this.reviewMode = true;
-        this.reviewQueue = [...this.failedSentences];
-        this.failedSentences = [];
-        this.failCount = 0;
-        state.currIndex = this.reviewQueue[0];
-        ui.updatePractice(state.currIndex);
-        ui.toast(`💪 开始复习 ${this.reviewQueue.length} 个错误句子`);
-        setTimeout(() => this.start(), 300);
+        if (!this.failedSentences.length) return; this.closeRoundModal(); this.reviewMode = true; this.reviewQueue = [...this.failedSentences];
+        this.failedSentences = []; this.failCount = 0; state.currIndex = this.reviewQueue[0]; ui.updatePractice(state.currIndex);
+        ui.toast('💪 开始复习 ' + this.reviewQueue.length + ' 个错误句子'); setTimeout(() => this.start(), 300);
     },
-
     _normalize(s) {
         let str = s.toLowerCase();
-        const contractions = {
-            "i'm": "i am", "i've": "i have", "i'll": "i will", "i'd": "i would",
-            "it's": "it is", "it'll": "it will", "it'd": "it would",
-            "he's": "he is", "he'll": "he will", "he'd": "he would",
-            "she's": "she is", "she'll": "she will", "she'd": "she would",
-            "we're": "we are", "we've": "we have", "we'll": "we will", "we'd": "we would",
-            "you're": "you are", "you've": "you have", "you'll": "you will", "you'd": "you would",
-            "they're": "they are", "they've": "they have", "they'll": "they will", "they'd": "they would",
-            "that's": "that is", "that'll": "that will", "that'd": "that would",
-            "there's": "there is", "there'll": "there will",
-            "what's": "what is", "what'll": "what will", "what've": "what have",
-            "who's": "who is", "who'll": "who will", "who've": "who have",
-            "don't": "do not", "doesn't": "does not", "didn't": "did not",
-            "can't": "cannot", "couldn't": "could not",
-            "won't": "will not", "wouldn't": "would not",
-            "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not",
-            "hasn't": "has not", "haven't": "have not", "hadn't": "had not",
-            "shouldn't": "should not", "mustn't": "must not", "needn't": "need not",
-            "let's": "let us", "here's": "here is", "how's": "how is"
-        };
-        for (const [key, val] of Object.entries(contractions)) {
-            str = str.replace(new RegExp(`\\b${key}\\b`, 'g'), val);
-        }
+        const contractions = { "i'm": "i am", "i've": "i have", "i'll": "i will", "i'd": "i would", "it's": "it is", "it'll": "it will", "it'd": "it would", "he's": "he is", "he'll": "he will", "he'd": "he would", "she's": "she is", "she'll": "she will", "she'd": "she would", "we're": "we are", "we've": "we have", "we'll": "we will", "we'd": "we would", "you're": "you are", "you've": "you have", "you'll": "you will", "you'd": "you would", "they're": "they are", "they've": "they have", "they'll": "they will", "they'd": "they would", "that's": "that is", "that'll": "that will", "that'd": "that would", "there's": "there is", "there'll": "there will", "what's": "what is", "what'll": "what will", "what've": "what have", "who's": "who is", "who'll": "who will", "who've": "who have", "don't": "do not", "doesn't": "does not", "didn't": "did not", "can't": "cannot", "couldn't": "could not", "won't": "will not", "wouldn't": "would not", "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not", "hasn't": "has not", "haven't": "have not", "hadn't": "had not", "shouldn't": "should not", "mustn't": "must not", "needn't": "need not", "let's": "let us", "here's": "here is", "how's": "how is" };
+        for (const [key, val] of Object.entries(contractions)) { str = str.replace(new RegExp('\\b' + key + '\\b', 'g'), val); }
         return str.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
     },
-
     _similarity(a, b) {
-        if (!a && !b) return 1;
-        if (!a || !b) return 0;
-        const aWords = a.split(' ').length, bWords = b.split(' ').length;
-        const maxW = Math.max(aWords, bWords), minW = Math.min(aWords, bWords);
-        if (maxW > 0 && minW / maxW < 0.4) return minW / maxW * 0.5;
-        const dist = this._levenshtein(a, b);
-        return 1 - dist / Math.max(a.length, b.length);
+        if (!a && !b) return 1; if (!a || !b) return 0; const aWords = a.split(' ').length, bWords = b.split(' ').length; const maxW = Math.max(aWords, bWords), minW = Math.min(aWords, bWords);
+        if (maxW > 0 && minW / maxW < 0.4) return minW / maxW * 0.5; const dist = this._levenshtein(a, b); return 1 - dist / Math.max(a.length, b.length);
     },
-
     _levenshtein(a, b) {
-        const m = a.length, n = b.length;
-        let prev = Array.from({length: n+1}, (_,j) => j);
-        for (let i = 1; i <= m; i++) {
-            const curr = [i];
-            for (let j = 1; j <= n; j++) {
-                curr[j] = a[i-1]===b[j-1] ? prev[j-1] : 1+Math.min(prev[j],curr[j-1],prev[j-1]);
-            }
-            prev = curr;
-        }
+        const m = a.length, n = b.length; let prev = Array.from({length: n+1}, (_,j) => j);
+        for (let i = 1; i <= m; i++) { const curr = [i]; for (let j = 1; j <= n; j++) { curr[j] = a[i-1]===b[j-1] ? prev[j-1] : 1+Math.min(prev[j],curr[j-1],prev[j-1]); } prev = curr; }
         return prev[n];
     },
-
     async playBeep(type) {
         try {
             if (!this.audioCtx) this.audioCtx = new(window.AudioContext||window.webkitAudioContext)();
-            const ctx = this.audioCtx;
-            if (ctx.state === 'suspended') await ctx.resume();
-            const now = ctx.currentTime;
-
+            const ctx = this.audioCtx; if (ctx.state === 'suspended') await ctx.resume(); const now = ctx.currentTime;
             if (type === 'success') {
-                const arpNotes = [
-                    { freq: 659.25, t: 0,    dur: 0.22 },
-                    { freq: 783.99, t: 0.075, dur: 0.22 },
-                    { freq: 987.77, t: 0.15,  dur: 0.22 },
-                    { freq: 1318.5, t: 0.225, dur: 0.38 },
-                ];
-                arpNotes.forEach(n => {
-                    const osc = ctx.createOscillator(), g = ctx.createGain();
-                    osc.connect(g); g.connect(ctx.destination);
-                    osc.type = 'sine'; osc.frequency.value = n.freq;
-                    const t = now + n.t;
-                    g.gain.setValueAtTime(0, t);
-                    g.gain.linearRampToValueAtTime(0.4, t + 0.018);
-                    g.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
-                    osc.start(t); osc.stop(t + n.dur);
-                });
-                const shimmer = ctx.createOscillator(), sg = ctx.createGain();
-                shimmer.connect(sg); sg.connect(ctx.destination);
-                shimmer.type = 'triangle'; shimmer.frequency.value = 2637;
-                sg.gain.setValueAtTime(0.15, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-                shimmer.start(now); shimmer.stop(now + 0.1);
-                const base = ctx.createOscillator(), bg = ctx.createGain();
-                base.connect(bg); bg.connect(ctx.destination);
-                base.type = 'sine'; base.frequency.value = 329.63;
-                bg.gain.setValueAtTime(0.15, now); bg.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                base.start(now); base.stop(now + 0.4);
-
+                const arpNotes = [ { freq: 659.25, t: 0, dur: 0.22 }, { freq: 783.99, t: 0.075, dur: 0.22 }, { freq: 987.77, t: 0.15, dur: 0.22 }, { freq: 1318.5, t: 0.225, dur: 0.38 } ];
+                arpNotes.forEach(n => { const osc = ctx.createOscillator(), g = ctx.createGain(); osc.connect(g); g.connect(ctx.destination); osc.type = 'sine'; osc.frequency.value = n.freq; const t = now + n.t; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.4, t + 0.018); g.gain.exponentialRampToValueAtTime(0.001, t + n.dur); osc.start(t); osc.stop(t + n.dur); });
+                const shimmer = ctx.createOscillator(), sg = ctx.createGain(); shimmer.connect(sg); sg.connect(ctx.destination); shimmer.type = 'triangle'; shimmer.frequency.value = 2637; sg.gain.setValueAtTime(0.15, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.1); shimmer.start(now); shimmer.stop(now + 0.1);
+                const base = ctx.createOscillator(), bg = ctx.createGain(); base.connect(bg); bg.connect(ctx.destination); base.type = 'sine'; base.frequency.value = 329.63; bg.gain.setValueAtTime(0.15, now); bg.gain.exponentialRampToValueAtTime(0.001, now + 0.4); base.start(now); base.stop(now + 0.4);
             } else if (type === 'fail') {
-                const osc = ctx.createOscillator(), g = ctx.createGain();
-                osc.connect(g); g.connect(ctx.destination);
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(240, now); osc.frequency.exponentialRampToValueAtTime(160, now + 0.4);
-                g.gain.setValueAtTime(0.18, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-                osc.start(now); osc.stop(now + 0.45);
-
+                const osc = ctx.createOscillator(), g = ctx.createGain(); osc.connect(g); g.connect(ctx.destination); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(240, now); osc.frequency.exponentialRampToValueAtTime(160, now + 0.4); g.gain.setValueAtTime(0.18, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.45); osc.start(now); osc.stop(now + 0.45);
             } else if (type === 'skip') {
-                for (let i = 0; i < 3; i++) {
-                    const o = ctx.createOscillator(), g = ctx.createGain();
-                    o.connect(g); g.connect(ctx.destination);
-                    o.type = 'triangle'; o.frequency.value = 440;
-                    const t = now + i * 0.16;
-                    g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-                    o.start(t); o.stop(t + 0.1);
-                }
-
+                for (let i = 0; i < 3; i++) { const o = ctx.createOscillator(), g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.type = 'triangle'; o.frequency.value = 440; const t = now + i * 0.16; g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.start(t); o.stop(t + 0.1); }
             } else if (type === 'complete') {
-                [523, 659, 784, 1047].forEach((freq, i) => {
-                    const o = ctx.createOscillator(), g = ctx.createGain();
-                    o.connect(g); g.connect(ctx.destination);
-                    o.type = 'sine'; o.frequency.value = freq;
-                    const t = now + i * 0.09;
-                    g.gain.setValueAtTime(0.28, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
-                    o.start(t); o.stop(t + 0.7);
-                });
+                [523, 659, 784, 1047].forEach((freq, i) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.type = 'sine'; o.frequency.value = freq; const t = now + i * 0.09; g.gain.setValueAtTime(0.28, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.7); o.start(t); o.stop(t + 0.7); });
             }
         } catch(e) { console.warn('beep error:', e); }
     },
-
-    setStatus(text, type) {
-        const pill = document.getElementById('ai-status-pill'); if (!pill) return;
-        pill.innerText = text;
-        pill.className = 'ai-status-pill' + (type ? ' ' + type : '');
-    },
-    _setBtn(mode) {
-        const btn = document.getElementById('btn-ai-mode'); if (!btn) return;
-        if (mode === 'running') { btn.className = 'btn-ai-toggle running'; btn.innerText = '⏹ 停止AI'; }
-        else { btn.className = 'btn-ai-toggle idle'; btn.innerText = '🤖 AI模式'; }
-    }
+    setStatus(text, type) { const pill = document.getElementById('ai-status-pill'); if (!pill) return; pill.innerText = text; pill.className = 'ai-status-pill' + (type ? ' ' + type : ''); },
+    _setBtn(mode) { const btn = document.getElementById('btn-ai-mode'); if (!btn) return; if (mode === 'running') { btn.className = 'btn-ai-toggle running'; btn.innerText = '⏹ 停止AI'; } else { btn.className = 'btn-ai-toggle idle'; btn.innerText = '🤖 AI模式'; } }
 };
 
 // ============================================================
@@ -2666,16 +1980,11 @@ document.getElementById('audio-file').addEventListener('change', e => {
     if (f) {
         if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
         state._audioObjectUrl = URL.createObjectURL(f);
-        const mainAudioEl = document.getElementById('main-audio');
-        mainAudioEl.src = state._audioObjectUrl;
-        try { mainAudioEl.load(); } catch(err) {}
-        ui.updateAudioStatus();
+        const mainAudioEl = document.getElementById('main-audio'); mainAudioEl.src = state._audioObjectUrl;
+        try { mainAudioEl.load(); } catch(err) {} ui.updateAudioStatus();
     }
 });
-document.getElementById('ai-threshold').addEventListener('input', function() {
-    const pct = ((this.value - this.min) / (this.max - this.min)) * 100;
-    this.style.setProperty('--fill', pct + '%');
-});
+document.getElementById('ai-threshold').addEventListener('input', function() { const pct = ((this.value - this.min) / (this.max - this.min)) * 100; this.style.setProperty('--fill', pct + '%'); });
 
 document.addEventListener('keydown', e => {
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
@@ -2692,58 +2001,30 @@ document.addEventListener('keydown', e => {
 //  工具函数
 // ============================================================
 function fmtTime(s, srt = false) {
-    const d = new Date(0); d.setMilliseconds(s * 1000);
-    const str = d.toISOString().substr(11, 12);
+    const d = new Date(0); d.setMilliseconds(s * 1000); const str = d.toISOString().substr(11, 12);
     return srt ? str.replace('.', ',') : str.substr(0, 8);
 }
 
 function parseSRT(raw) {
-    raw = raw.replace(/\r/g, '');
-    const lines = raw.split('\n');
-    const result = [];
-    let phase = 'idle';
-    let cur = null;
+    raw = raw.replace(/\r/g, ''); const lines = raw.split('\n'); const result = []; let phase = 'idle'; let cur = null;
     const timeRe = /(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})/;
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (phase === 'idle') {
-            if (/^\d+$/.test(line)) { phase = 'time'; }
-        } else if (phase === 'time') {
-            const m = timeRe.exec(line);
-            if (m) { cur = { start: pt(m[1]), end: pt(m[2]), text: '' }; phase = 'text'; }
-            else { phase = 'idle'; }
-        } else if (phase === 'text') {
-            if (line === '') {
-                if (cur) { cur.text = cur.text.trim(); result.push(cur); cur = null; }
-                phase = 'idle';
-            } else {
-                cur.text += (cur.text ? '\n' : '') + line.replace(/<[^>]+>/g, '');
-            }
-        }
+        if (phase === 'idle') { if (/^\d+$/.test(line)) { phase = 'time'; } }
+        else if (phase === 'time') { const m = timeRe.exec(line); if (m) { cur = { start: pt(m[1]), end: pt(m[2]), text: '' }; phase = 'text'; } else { phase = 'idle'; } }
+        else if (phase === 'text') { if (line === '') { if (cur) { cur.text = cur.text.trim(); result.push(cur); cur = null; } phase = 'idle'; } else { cur.text += (cur.text ? '\n' : '') + line.replace(/<[^>]+>/g, ''); } }
     }
     if (cur) { cur.text = cur.text.trim(); result.push(cur); }
     return result;
 }
 
-function pt(s) {
-    s = s.replace(',', '.'); const p = s.split(':');
-    return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2]);
-}
+function pt(s) { s = s.replace(',', '.'); const p = s.split(':'); return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2]); }
 
 function detectSilence(b, th) {
-    const d = b.getChannelData(0), sr = b.sampleRate, min = 0.4 * sr;
-    let res = [], sp = false, st = 0, sil = 0;
+    const d = b.getChannelData(0), sr = b.sampleRate, min = 0.4 * sr; let res = [], sp = false, st = 0, sil = 0;
     for (let i = 0; i < d.length; i += 200) {
-        if (Math.abs(d[i]) > th) {
-            if (!sp) { sp = true; st = i; } sil = 0;
-        } else if (sp) {
-            if (!sil) sil = i;
-            if (i - sil > min) {
-                const s = st/sr, e = sil/sr;
-                if (e-s > 0.3) res.push({start:s, end:e, text:""});
-                sp = false; sil = 0;
-            }
-        }
+        if (Math.abs(d[i]) > th) { if (!sp) { sp = true; st = i; } sil = 0; }
+        else if (sp) { if (!sil) sil = i; if (i - sil > min) { const s = st/sr, e = sil/sr; if (e-s > 0.3) res.push({start:s, end:e, text:""}); sp = false; sil = 0; } }
     }
     if (sp) res.push({start:st/sr, end:d.length/sr, text:""});
     return res;
@@ -2751,43 +2032,11 @@ function detectSilence(b, th) {
 
 function detectSilenceAsync(audioBuffer, threshold) {
     return new Promise((resolve) => {
-        const pcm = audioBuffer.getChannelData(0);
-        const copy = new Float32Array(pcm.length);
-        copy.set(pcm);
-        const sr = audioBuffer.sampleRate;
-        const workerCode = `
-self.onmessage = function(e) {
-    const { pcm, sr, th } = e.data;
-    const min = 0.4 * sr;
-    let res = [], sp = false, st = 0, sil = 0;
-    for (let i = 0; i < pcm.length; i += 200) {
-        if (Math.abs(pcm[i]) > th) {
-            if (!sp) { sp = true; st = i; } sil = 0;
-        } else if (sp) {
-            if (!sil) sil = i;
-            if (i - sil > min) {
-                const s = st/sr, en = sil/sr;
-                if (en-s > 0.3) res.push({start:s, end:en, text:""});
-                sp = false; sil = 0;
-            }
-        }
-    }
-    if (sp) res.push({start:st/sr, end:pcm.length/sr, text:""});
-    self.postMessage(res);
-};`;
-        const blob = new Blob([workerCode], {type: 'application/javascript'});
-        const workerUrl = URL.createObjectURL(blob);
-        const worker = new Worker(workerUrl);
-        worker.onmessage = (e) => {
-            worker.terminate();
-            URL.revokeObjectURL(workerUrl);
-            resolve(e.data);
-        };
-        worker.onerror = () => {
-            worker.terminate();
-            URL.revokeObjectURL(workerUrl);
-            resolve(detectSilence(audioBuffer, threshold));
-        };
+        const pcm = audioBuffer.getChannelData(0); const copy = new Float32Array(pcm.length); copy.set(pcm); const sr = audioBuffer.sampleRate;
+        const workerCode = 'self.onmessage = function(e) { const { pcm, sr, th } = e.data; const min = 0.4 * sr; let res = [], sp = false, st = 0, sil = 0; for (let i = 0; i < pcm.length; i += 200) { if (Math.abs(pcm[i]) > th) { if (!sp) { sp = true; st = i; } sil = 0; } else if (sp) { if (!sil) sil = i; if (i - sil > min) { const s = st/sr, en = sil/sr; if (en-s > 0.3) res.push({start:s, end:en, text:""}); sp = false; sil = 0; } } } if (sp) res.push({start:st/sr, end:pcm.length/sr, text:""}); self.postMessage(res); };';
+        const blob = new Blob([workerCode], {type: 'application/javascript'}); const workerUrl = URL.createObjectURL(blob); const worker = new Worker(workerUrl);
+        worker.onmessage = (e) => { worker.terminate(); URL.revokeObjectURL(workerUrl); resolve(e.data); };
+        worker.onerror = () => { worker.terminate(); URL.revokeObjectURL(workerUrl); resolve(detectSilence(audioBuffer, threshold)); };
         worker.postMessage({ pcm: copy, sr, th: threshold }, [copy.buffer]);
     });
 }
