@@ -1839,7 +1839,7 @@ const previewMode = {
         const cnt = this.starredIndices.length;
         const total = state.segments.length;
         const statsEl = document.getElementById('preview-done-stats');
-        statsEl.innerHTML = `共预习 <strong>${total}</strong> 句<br>标记重点句 <strong>${cnt}</strong> 个`;
+        statsEl.innerHTML = '共预习 <strong>' + total + '</strong> 句<br>标记重点句 <strong>' + cnt + '</strong> 个';
 
         const focusBtn = document.getElementById('preview-done-btn-focus');
         if (cnt === 0) {
@@ -1870,7 +1870,7 @@ const previewMode = {
         const list = document.getElementById('focus-list');
         list.innerHTML = '';
         const label = document.getElementById('focus-count-label');
-        label.innerText = `共 ${this.starredIndices.length} 句`;
+        label.innerText = '共 ' + this.starredIndices.length + ' 句';
         // 清空按钮
         if (this.starredIndices.length > 0) {
             const clearBtn = document.createElement('button');
@@ -2075,7 +2075,7 @@ const previewMode = {
         if (this.starredIndices.length > 0) {
             const cnt = this.starredIndices.length;
             const statsEl = document.getElementById('preview-done-stats');
-            statsEl.innerHTML = `已预习 <strong>${this.cursorIdx}</strong> 句<br>标记重点句 <strong>${cnt}</strong> 个`;
+            statsEl.innerHTML = '已预习 <strong>' + this.cursorIdx + '</strong> 句<br>标记重点句 <strong>' + cnt + '</strong> 个';
             const focusBtn = document.getElementById('preview-done-btn-focus');
             focusBtn.style.display = 'block';
             focusBtn.innerText = `⭐ 去练习重点句（${cnt} 句）`;
@@ -2494,7 +2494,7 @@ const aiMode = {
 
         document.getElementById('round-emoji').innerText = emoji;
         document.getElementById('round-title').innerText = title;
-        document.getElementById('round-stats').innerText = `共 ${total} 句 · 通过 ${passedCount} 句 · 正确率 ${accuracy}%`;
+        document.getElementById('round-stats').innerText = '共 ' + total + ' 句 · 通过 ' + passedCount + ' 句 · 正确率 ' + accuracy + '%';
         document.getElementById('round-msg').innerText = msg;
 
         const fill = document.getElementById('round-accuracy-fill');
