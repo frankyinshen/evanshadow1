@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- 影子跟读 Pro V73.1 | build:20260713 | 修复：播单句/循环单句改用currentTime实时位置判断收尾(不再靠setTimeout猜时长)，解决部分iPhone机型因硬件音频延迟导致的结尾丢词；新增：导出字幕自动沿用原文件名、编辑页"自动联动下一句起始时间"开关、预习进度改为从1计数、"下一句"到底时提示 -->
+<!-- 影子跟读 Pro V73.2 | build:20260713 | 修复：播单句/循环单句改用currentTime实时位置判断收尾(不再靠setTimeout猜时长)，解决部分iPhone机型因硬件音频延迟导致的结尾丢词；新增：导出字幕自动沿用原文件名、编辑页"自动联动下一句起始时间"开关、预习进度改为从1计数、"下一句"到底时提示 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V73.1</title>
+<title>影子跟读 Pro V73.2</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
@@ -34,14 +34,14 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 @media (min-width: 800px) { .preview-card { height: 96%; margin-top: 2%; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; } }
 
 /* 预习顶栏 */
-.preview-header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; margin-bottom: 10px; }
+.preview-header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; margin-bottom: 10px; gap: 8px; }
 .preview-title { font-size: 15px; font-weight: 700; color: var(--preview); }
-.preview-progress { font-size: 13px; color: #5F6368; }
+.preview-progress { font-size: 13px; color: #5F6368; flex: 1; text-align: center; }
 .btn-exit-preview { border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
 
 /* 预习阶段：逐句听 */
 #preview-listen-phase { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.preview-sentence-box { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 20px; margin-bottom: 12px; min-height: 0; }
+.preview-sentence-box { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 20px; margin-bottom: 12px; min-height: 0; cursor: pointer; }
 .preview-sentence-num { font-size: 12px; font-weight: 700; color: var(--preview); background: var(--preview-border); padding: 2px 10px; border-radius: 10px; margin-bottom: 12px; }
 .preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 200px; }
 .preview-sentence-text2 { font-size: 16px; color: #555; text-align: center; margin-top: 8px; line-height: 1.5; }
@@ -261,7 +261,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V73.1</div>
+    <div class="nav-title">🎧 影子跟读 V73.2</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -462,12 +462,15 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <div class="preview-header">
                 <div class="preview-title">📚 预习模式</div>
                 <div class="preview-progress" id="preview-progress-text"></div>
-                <button class="btn-exit-preview" onclick="previewMode.tryExit()">✕ 退出</button>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-preview-dual" style="border:1px solid #ddd;background:#fff;color:#5F6368;border-radius:8px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;" onclick="previewMode.togglePermDual()">🌐 译</button>
+                    <button class="btn-exit-preview" onclick="previewMode.tryExit()">✕ 退出</button>
+                </div>
             </div>
 
             <!-- 逐句听阶段 -->
             <div id="preview-listen-phase">
-                <div class="preview-sentence-box">
+                <div class="preview-sentence-box" onclick="previewMode.toggleTempSub2()">
                     <div class="preview-sentence-num" id="preview-sentence-num">#1</div>
                     <div class="preview-sentence-text" id="preview-sentence-text">(加载中)</div>
                     <div class="preview-sentence-text2" id="preview-sentence-text2"></div>
@@ -794,7 +797,7 @@ const engine = {
         if (isFinite(audioDur)) end = Math.min(end, audioDur);
         return { start, end };
     },
-    // 【关键修复 v73.1】用 requestAnimationFrame 持续比对音频"真实播放位置"(currentTime)来判断
+    // 【关键修复 v73.2】用 requestAnimationFrame 持续比对音频"真实播放位置"(currentTime)来判断
     // 一段是否播完，而不是用 setTimeout 倒计时"猜"一个固定时长。
     // 原因：setTimeout 方案假设"墙上时钟走过的时间"严格等于"音频真实播放推进的时间"，但不同设备
     // 的音频输出硬件管线延迟不一样（实测：同一份代码，iPad 播放完整，部分 iPhone 机型结尾会丢词），
@@ -1594,6 +1597,11 @@ const previewMode = {
     // 当前音频 URL key（用于持久化分类）
     _audioKey: '',
 
+    // 是否永久显示双字幕
+    permDualSub: false,
+    // 当前是否临时展开了字幕2
+    tempShowSub2: false,
+
     // ── 持久化 ──
     _getKey() {
         const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
@@ -1613,6 +1621,7 @@ const previewMode = {
             this.previewedCount = data.previewedCount || 0;
             this.previewDone = data.done || false;
             this.cursorIdx = data.cursor || 0;
+            this.permDualSub = data.permDualSub || false;
         } catch(e) {}
     },
     saveToStorage() {
@@ -1626,7 +1635,8 @@ const previewMode = {
                 starred: this.starredIndices,
                 previewedCount: this.previewedCount,
                 done: this.previewDone,
-                cursor: this.cursorIdx
+                cursor: this.cursorIdx,
+                permDualSub: this.permDualSub
             };
             localStorage.setItem(CONST.PREVIEW, JSON.stringify(all));
         } catch(e) {}
@@ -1675,6 +1685,7 @@ const previewMode = {
         // 从持久化恢复
         this.loadFromStorage();
         this._updateEarlyBtn();
+        this._updateDualBtn();
 
         // 显示预习视图，隐藏其他视图
         document.getElementById('editor-view').style.display = 'none';
@@ -1744,17 +1755,17 @@ const previewMode = {
         this.cursorIdx = idx;
         state.currIndex = idx;
         const seg = state.segments[idx];
-        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
-        const key2 = state.activeSub===0?'text2':'text';
-        const text = seg[key] || '(无内容)';
-        const text2 = seg[key2] || '';
+        
+        // 用户要求：默认只显示字幕1，点击后显示字幕2
+        const text = seg.text || '(无内容)';
+        const text2 = seg.text2 || '';
 
         document.getElementById('preview-sentence-num').innerText = `#${idx+1} / ${state.segments.length}`;
         document.getElementById('preview-sentence-text').innerText = text;
-        // text2 显示辅助字幕（如有中文字幕则显示）
+        
         const t2el = document.getElementById('preview-sentence-text2');
-        t2el.innerText = (state.activeSub === 0 && text2 && text2 !== text) ? text2 : '';
-
+        t2el.innerText = (text2 && text2 !== text) ? text2 : '';
+        
         // 进度文本（跟上面 #${idx+1} 的句子编号保持一致，从1开始计数，避免出现"进度0/12"这种错位）
         document.getElementById('preview-progress-text').innerText =
             `进度 ${idx+1}/${state.segments.length}  ⭐${this.starredIndices.length}`;
@@ -1765,6 +1776,10 @@ const previewMode = {
         // 自动播放这句
         this._playCurrentSentence();
         this.saveToStorage();
+        
+        // 重置临时展开状态，新句子默认隐藏副字幕（如果未开启永久双字幕）
+        this.tempShowSub2 = false;
+        this._applySubVisibility();
     },
 
     _playCurrentSentence() {
@@ -1789,6 +1804,50 @@ const previewMode = {
 
     replayCurrentSentence() {
         this._playCurrentSentence();
+    },
+
+    // ── 字幕显示控制 ──
+    togglePermDual() {
+        this.permDualSub = !this.permDualSub;
+        this.tempShowSub2 = false;
+        this._applySubVisibility();
+        this._updateDualBtn();
+        ui.toast(this.permDualSub ? '已开启：永久显示双字幕' : '已关闭：点击屏幕可显示/隐藏翻译');
+        
+        // 重新渲染重点句列表以应用新的字幕显示设置
+        if (document.getElementById('preview-focus-phase').classList.contains('active')) {
+            this._renderFocusList();
+        }
+    },
+
+    toggleTempSub2() {
+        if (this.permDualSub) return;
+        this.tempShowSub2 = !this.tempShowSub2;
+        this._applySubVisibility();
+    },
+
+    _applySubVisibility() {
+        const show = this.permDualSub || this.tempShowSub2;
+        const t2El = document.getElementById('preview-sentence-text2');
+        if (t2El) {
+            t2El.style.display = show ? 'block' : 'none';
+        }
+    },
+
+    _updateDualBtn() {
+        const btn = document.getElementById('btn-preview-dual');
+        if (!btn) return;
+        if (this.permDualSub) {
+            btn.style.background = 'var(--preview)';
+            btn.style.color = '#fff';
+            btn.style.borderColor = 'var(--preview)';
+            btn.innerText = '🌐 译开';
+        } else {
+            btn.style.background = '#fff';
+            btn.style.color = '#5F6368';
+            btn.style.borderColor = '#ddd';
+            btn.innerText = '🌐 译';
+        }
     },
 
     // ── 标记操作 ──
@@ -1848,37 +1907,34 @@ const previewMode = {
 
     // ── 重点句练习阶段 ──
     _renderFocusList() {
-    const list = document.getElementById('focus-list');
-    list.innerHTML = '';
-    const label = document.getElementById('focus-count-label');
-    label.innerText = `共 ${this.starredIndices.length} 句`;
-    // 清空按钮
-    if (this.starredIndices.length > 0) {
-        const clearBtn = document.createElement('button');
-        clearBtn.innerText = '🗑 清空全部重点句';
-        clearBtn.style.cssText = 'width:100%;padding:8px;border:1px solid #ffb3b3;background:#fff0f0;color:#c5221f;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;';
-        clearBtn.onclick = () => {
-    if (confirm('确认清空全部重点句？')) {
-        this.starredIndices = [];
-        this.focusCursor = 0;
-        this.previewDone = false;
-        this.cursorIdx = 0;
-        this.saveToStorage();
-        this.updateBadge();
-        this._renderFocusList();
-    }
-};
-        list.appendChild(clearBtn);
-    }
-
-        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
-        const key2 = state.activeSub===0?'text2':'text3';
+        const list = document.getElementById('focus-list');
+        list.innerHTML = '';
+        const label = document.getElementById('focus-count-label');
+        label.innerText = `共 ${this.starredIndices.length} 句`;
+        // 清空按钮
+        if (this.starredIndices.length > 0) {
+            const clearBtn = document.createElement('button');
+            clearBtn.innerText = '🗑 清空全部重点句';
+            clearBtn.style.cssText = 'width:100%;padding:8px;border:1px solid #ffb3b3;background:#fff0f0;color:#c5221f;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;';
+            clearBtn.onclick = () => {
+                if (confirm('确认清空全部重点句？')) {
+                    this.starredIndices = [];
+                    this.focusCursor = 0;
+                    this.previewDone = false;
+                    this.cursorIdx = 0;
+                    this.saveToStorage();
+                    this.updateBadge();
+                    this._renderFocusList();
+                }
+            };
+            list.appendChild(clearBtn);
+        }
 
         this.starredIndices.forEach((segIdx, i) => {
             const seg = state.segments[segIdx];
             if (!seg) return;
-            const text = seg[key] || '(无内容)';
-            const text2 = seg[key2] || '';
+            const text = seg.text || '(无内容)';
+            const text2 = seg.text2 || '';
 
             const item = document.createElement('div');
             item.className = 'focus-item';
@@ -1904,7 +1960,9 @@ const previewMode = {
             textEl.className = 'focus-item-text';
             textEl.innerText = text;
             body.appendChild(textEl);
-            if (text2 && text2 !== text) {
+            
+            // 只有在永久显示双字幕时，重点句列表才显示字幕2
+            if (this.permDualSub && text2 && text2 !== text) {
                 const text2El = document.createElement('div');
                 text2El.className = 'focus-item-text2';
                 text2El.innerText = text2;
@@ -1921,17 +1979,17 @@ const previewMode = {
             delIcon.innerText = '删除';
             delIcon.style.cssText = 'background:#fff0f0;border-color:#ffb3b3;color:#c5221f;margin-left:4px;';
             delIcon.onclick = (e) => {
-    e.stopPropagation();
-    this.starredIndices.splice(i, 1);
-    this.focusCursor = Math.min(this.focusCursor, this.starredIndices.length - 1);
-    if (this.starredIndices.length === 0) {
-        this.previewDone = false;
-        this.cursorIdx = 0;
-    }
-    this.saveToStorage();
-    this.updateBadge();
-    this._renderFocusList();
-};
+                e.stopPropagation();
+                this.starredIndices.splice(i, 1);
+                this.focusCursor = Math.min(this.focusCursor, this.starredIndices.length - 1);
+                if (this.starredIndices.length === 0) {
+                    this.previewDone = false;
+                    this.cursorIdx = 0;
+                }
+                this.saveToStorage();
+                this.updateBadge();
+                this._renderFocusList();
+            };
 
             item.appendChild(leftCol);
             item.appendChild(body);
@@ -1973,8 +2031,7 @@ const previewMode = {
         const curItem = document.getElementById(`focus-item-${this.focusCursor}`);
         if (curItem) curItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         // 更新"正在练习"提示
-        const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text');
-        const text = state.segments[segIdx][key] || '';
+        const text = state.segments[segIdx].text || '';
         const nowEl = document.getElementById('focus-now-playing');
         nowEl.innerText = `▶ 第 ${segIdx+1} 句：${text.length > 40 ? text.substring(0, 40) + '...' : text}`;
         nowEl.classList.add('show');
