@@ -714,10 +714,11 @@ const net = {
     },
     async fetchCommon(url, type) {
         ui.setLoadBtnText("尝试直连下载...");
-        try { const r = await fetch(url); if (r.ok) return type === 'blob' ? await r.blob() : await r.text(); } catch(e) {}
+        // 增加 { cache: 'no-store' } 强制禁用浏览器缓存
+        try { const r = await fetch(url, { cache: 'no-store' }); if (r.ok) return type === 'blob' ? await r.blob() : await r.text(); } catch(e) {}
         ui.setLoadBtnText("直连失败,尝试代理...");
         for (const p of CONST.PROXY) {
-            try { const r = await fetch(p + encodeURIComponent(url)); if (r.ok) return type === 'blob' ? await r.blob() : await r.text(); } catch(e) {}
+            try { const r = await fetch(p + encodeURIComponent(url), { cache: 'no-store' }); if (r.ok) return type === 'blob' ? await r.blob() : await r.text(); } catch(e) {}
         }
         throw new Error("下载失败(请检查链接或网络)");
     },
@@ -1259,11 +1260,20 @@ const app = {
                 );
                 if (!state.segments.length) state.segments = [{start:0,end:state.audioBuffer.duration,text:"(自动断句失败)"}];
             }
-            localStorage.setItem(CONST.SESSION, mp3);
+                       localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
             previewMode.clearForNewAudio(mp3);
             state.subFileNames = {1:'', 2:'', 3:''};
-            ui.renderEditor(); ui.updateAudioStatus();
+            
+            // 新增：强制重置到第一句
+            state.currIndex = 0; 
+            state.userBlurState = state.permBlurMode === 'show' ? false : true;
+            
+            ui.renderEditor(); 
+            ui.updateAudioStatus();
+            this.save(); // 新增：把重置后的 currIndex=0 存入本地缓存
+            ui.updatePractice(0); // 新增：让练习页的文本立刻显示第一句
+            
             ui.toast("✅ 全部就绪，正在跳转...");
             app.switchView('practice');
         } catch(e) { console.error(e); ui.setLoadBtnText("加载失败:" + e.message); }
