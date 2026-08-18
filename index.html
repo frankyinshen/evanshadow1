@@ -747,7 +747,7 @@ const engine = {
     mode: 'IDLE', reqId: null, editorTimer: null, isWaiting: false, waitTimer: null, segTimer: null,
     _pendingPlayCleanup: null,
     startTicker() { if (this.reqId) cancelAnimationFrame(this.reqId); this.tick(); },
-    stopAll(releaseMic = false) {
+        stopAll(releaseMic = false) {
         this.mode = 'IDLE'; this.isWaiting = false;
         if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; }
         if (this.segTimer) { clearTimeout(this.segTimer); this.segTimer = null; }
@@ -759,6 +759,7 @@ const engine = {
         if (this.reqId) { cancelAnimationFrame(this.reqId); this.reqId = null; }
         if (this.editorTimer) { clearTimeout(this.editorTimer); this.editorTimer = null; }
         recorder.stop(releaseMic);
+        if (recorder.cmpTimer) { clearInterval(recorder.cmpTimer); recorder.cmpTimer = null; } // 新增：清除录音对比定时器
         ui.resetButtons();
     },
     playSegment(i) {
@@ -1490,7 +1491,7 @@ const app = {
 //  RECORDER
 // ============================================================
 const recorder = {
-    rec: null, chunks: [], stream: null, isRec: false, _isInitializing: false,
+    rec: null, chunks: [], stream: null, isRec: false, _isInitializing: false, cmpTimer: null, // 修复：新增 cmpTimer 属性
     async toggle() {
         if (aiMode.active) { ui.toast('AI模式运行中，请先停止AI模式'); return; }
         if (this._isInitializing) return;
@@ -1523,11 +1524,14 @@ const recorder = {
         state._recordObjectUrl = URL.createObjectURL(b);
         r.src = state._recordObjectUrl;
         ui.toast("▶️ 原音");
-        a.playbackRate = 1.0;
-        a.currentTime=s.start; a.play();
-        const timer = setInterval(() => {
-            if (a.currentTime >= s.end) {
-                a.pause(); clearInterval(timer);
+        a.playbackRate = state.playbackRate; // 修复：沿用用户设定的速率
+        a.currentTime = s.start; 
+        a.play();
+        if (this.cmpTimer) clearInterval(this.cmpTimer); // 修复：清除旧定时器
+        this.cmpTimer = setInterval(() => {
+            if (a.currentTime >= s.end || a.paused) { 
+                a.pause(); 
+                clearInterval(this.cmpTimer); this.cmpTimer = null; // 修复：清除自身
                 setTimeout(() => {
                     ui.toast("🎙️ 录音"); r.currentTime=0; r.play();
                     const inPreview = document.getElementById('preview-view').classList.contains('active');
@@ -1545,7 +1549,15 @@ const recorder = {
 // ============================================================
 const previewMode = {
     cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '',
-    _getKey() { const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}'); return (inputs.mp3 || '').trim(); },
+    _getKey() {
+        const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
+        const mp3 = (inputs.mp3 || '').trim();
+        // 修复：本地文件(blob:)使用文件名作为key，避免刷新后失效且污染存储
+        if (mp3.startsWith('blob:')) {
+            return 'local_' + (document.getElementById('main-audio').dataset.name || 'unknown_file');
+        }
+        return mp3;
+    },
     loadFromStorage() {
         const key = this._getKey(); if (!key) return; this._audioKey = key;
         try {
@@ -1990,7 +2002,9 @@ document.getElementById('audio-file').addEventListener('change', e => {
     if (f) {
         if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
         state._audioObjectUrl = URL.createObjectURL(f);
-        const mainAudioEl = document.getElementById('main-audio'); mainAudioEl.src = state._audioObjectUrl;
+        const mainAudioEl = document.getElementById('main-audio'); 
+        mainAudioEl.src = state._audioObjectUrl;
+        mainAudioEl.dataset.name = f.name; // 新增：记录文件名用于生成预习进度指纹
         try { mainAudioEl.load(); } catch(err) {} ui.updateAudioStatus();
     }
 });
@@ -1998,7 +2012,9 @@ document.getElementById('ai-threshold').addEventListener('input', function() { c
 
 document.addEventListener('keydown', e => {
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-    const inPractice = document.getElementById('practice-view').classList.contains('active');
+    // 修改：增加对预习模式的判断，使快捷键在预习模式下也可用
+    const inPractice = document.getElementById('practice-view').classList.contains('active') || 
+                       document.getElementById('preview-view').classList.contains('active');
     if (!inPractice) return;
     if (e.code === 'Space') { e.preventDefault(); engine.playOnce(); }
     else if (e.code === 'ArrowLeft')  { e.preventDefault(); app.prev(); }
