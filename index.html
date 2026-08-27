@@ -1591,7 +1591,7 @@ const previewMode = {
             if (gotoBtn) gotoBtn.style.display = 'inline-block';
         } else { if (hint) hint.style.display = 'none'; if (gotoBtn) gotoBtn.style.display = 'none'; }
     },
-    start() {
+        start() {
         if (!state.segments.length) return ui.toast('请先加载内容');
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         engine.stopAll(); aiMode.active && aiMode.stop();
@@ -1600,7 +1600,10 @@ const previewMode = {
         document.getElementById('practice-view').style.display = 'none';
         document.getElementById('practice-view').classList.remove('active');
         const pvw = document.getElementById('preview-view'); pvw.style.display = 'flex'; pvw.classList.add('active');
-        if (this.previewDone && this.starredIndices.length > 0) { this._showFocusPhase(); return; }
+        // ★ 修复：预习完成后不再自动进重点句阶段（与"查看重点句"重复），始终回到逐句听
+        if (this.cursorIdx >= state.segments.length) {
+            this.cursorIdx = Math.max(0, state.segments.length - 1); // 已全部预习完时定位到最后一句，方便用"⏮ 上一句"回退补标
+        }
         this._showListenPhase(); this._gotoSentence(this.cursorIdx);
     },
     exit() {
