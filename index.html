@@ -827,22 +827,36 @@ const engine = {
     tick() {
         this.reqId = requestAnimationFrame(() => this.tick());
         const a = document.getElementById('main-audio');
-        if (a.paused) return;
         const ct = a.currentTime;
         if (this.mode === 'LOOP_RANGE') {
-            const endL = parseInt(document.getElementById('loop-end').value) - 1;
             const startL = parseInt(document.getElementById('loop-start').value) - 1;
-            const ai = state.segments.findIndex((s, i) => i >= startL && i <= endL && ct >= s.start && ct < s.end);
-            if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); }
+            const endL = parseInt(document.getElementById('loop-end').value) - 1;
             const startSeg = state.segments[startL], endSeg = state.segments[endL];
-            if (endSeg && ct >= endSeg.end && startSeg) {
+            // 先判断是否到达区间终点，不依赖 a.paused：
+            // 若区间终点正好是全文最后一句，音频原生播放结束会自动 pause/ended，
+            // 这个判断若放在 paused 检查之后就永远走不到，导致卡死不循环
+            if (endSeg && startSeg && (ct >= endSeg.end || a.ended)) {
                 a.currentTime = startSeg.start;
                 state.currIndex = startL; ui.updatePractice(startL);
+                const playP = a.play();
+                if (playP && playP.catch) playP.catch(e => console.error(e));
+                return;
             }
+            if (a.paused) return;
+            const ai = state.segments.findIndex((s, i) => i >= startL && i <= endL && ct >= s.start && ct < s.end);
+            if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); }
         } else if (this.mode === 'FULL_PLAY') {
+            // 同理：全篇循环也优先判断是否播完，不依赖 a.paused，
+            // 避免个别机型 loop 属性失效/原生 pause 导致卡在最后一句
+            if (a.ended || (a.duration > 0 && ct >= a.duration - 0.5)) {
+                a.currentTime = 0; state.currIndex = 0; ui.updatePractice(0);
+                const playP = a.play();
+                if (playP && playP.catch) playP.catch(e => console.error(e));
+                return;
+            }
+            if (a.paused) return;
             const ai = state.segments.findIndex(s => ct >= s.start && ct < s.end);
             if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); }
-            if (a.ended || (a.duration > 0 && ct >= a.duration - 0.5)) { a.currentTime = 0; a.play(); state.currIndex = 0; ui.updatePractice(0); }
         }
     },
     startWait(cb) {
