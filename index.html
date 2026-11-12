@@ -7,10 +7,15 @@
 <!-- V74.1 修复：iPhone 息屏后循环单句/区间循环不工作且音频继续往后播——根因是原代码完全依赖 requestAnimationFrame（息屏后停止），改为 audio 的 timeupdate+ended 事件为主（iOS 息屏后只要音频在播就继续触发），RAF 仅作亮屏时 UI 流畅辅助；新增 wakeLock 屏幕常亮开关作为补充方案（iOS Safari 16.4+） -->
 <!-- V74.2 修复：IndexedDB 在 sandbox iframe / 隐私模式 / file:// 受限环境下会抛 "access denied" 导致整个加载流程中断——idbCache.open 加 try/catch+unavailable 标志，所有读写方法在不可用时静默降级（get→null, getAll→[], put/delete 静默 no-op），cacheUI 给明确提示，loadFromUrl 自动退回纯网络下载模式 -->
 <!-- V75 | build:20261112 | 修复：loadFromUrl 空链接不再清空当前工程；AI 手动复习模式解除文本模糊（且允许录音）；音频输入框不再点一下清空所有；字幕下载用 Promise.allSettled 容错+解析为空回退断句；localStorage 全部加 safeParse 保护；serverBrowser 防 XSS；本地导入音频修复预习进度 key；录音 Blob 用实际 mimeType；离线缓存随编辑防抖回写；缓存加载时 decode audioBuffer 支持重新断句；切句保留显隐状态；AI 复习正确率用 reviewQueue 长度做总数 -->
+<!-- V75.1 修复：缓存竞态（_syncCacheSegments 加空数组保护，防加载中途字幕被清空）；delSeg/mergeSeg/applyReAnalyze 修正 currIndex 与 starredIndices；updateSeg/loadItem 加 isFinite 校验防 NaN；renderEditor 不再重置 loop-end（仅越界时 clamp）；importSub 空结果不清空现有字幕；mergeSeg 修复 text2/text3 空字符串跳过；缓存 decode 失败时清空 audioBuffer 防分析旧音频；_askSegmentChoice 增加取消按钮；常亮按钮移到字幕3 右侧 -->
+<!-- V75.2 修复：loadFromUrl 备份原工程，取消/失败时恢复（防数据丢失）；delSeg/mergeSeg/splitSeg 修正 starredIndices 并持久化（防刷新后重点句指错）；splitSeg 补 +1 逻辑（之前完全漏改）；renderEditor 用 _loopInitialized 标志代替 ===10 判断（防用户设的循环区间被重置）；updateSeg 校验失败时还原输入框；窄屏常亮按钮加 padding-right 防重叠；ui.init safeParse 合并调用；addHistory 字段顺序避免覆盖 -->
+<!-- V76 | build:20261112 | 修复：cacheUI.load/loadProject/importSub 三处补 _loopInitialized 重置（防循环区间残留上一个音频）；state 显式声明 _loopInitialized:false；删 loadFromUrl 里 localSegs 死代码；updateSeg 还原输入框加 typeof 防护防脏数据崩处理器；delSeg/mergeSeg/splitSeg starredIndices 映射后加 .sort 防御性排序；版本号统一到 V76 -->
+<!-- V77 | build:20261112 | 修复：loadFromUrl 备份音频状态（src/objectUrl/audioBuffer），restoreBackup 完整恢复音频，加载过程不提前 revoke 旧 objectURL（防"字幕恢复但音频还是新的"字画错配）；importSub(k=0) 重置 currIndex 和 starredIndices（防练习页卡空白）；loadProject 调 clearForNewAudio 刷新 badge；previewMode.start 补 updateBadge；exportProject/exportSRT 回收 objectURL 防内存泄漏；recorder alert 改 toast；serverBrowser.parseAndRender new URL 加 try/catch 防畸形链接崩整个目录 -->
+<!-- V78 | build:20261112 | 修复：_syncCacheSegments 加 SESSION 校验（防加载失败后旧字幕写进新缓存）；recorder iOS 手势预热（toggle 开始录音时用静音 WAV 解锁 record-audio，避免后续 playCmp 延时 r.play() 被 iOS 拒绝）；applyReAnalyze 禁用按钮防连点竞态+加 catch；restoreBackup 清 _cacheSyncTimer + a.src 改 removeAttribute（防空 src 触发无效请求）；restoreProgress 重置 _loopInitialized + clamp currIndex；delSeg starredIndices 加越界过滤；visibilitychange 即时同步缓存防页面关闭丢失 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V75</title>
+<title>影子跟读 Pro V78</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
@@ -267,7 +272,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V75</div>
+    <div class="nav-title">🎧 影子跟读 V78</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -394,7 +399,6 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value)"><option>1</option></select>
                 </div>
                 <div class="header-right-group">
-                    <button id="btn-wakelock" style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
                     <div class="sleep-wrapper">
                         <div class="icon-btn" onclick="ui.toggleSleepModal()">⏰</div>
                         <div id="sleep-display" class="sleep-display"></div>
@@ -410,10 +414,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 </div>
             </div>
 
-            <div class="sub-switcher">
+            <div class="sub-switcher" style="position: relative; padding-right: 78px;">
                 <button class="sub-btn active" onclick="ui.switchSubTab(0)">字幕1</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(1)">字幕2</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(2)">字幕3</button>
+                <button id="btn-wakelock" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;color:#5F6368;cursor:pointer;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
             </div>
 
             <div class="practice-text-container" id="text-container" onclick="ui.toggleTextBlur()">
@@ -620,7 +625,8 @@ const state = {
     subFileNames: {1:'', 2:'', 3:''},
     autoSyncNextStart: true,
     _audioObjectUrl: null,
-    _recordObjectUrl: null
+    _recordObjectUrl: null,
+    _loopInitialized: false // 循环区间是否已初始化（首次 renderEditor 时设默认值，后续仅 clamp）
 };
 
 // ============================================================
@@ -829,7 +835,7 @@ const cacheUI = {
                 } finally {
                     try { ctx.close(); } catch(e) {}
                 }
-            } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); }
+            } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); state.audioBuffer = null; }
             // 加载字幕
             state.segments = Array.isArray(p.segments) ? p.segments : [];
             state.subFileNames = {1:'', 2:'', 3:''};
@@ -844,6 +850,7 @@ const cacheUI = {
             localStorage.setItem(CONST.SESSION, p.audioUrl || '');
             app.addHistory(p.audioUrl || '');
             previewMode.clearForNewAudio(p.audioUrl || '');
+            state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
             ui.renderEditor();
             ui.updateAudioStatus();
             app.save();
@@ -1005,12 +1012,14 @@ const serverBrowser = {
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const files = [];
         doc.querySelectorAll('a').forEach(a => {
-            let href = a.getAttribute('href');
-            if (!href || a.textContent.includes('返回上一级') || href.startsWith('?') || href === '../' || href === '/') return;
-            const urlObj = new URL(href, baseUrl);
-            const path = decodeURIComponent(urlObj.pathname).split('/').filter(Boolean);
-            if (!path.length) return;
-            files.push({ name: path[path.length - 1], url: urlObj.href, isDirectory: urlObj.href.endsWith('/') });
+            try {
+                let href = a.getAttribute('href');
+                if (!href || a.textContent.includes('返回上一级') || href.startsWith('?') || href === '../' || href === '/') return;
+                const urlObj = new URL(href, baseUrl);
+                const path = decodeURIComponent(urlObj.pathname).split('/').filter(Boolean);
+                if (!path.length) return;
+                files.push({ name: path[path.length - 1], url: urlObj.href, isDirectory: urlObj.href.endsWith('/') });
+            } catch(e) { /* 跳过畸形链接，避免整个目录渲染失败 */ }
         });
         this.allParsedFiles = files;
         const s = document.getElementById('server-browser-search'); if (s) s.value = '';
@@ -1391,8 +1400,9 @@ const ui = {
         this.renderHistory();
 
         const d = localStorage.getItem(CONST.STORAGE);
-        if (d && safeParse(d, []).length) {
-            state.segments = safeParse(d, []);
+        const parsedSegments = safeParse(d, []);
+        if (parsedSegments.length) {
+            state.segments = parsedSegments;
             state.currIndex = parseInt(localStorage.getItem(CONST.INDEX) || 0);
             this.renderEditor();
             this.updatePractice(state.currIndex);
@@ -1482,9 +1492,24 @@ const ui = {
                 '<div class="sub-actions"><button class="action-btn btn-play-sm" onclick="engine.playSegment(' + i + ')">▶ 试听</button><button class="action-btn btn-split" onclick="app.splitSeg(' + i + ')">✂️ 拆分</button><button class="action-btn btn-merge" onclick="app.mergeSeg(' + i + ')">🖇️ 合并</button><button class="action-btn btn-del" onclick="app.delSeg(' + i + ')">❌ 删除</button></div>';
             l.appendChild(d);
         });
-        document.getElementById('loop-start').max = state.segments.length;
-        document.getElementById('loop-end').max = state.segments.length;
-        document.getElementById('loop-end').value = state.segments.length;
+        // 更新 max 但保留用户已设的循环区间，仅在越界时 clamp
+        const len = state.segments.length;
+        const startEl = document.getElementById('loop-start');
+        const endEl = document.getElementById('loop-end');
+        startEl.max = len; endEl.max = len;
+        // 首次初始化（页面刚加载、还没有 _loopInitialized 标志）时设默认值为总句数
+        // 之后只在越界时 clamp，保留用户手设的值（避免"设了 1-10，共 20 句，一编辑变 1-20"）
+        if (!state._loopInitialized && len > 0) {
+            startEl.value = 1;
+            endEl.value = len;
+            state._loopInitialized = true;
+        } else if (len > 0) {
+            // 后续仅 clamp：超出范围或非法时回到合法值
+            const curStart = parseInt(startEl.value) || 1;
+            const curEnd = parseInt(endEl.value) || len;
+            startEl.value = Math.min(Math.max(1, curStart), len);
+            endEl.value = Math.min(Math.max(curStart, curEnd), len);
+        }
         const sel = document.getElementById('jump-select'); sel.innerHTML = '';
         state.segments.forEach((_,i) => { const o = document.createElement('option'); o.value = i; o.text = '第 ' + (i+1) + ' 句'; sel.appendChild(o); });
         app.save();
@@ -1633,7 +1658,7 @@ const app = {
         const displayName = name || (() => {
             try { return decodeURIComponent(mp3.split('/').pop()); } catch(e) { return mp3.split('/').pop(); }
         })();
-        h.unshift({ name: displayName, mp3, ...d });
+        h.unshift({ ...d, name: displayName, mp3 });
         if (h.length > 10) h.pop();
         localStorage.setItem(CONST.HIST, JSON.stringify(h));
         ui.renderHistory();
@@ -1656,32 +1681,71 @@ const app = {
         const s2 = net.fixUrl(document.getElementById('url-srt-2').value.trim());
         const s3 = net.fixUrl(document.getElementById('url-srt-3').value.trim());
         if (!mp3) return ui.toast("请输入 MP3 链接");
+        // 备份当前工程（含音频状态）：cancel / 加载失败时恢复，避免字幕恢复但音频还是新的"字画错配"
+        const backupSegments = state.segments;
+        const backupCurrIndex = state.currIndex;
+        const backupAudioObjectUrl = state._audioObjectUrl;
+        const backupAudioSrc = document.getElementById('main-audio').src;
+        const backupAudioBuffer = state.audioBuffer;
         // 校验通过后再清空，避免空链接误点导致当前工程被覆盖
         state.segments = []; ui.renderEditor(); this.saveInput();
         const btn = document.getElementById('btn-load-url'), spin = document.getElementById('url-spinner');
         btn.disabled = true; spin.style.display = 'inline-block';
         const projectId = idbCache.hashUrl(mp3);
         const projectName = idbCache.extractFilename(mp3);
+        // 恢复工程工具：cancel / catch 时调用，恢复字幕+音频+audioBuffer
+        const restoreBackup = () => {
+            // 取消待执行的缓存同步定时器（防御性：配合 _syncCacheSegments 的 SESSION 校验双保险）
+            if (app._cacheSyncTimer) { clearTimeout(app._cacheSyncTimer); app._cacheSyncTimer = null; }
+            state.segments = backupSegments;
+            state.currIndex = backupCurrIndex;
+            state.audioBuffer = backupAudioBuffer;
+            // 恢复音频：revoke 新创建的 objectURL（如果有且和备份不同），还原旧的
+            if (state._audioObjectUrl && state._audioObjectUrl !== backupAudioObjectUrl) {
+                try { URL.revokeObjectURL(state._audioObjectUrl); } catch(e) {}
+            }
+            state._audioObjectUrl = backupAudioObjectUrl;
+            const a = document.getElementById('main-audio');
+            // 用 removeAttribute 而非 a.src=''：空 src 会触发浏览器加载当前页面 URL 作为音频
+            if (backupAudioSrc) {
+                a.src = backupAudioSrc;
+            } else {
+                a.removeAttribute('src');
+                try { a.load(); } catch(e) {} // 清空 src 后重置内部状态
+            }
+            ui.renderEditor();
+            ui.updatePractice(state.currIndex);
+        };
+        // 加载成功后提交音频交换：revoke 旧的 objectURL（避免内存泄漏）
+        // 注意：加载过程中不 revoke 旧的，等成功后才 revoke，这样失败时能回滚到旧音频
+        const commitAudioSwap = () => {
+            if (backupAudioObjectUrl && backupAudioObjectUrl !== state._audioObjectUrl) {
+                try { URL.revokeObjectURL(backupAudioObjectUrl); } catch(e) {}
+            }
+        };
         try {
             // ============ 1) 先查离线缓存 ============
             const cached = await idbCache.get(projectId);
             if (cached && cached.audioBlob) {
                 ui.setLoadBtnText("✅ 命中离线缓存...");
-                // 检查本地是否有针对同音频修改过的 segments
-                const localSegsRaw = localStorage.getItem(CONST.STORAGE);
+                // 检查本地是否有针对同音频修改过的 segments（用内存里的备份判断，因为 localStorage 已被清空）
                 const localSessionMp3 = localStorage.getItem(CONST.SESSION);
-                let localSegs = null;
-                try { localSegs = localSegsRaw ? JSON.parse(localSegsRaw) : null; } catch(e) {}
-                const sameAudio = localSessionMp3 === mp3 && Array.isArray(localSegs) && localSegs.length > 0;
+                // 注意：此时 localStorage 里的 segments 已被清空（上面 ui.renderEditor 触发了 save）
+                // 但 backupSegments 已经在内存里保留了原数据，所以 sameAudio 判断用 backupSegments
+                const sameAudio = localSessionMp3 === mp3 && Array.isArray(backupSegments) && backupSegments.length > 0;
                 const cachedSegs = Array.isArray(cached.segments) ? cached.segments : [];
-                const localModified = sameAudio && JSON.stringify(localSegs) !== JSON.stringify(cachedSegs);
+                const localModified = sameAudio && JSON.stringify(backupSegments) !== JSON.stringify(cachedSegs);
                 let useSegments = cachedSegs;
                 if (localModified) {
                     const choice = await this._askSegmentChoice();
-                    if (choice === 'local') useSegments = localSegs;
+                    if (choice === 'cancel') {
+                        restoreBackup();
+                        ui.toast('已取消加载，原工程已恢复');
+                        return;
+                    }
+                    if (choice === 'local') useSegments = backupSegments;
                 }
-                // 从缓存加载音频
-                if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
+                // 从缓存加载音频：先创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke）
                 state._audioObjectUrl = URL.createObjectURL(cached.audioBlob);
                 const a = document.getElementById('main-audio');
                 a.src = state._audioObjectUrl;
@@ -1697,7 +1761,7 @@ const app = {
                     } finally {
                         try { ctx.close(); } catch(e) {}
                     }
-                } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); }
+                } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); state.audioBuffer = null; }
                 state.segments = useSegments;
                 state.subFileNames = {1:'', 2:'', 3:''};
                 state.currIndex = 0;
@@ -1711,10 +1775,12 @@ const app = {
                 localStorage.setItem(CONST.SESSION, mp3);
                 this.addHistory(mp3);
                 previewMode.clearForNewAudio(mp3);
+                state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
                 ui.renderEditor();
                 ui.updateAudioStatus();
                 this.save();
                 ui.updatePractice(0);
+                commitAudioSwap(); // 加载成功：revoke 旧音频 objectURL
                 ui.toast("✅ 已从离线缓存加载（0 网络请求）");
                 app.switchView('practice');
                 return;
@@ -1730,7 +1796,7 @@ const app = {
             ui.toast("正在下载音频...");
             const ab = await net.fetchBlobSmart(mp3);
             const audioBlob = ab;
-            if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
+            // 创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke）
             state._audioObjectUrl = URL.createObjectURL(ab);
             document.getElementById('main-audio').src = state._audioObjectUrl;
             ui.toast("✅ 音频下载成功！正在获取字幕...");
@@ -1786,7 +1852,8 @@ const app = {
             // 强制重置到第一句
             state.currIndex = 0; 
             state.userBlurState = state.permBlurMode === 'show' ? false : true;
-            ui.renderEditor(); 
+            state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
+            ui.renderEditor();
             ui.updateAudioStatus();
             this.save();
             ui.updatePractice(0);
@@ -1822,8 +1889,17 @@ const app = {
                     ui.toast("✅ 全部就绪（缓存写入失败，不影响使用）");
                 }
             }
+            commitAudioSwap(); // 加载成功：revoke 旧音频 objectURL（缓存写入成功后）
             app.switchView('practice');
-        } catch(e) { console.error(e); ui.setLoadBtnText("加载失败:" + e.message); }
+        } catch(e) {
+            console.error(e);
+            // 加载失败时恢复原工程（避免清空后失败导致数据永久丢失）
+            if (backupSegments && backupSegments.length) {
+                restoreBackup();
+                ui.toast('加载失败，原工程已恢复');
+            }
+            ui.setLoadBtnText("加载失败:" + e.message);
+        }
         finally { btn.disabled=false; spin.style.display='none'; setTimeout(()=>ui.setLoadBtnText("default"),3000); }
     },
     _askSegmentChoice() {
@@ -1834,11 +1910,13 @@ const app = {
                 '<h3 style="margin:0 0 12px;font-size:17px;color:#202124;">💾 检测到本地有修改</h3>' +
                 '<p style="margin:0 0 18px;font-size:14px;color:#5F6368;line-height:1.6;">此音频已缓存到离线，但你之前在本地修改过字幕时间轴或文本。要使用哪一份？</p>' +
                 '<button id="seg-choice-local" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;">📝 用本地修改</button>' +
-                '<button id="seg-choice-cached" style="width:100%;padding:12px;border:none;border-radius:10px;background:#F1F3F4;color:#3C4043;font-size:14px;font-weight:700;cursor:pointer;">💾 用原缓存覆盖</button>' +
+                '<button id="seg-choice-cached" style="width:100%;padding:12px;border:none;border-radius:10px;background:#F1F3F4;color:#3C4043;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;">💾 用原缓存覆盖</button>' +
+                '<button id="seg-choice-cancel" style="width:100%;padding:10px;border:none;border-radius:10px;background:transparent;color:#5F6368;font-size:13px;font-weight:600;cursor:pointer;">取消加载</button>' +
                 '</div>';
             document.body.appendChild(modal);
             modal.querySelector('#seg-choice-local').onclick = () => { modal.remove(); resolve('local'); };
             modal.querySelector('#seg-choice-cached').onclick = () => { modal.remove(); resolve('cached'); };
+            modal.querySelector('#seg-choice-cancel').onclick = () => { modal.remove(); resolve('cancel'); };
         });
     },
     mergeSub(newS, k) { state.segments.forEach(b => { const m=newS.find(n=>n.start>=b.start&&n.start<b.end); if(m) b[k]=m.text; }); },
@@ -1857,7 +1935,8 @@ const app = {
         if (v==='practice') this.loadItem(state.currIndex, false);
     },
     loadItem(i, play) {
-        if (i<0||i>=state.segments.length) return;
+        // Number.isFinite 同时拦住 NaN/Infinity/undefined，避免练习页死掉
+        if (!Number.isFinite(i) || i<0||i>=state.segments.length) return;
         state.currIndex = i; engine.stopAll(); ui.updatePractice(i); this.save();
         if (play) engine.playOnce();
     },
@@ -1902,7 +1981,20 @@ const app = {
         if(k.startsWith('text')) {
             state.segments[i][k]=v;
         } else {
-            state.segments[i][k]=parseFloat(v);
+            // 时间字段必须校验：parseFloat('abc')=NaN 会污染导出/播放/自动联动
+            const n = parseFloat(v);
+            if (!isFinite(n)) {
+                ui.toast('请输入有效数字');
+                // 还原输入框显示，避免用户看到错字以为改成功了
+                // 加 typeof 防护：脏数据（undefined/null）时清空，避免 .toFixed 抛错崩掉处理器
+                const inp = document.getElementById(k + '-input-' + i);
+                if (inp) {
+                    const old = state.segments[i][k];
+                    inp.value = (typeof old === 'number' && isFinite(old)) ? old.toFixed(2) : '';
+                }
+                return;
+            }
+            state.segments[i][k]=n;
             if (state.autoSyncNextStart && k === 'end' && i + 1 < state.segments.length && !isNaN(state.segments[i].end)) {
                 const newStart = Math.round((state.segments[i].end + 0.01) * 100) / 100;
                 state.segments[i+1].start = newStart;
@@ -1912,13 +2004,37 @@ const app = {
         }
         this.save();
     },
-    delSeg(i) { state.segments.splice(i,1); ui.renderEditor(); },
+    delSeg(i) {
+        state.segments.splice(i,1);
+        // 修正 currIndex：删前句→索引减1；删当前句→clamp 到新末尾；删后句→不影响
+        if (i < state.currIndex) state.currIndex--;
+        else if (i === state.currIndex) state.currIndex = Math.min(state.currIndex, state.segments.length - 1);
+        if (state.currIndex < 0) state.currIndex = 0;
+        // 同步预习重点句索引：大于 i 的减 1，等于 i 的移除，越界的也过滤掉（防御性）
+        const maxValid = state.segments.length - 1;
+        previewMode.starredIndices = previewMode.starredIndices
+            .map(idx => idx === i ? -1 : (idx > i ? idx - 1 : idx))
+            .filter(idx => idx >= 0 && idx <= maxValid)
+            .sort((a, b) => a - b); // 防御性排序，确保升序
+        // 持久化 + 刷新界面 badge，避免刷新页面后读回旧的错位索引
+        previewMode.saveToStorage();
+        previewMode.updateBadge();
+        ui.renderEditor(); ui.updatePractice(state.currIndex);
+    },
     splitSeg(i) {
         const t = document.getElementById('main-audio').currentTime;
         if (t>state.segments[i].start && t<state.segments[i].end) {
             const old = state.segments[i], ns={start:t,end:old.end,text:""};
             if(old.text2!==undefined) ns.text2=""; if(old.text3!==undefined) ns.text3="";
-            state.segments.splice(i+1,0,ns); state.segments[i].end = t; ui.renderEditor();
+            state.segments.splice(i+1,0,ns); state.segments[i].end = t;
+            // 拆分后第 i 句之后的所有句子索引 +1（原 i+1 变 i+2、原 i+2 变 i+3...）
+            // 第 i 句本身保留（内容变短），i+1 是新拆出来的未标记句
+            previewMode.starredIndices = previewMode.starredIndices
+                .map(idx => idx > i ? idx + 1 : idx)
+                .sort((a, b) => a - b);
+            previewMode.saveToStorage();
+            previewMode.updateBadge();
+            ui.renderEditor();
         } else ui.toast("请在试听时暂停于拆分点");
     },
     mergeSeg(i) {
@@ -1927,9 +2043,25 @@ const app = {
             if (state.segments[i].text !== undefined) {
                 state.segments[i].text = (state.segments[i].text + " " + (state.segments[i+1].text||"")).trim();
             }
-            if(state.segments[i].text2) state.segments[i].text2 += " " + (state.segments[i+1].text2||"");
-            if(state.segments[i].text3) state.segments[i].text3 += " " + (state.segments[i+1].text3||"");
-            state.segments.splice(i+1,1); ui.renderEditor();
+            // 修复：用 !== undefined 判断而非真值判断，避免空字符串跳过导致翻译丢失
+            if (state.segments[i].text2 !== undefined) state.segments[i].text2 = ((state.segments[i].text2||"") + " " + (state.segments[i+1].text2||"")).trim();
+            if (state.segments[i].text3 !== undefined) state.segments[i].text3 = ((state.segments[i].text3||"") + " " + (state.segments[i+1].text3||"")).trim();
+            state.segments.splice(i+1,1);
+            // 合并会影响 i+1 之后所有句子的索引：i+1 句消失，大于 i+1 的减 1
+            // 同时如果 starredIndices 含 i+1，合并到 i（保留标记在合并后的句子上）
+            previewMode.starredIndices = previewMode.starredIndices
+                .map(idx => {
+                    if (idx === i + 1) return i; // 被合并的句子的标记挪到 i
+                    if (idx > i + 1) return idx - 1;
+                    return idx;
+                });
+            // 去重（合并后可能有重复的 i）
+            previewMode.starredIndices = [...new Set(previewMode.starredIndices)]
+                .sort((a, b) => a - b);
+            // 持久化 + 刷新界面 badge
+            previewMode.saveToStorage();
+            previewMode.updateBadge();
+            ui.renderEditor();
         }
     },
     addNewRow() {
@@ -1940,9 +2072,35 @@ const app = {
     },
     applyReAnalyze() {
         if (!state.audioBuffer) return ui.toast("需先成功加载音频数据");
+        // 禁用按钮防止连点：detectSilenceAsync 创建 Worker 是重度计算，并行会内存暴涨+竞态覆盖
+        const allBtns = document.querySelectorAll('.slider-row .btn-mini');
+        let execBtn = null;
+        allBtns.forEach(b => { if (b.onclick && b.onclick.toString().includes('applyReAnalyze')) execBtn = b; });
+        if (execBtn) { execBtn.disabled = true; execBtn.style.opacity = '0.5'; execBtn.style.cursor = 'not-allowed'; }
         ui.toast("重新分析中...");
         detectSilenceAsync(state.audioBuffer, parseFloat(document.getElementById('threshold-range').value))
-            .then(segs => { state.segments = segs; ui.renderEditor(); ui.toast("重新分析完成"); });
+            .then(segs => {
+                state.segments = segs;
+                // 重新断句后 segments 完全替换，currIndex 和 starredIndices 都失效
+                state.currIndex = 0;
+                // 重点句基于旧时间轴标记，重新断句后时间轴全变，标记无意义，清空并提示
+                if (previewMode.starredIndices.length) {
+                    previewMode.starredIndices = [];
+                    previewMode.saveToStorage();
+                    previewMode.updateBadge();
+                    ui.toast("重新分析完成，重点句已重置（时间轴已变）");
+                } else {
+                    ui.toast("重新分析完成");
+                }
+                state._loopInitialized = false; // 重新断句后重置循环区间默认值
+                ui.renderEditor();
+                ui.updatePractice(0);
+                this.save();
+            })
+            .catch(e => { console.error('重新断句失败:', e); ui.toast('重新断句失败: ' + (e.message || e)); })
+            .finally(() => {
+                if (execBtn) { execBtn.disabled = false; execBtn.style.opacity = ''; execBtn.style.cursor = ''; }
+            });
     },
     save() {
         safeSetItem(CONST.STORAGE, JSON.stringify(state.segments));
@@ -1960,10 +2118,18 @@ const app = {
     },
     async _syncCacheSegments() {
         if (!idbCache.isAvailable()) return;
+        // 关键保护1：加载开始时 state.segments 会被清空为 []，此时绝不能写回缓存
+        // 否则手机卡顿时定时器触发，会把"有音频没字幕"的脏数据永久写进缓存
+        if (!state.segments || !state.segments.length) return;
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const mp3 = net.fixUrl((inputs.mp3 || '').trim());
         // 本地 blob: 导入不入缓存（INPUTS.mp3 是 'blob:<filename>'）
         if (!mp3 || mp3.startsWith('blob:')) return;
+        // 关键保护2：SESSION 校验——只有当前加载完成的音频 URL 与输入框一致时才同步
+        // 避免"加载 B 失败 → restoreBackup 恢复 A 的字幕 → 定时器把 A 的字幕写到 B 的缓存"
+        // SESSION 只在加载成功时设置，加载失败时是旧值，和 inputs.mp3（新值）不一致就跳过
+        const sessionMp3 = localStorage.getItem(CONST.SESSION);
+        if (sessionMp3 !== mp3) return;
         const projectId = idbCache.hashUrl(mp3);
         try {
             const cached = await idbCache.get(projectId);
@@ -1978,7 +2144,9 @@ const app = {
         const d = localStorage.getItem(CONST.STORAGE), i = parseInt(localStorage.getItem(CONST.INDEX) || 0);
         if (!d) return;
         state.segments = safeParse(d, []);
-        state.currIndex = i;
+        // clamp currIndex 防越界（localStorage.INDEX 可能是脏数据）
+        state.currIndex = Math.min(Math.max(0, i), Math.max(0, state.segments.length - 1));
+        state._loopInitialized = false; // 恢复进度相当于切换内容，重置循环区间默认值
         ui.renderEditor();
         document.getElementById('restore-bar').style.display = 'none';
 
@@ -2011,9 +2179,10 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 75, segments: state.segments, idx: state.currIndex, inputs: inputs };
+        const data = { version: 78, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='shadow_v75.json'; a.click();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v78.json'; a.click();
+        setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     extractFilenameFromUrl(url) {
         if (!url) return '';
@@ -2037,7 +2206,8 @@ const app = {
             filename = audioBase ? (audioBase + '_sub' + slot + '.srt') : ('sub_' + slot + '.srt');
         }
         if (!/\.(srt|txt)$/i.test(filename)) filename += '.srt';
-        const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.download=filename; a.click();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.href=_url; a.download=filename; a.click();
+        setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     loadProject(el) {
         const f = el.files[0]; if (!f) return;
@@ -2057,6 +2227,9 @@ const app = {
             } else {
                 ui.toast('工程加载成功（旧版工程，请手动填入音频链接）');
             }
+            state._loopInitialized = false; // 新工程：重新初始化循环区间默认值
+            // 切换工程时清除当前预习内存状态（badge 会显示 0，进预习模式时按新 URL 重新读）
+            previewMode.clearForNewAudio((d.inputs && d.inputs.mp3) || '');
             ui.renderEditor(); ui.updateAudioStatus();
         };
         r.readAsText(f);
@@ -2071,7 +2244,20 @@ const app = {
             try { text = new TextDecoder('utf-8', { fatal: true }).decode(uint8); } catch(err) { text = new TextDecoder('gbk').decode(uint8); }
             text = text.replace(/^\uFEFF/, '');
             const n = parseSRT(text);
-            if(k===0) state.segments=n; else app.mergeSub(n,k===1?'text2':'text3');
+            // 空结果不清空现有数据（防手滑选错文件丢字幕）
+            if (!n.length) {
+                ui.toast('未解析到字幕内容（文件可能不是 SRT 格式或为空），已保留原数据');
+                return;
+            }
+            if(k===0) {
+                state.segments = n;
+                // 主字幕整个替换 segments，相当于换新内容：重置进度和重点句
+                state.currIndex = 0;
+                previewMode.starredIndices = [];
+                previewMode.saveToStorage();
+                previewMode.updateBadge();
+                state._loopInitialized = false;
+            } else app.mergeSub(n, k===1?'text2':'text3');
             state.subFileNames[k+1] = f.name;
             ui.renderEditor();
         };
@@ -2092,6 +2278,16 @@ const recorder = {
         if (!this.isRec) {
             this._isInitializing = true;
             engine.stopAll();
+            // iOS Safari 手势预热：在用户点击时解锁 record-audio
+            // 后续 playCmp 里的 r.play() 在 setTimeout 里（脱离手势上下文）会被 iOS 拒绝
+            // 这里先用静音 WAV 解锁元素，之后延时 play() 会被允许
+            const r = document.getElementById('record-audio');
+            try {
+                r.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+                r.muted = true;
+                r.play().then(() => { try { r.pause(); } catch(e){} }).catch(() => {});
+                r.muted = false;
+            } catch(e) {}
             try {
                 this.stream = await navigator.mediaDevices.getUserMedia({audio:true});
                 this.rec = new MediaRecorder(this.stream); this.chunks = [];
@@ -2099,7 +2295,7 @@ const recorder = {
                 this.rec.onstop = () => { if(this.stream) this.stream.getTracks().forEach(t=>t.stop()); if(!this.forceStop) this.playCmp(); };
                 this.rec.start(); this.isRec = true;
                 if(btn) { btn.classList.add('recording'); btn.innerText="■ 停止录音"; }
-            } catch(e) { alert("无麦克风权限"); }
+            } catch(e) { ui.toast("❌ 无麦克风权限"); }
             finally { this._isInitializing = false; }
         } else { this.stop(false); }
     },
@@ -2190,6 +2386,7 @@ const previewMode = {
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         engine.stopAll(); aiMode.active && aiMode.stop();
         this.loadFromStorage(); this._updateEarlyBtn();
+        this.updateBadge(); // loadFromStorage 重新读了数据后刷新 badge 显示
         document.getElementById('editor-view').style.display = 'none';
         document.getElementById('practice-view').style.display = 'none';
         document.getElementById('practice-view').classList.remove('active');
@@ -2661,6 +2858,15 @@ document.getElementById('audio-file').addEventListener('change', e => {
     }
 });
 document.getElementById('ai-threshold').addEventListener('input', function() { const pct = ((this.value - this.min) / (this.max - this.min)) * 100; this.style.setProperty('--fill', pct + '%'); });
+
+// 页面隐藏时立即同步未完成的缓存写入（防抖定时器可能在页面关闭前来不及执行）
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && app._cacheSyncTimer) {
+        clearTimeout(app._cacheSyncTimer);
+        app._cacheSyncTimer = null;
+        app._syncCacheSegments();
+    }
+});
 
 document.addEventListener('keydown', e => {
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
