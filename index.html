@@ -6,10 +6,11 @@
 <!-- 影子跟读 Pro V74 | build:20261112 | 新增：基于 IndexedDB 的离线缓存系统——音频+字幕下载后持久化保存，移动网络下也能离线使用；新增「离线缓存」Tab 可查看/播放/删除已缓存项目；加载流程改为先查缓存(0网络请求秒开)，未命中才联网且下载成功后自动回写；缓存命中但本地 segments 被改过时弹窗询问用本地还是原缓存；弱网(2g/slow-2g/省流)下给提示 -->
 <!-- V74.1 修复：iPhone 息屏后循环单句/区间循环不工作且音频继续往后播——根因是原代码完全依赖 requestAnimationFrame（息屏后停止），改为 audio 的 timeupdate+ended 事件为主（iOS 息屏后只要音频在播就继续触发），RAF 仅作亮屏时 UI 流畅辅助；新增 wakeLock 屏幕常亮开关作为补充方案（iOS Safari 16.4+） -->
 <!-- V74.2 修复：IndexedDB 在 sandbox iframe / 隐私模式 / file:// 受限环境下会抛 "access denied" 导致整个加载流程中断——idbCache.open 加 try/catch+unavailable 标志，所有读写方法在不可用时静默降级（get→null, getAll→[], put/delete 静默 no-op），cacheUI 给明确提示，loadFromUrl 自动退回纯网络下载模式 -->
+<!-- V75 | build:20261112 | 修复：loadFromUrl 空链接不再清空当前工程；AI 手动复习模式解除文本模糊（且允许录音）；音频输入框不再点一下清空所有；字幕下载用 Promise.allSettled 容错+解析为空回退断句；localStorage 全部加 safeParse 保护；serverBrowser 防 XSS；本地导入音频修复预习进度 key；录音 Blob 用实际 mimeType；离线缓存随编辑防抖回写；缓存加载时 decode audioBuffer 支持重新断句；切句保留显隐状态；AI 复习正确率用 reviewQueue 长度做总数 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V74</title>
+<title>影子跟读 Pro V75</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
@@ -266,7 +267,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V74.0</div>
+    <div class="nav-title">🎧 影子跟读 V75</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -290,11 +291,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <option value="">▼ 选择历史记录...</option>
                 </select>
                 <div class="url-block" style="display:flex;gap:10px;align-items:center;">
-                    <label class="url-label" style="margin:0;flex-grow:1;">♫ 音频链接 (点击清空, 智能粘贴多链接)</label>
+                    <label class="url-label" style="margin:0;flex-grow:1;">♫ 音频链接 (粘贴多链接可智能分配)</label>
                     <button class="btn-mini" onclick="serverBrowser.open()">📂 浏览服务器...</button>
                 </div>
                 <div class="url-block">
-                    <input type="text" class="url-input" id="url-audio" placeholder="在此粘贴组合链接, 系统自动分配..." onclick="app.clearInputs()" onchange="app.saveInput()">
+                    <input type="text" class="url-input" id="url-audio" placeholder="在此粘贴组合链接, 系统自动分配..." onchange="app.saveInput()">
                 </div>
                 <div class="url-block">
                     <label class="url-label">📄 字幕链接(自动分配)</label>
@@ -393,7 +394,8 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value)"><option>1</option></select>
                 </div>
                 <div class="header-right-group">
-                        <div class="sleep-wrapper">
+                    <button id="btn-wakelock" style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
+                    <div class="sleep-wrapper">
                         <div class="icon-btn" onclick="ui.toggleSleepModal()">⏰</div>
                         <div id="sleep-display" class="sleep-display"></div>
                         <div id="sleep-popup" class="sleep-popup">
@@ -408,11 +410,10 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 </div>
             </div>
 
-                <div class="sub-switcher" style="position: relative;">
+            <div class="sub-switcher">
                 <button class="sub-btn active" onclick="ui.switchSubTab(0)">字幕1</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(1)">字幕2</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(2)">字幕3</button>
-                <button id="btn-wakelock" style="position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:12px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;color:#5F6368;cursor:pointer;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
             </div>
 
             <div class="practice-text-container" id="text-container" onclick="ui.toggleTextBlur()">
@@ -819,6 +820,16 @@ const cacheUI = {
             a.dataset.name = p.name || '';
             try { a.load(); } catch(e) {}
             await net.waitAudioReady(a);
+            // decode audioBuffer 供"重新断句"使用（AudioBuffer 无法存入 IndexedDB，需现场 decode）
+            try {
+                const buf = await p.audioBlob.arrayBuffer();
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                try {
+                    state.audioBuffer = await ctx.decodeAudioData(buf);
+                } finally {
+                    try { ctx.close(); } catch(e) {}
+                }
+            } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); }
             // 加载字幕
             state.segments = Array.isArray(p.segments) ? p.segments : [];
             state.subFileNames = {1:'', 2:'', 3:''};
@@ -1025,7 +1036,10 @@ const serverBrowser = {
         if (!display.length && q) { listEl.innerHTML += '<div class="browser-item loading">没有找到匹配的音频</div>'; }
         display.forEach(f => {
             const item = document.createElement('div'); item.className = 'browser-item';
-            item.innerHTML = '<span class="browser-item-icon">' + (f.isDirectory ? '📁' : '🎵') + '</span><span class="browser-item-name">' + f.name + '</span>';
+            // 用 textContent 防 XSS（f.name 来自服务器目录列表）
+            const iconSpan = document.createElement('span'); iconSpan.className = 'browser-item-icon'; iconSpan.textContent = (f.isDirectory ? '📁' : '🎵');
+            const nameSpan = document.createElement('span'); nameSpan.className = 'browser-item-name'; nameSpan.textContent = f.name;
+            item.appendChild(iconSpan); item.appendChild(nameSpan);
             item.onclick = () => f.isDirectory ? this.navigate(f.url) : this.selectFile(f);
             listEl.appendChild(item);
         });
@@ -1344,7 +1358,7 @@ const ui = {
         if (slider) { const pct = ((slider.value - slider.min) / (slider.max - slider.min)) * 100; slider.style.setProperty('--fill', pct + '%'); }
 
         try {
-            const savedPad = JSON.parse(localStorage.getItem(CONST.PADDING) || '{}');
+            const savedPad = safeParse(localStorage.getItem(CONST.PADDING), {});
             state.padPre  = (typeof savedPad.pre  === 'number') ? savedPad.pre  : 120;
             state.padPost = (typeof savedPad.post === 'number') ? savedPad.post : 200;
         } catch(e) { state.padPre = 120; state.padPost = 200; }
@@ -1367,7 +1381,7 @@ const ui = {
             if (p.get('srt')) document.getElementById('url-srt-1').value = p.get('srt');
             setTimeout(() => app.loadFromUrl(), 500);
         } else {
-            const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
+            const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
             const dec = u => { try { return u ? decodeURIComponent(u) : ''; } catch(e) { return u||''; } };
             if (inputs.mp3) document.getElementById('url-audio').value = dec(inputs.mp3);
             if (inputs.s1) document.getElementById('url-srt-1').value = dec(inputs.s1);
@@ -1377,14 +1391,14 @@ const ui = {
         this.renderHistory();
 
         const d = localStorage.getItem(CONST.STORAGE);
-        if (d && JSON.parse(d).length) {
-            state.segments = JSON.parse(d);
+        if (d && safeParse(d, []).length) {
+            state.segments = safeParse(d, []);
             state.currIndex = parseInt(localStorage.getItem(CONST.INDEX) || 0);
             this.renderEditor();
             this.updatePractice(state.currIndex);
 
             const savedSessionId = localStorage.getItem(CONST.SESSION);
-            const savedInputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
+            const savedInputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
             const currentMp3 = net.fixUrl((savedInputs.mp3 || '').trim());
             if (savedSessionId && currentMp3 && savedSessionId === currentMp3) {
                 let rawName = currentMp3.split('/').pop().replace(/\.[^.]+$/, '');
@@ -1401,7 +1415,7 @@ const ui = {
         previewMode.updateBadge();
     },
     renderHistory() {
-        const h = JSON.parse(localStorage.getItem(CONST.HIST) || '[]');
+        const h = safeParse(localStorage.getItem(CONST.HIST), []);
         const sel = document.getElementById('history-select');
         sel.innerHTML = '<option value="">▼ 选择历史记录...</option>';
         h.forEach((item, i) => { const o = document.createElement('option'); o.value = i; o.text = item.name; sel.appendChild(o); });
@@ -1421,7 +1435,9 @@ const ui = {
     },
     setLoadBtnText(t) {
         const btn = document.getElementById('btn-load-url');
-        btn.innerHTML = t === "default" ? '<span class="loading-spinner" id="url-spinner"></span>🚀 极速加载' : t;
+        // default 状态需要 innerHTML（含 loading-spinner span）；其他用 textContent 防 XSS
+        if (t === "default") btn.innerHTML = '<span class="loading-spinner" id="url-spinner"></span>🚀 极速加载';
+        else btn.textContent = t;
     },
     updateThresh(v) { document.getElementById('threshold-val').innerText = v; },
     toast(m) {
@@ -1611,9 +1627,9 @@ const app = {
         }));
     },
     addHistory(mp3, name) {
-        let h = JSON.parse(localStorage.getItem(CONST.HIST)||'[]');
+        let h = safeParse(localStorage.getItem(CONST.HIST), []);
         h = h.filter(i => i.mp3 !== mp3);
-        const d = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
+        const d = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const displayName = name || (() => {
             try { return decodeURIComponent(mp3.split('/').pop()); } catch(e) { return mp3.split('/').pop(); }
         })();
@@ -1624,7 +1640,7 @@ const app = {
     },
     fillHistory(i) {
         if (i==="") return;
-        const h = JSON.parse(localStorage.getItem(CONST.HIST)||'[]'), item = h[i];
+        const h = safeParse(localStorage.getItem(CONST.HIST), []), item = h[i];
         const dec = u => { try { return u ? decodeURIComponent(u) : ''; } catch(e) { return u||''; } };
         if (item) {
             document.getElementById('url-audio').value = dec(item.mp3);
@@ -1635,12 +1651,13 @@ const app = {
         }
     },
     async loadFromUrl() {
-        state.segments = []; ui.renderEditor(); this.saveInput();
         const mp3 = net.fixUrl(document.getElementById('url-audio').value.trim());
         const s1 = net.fixUrl(document.getElementById('url-srt-1').value.trim());
         const s2 = net.fixUrl(document.getElementById('url-srt-2').value.trim());
         const s3 = net.fixUrl(document.getElementById('url-srt-3').value.trim());
         if (!mp3) return ui.toast("请输入 MP3 链接");
+        // 校验通过后再清空，避免空链接误点导致当前工程被覆盖
+        state.segments = []; ui.renderEditor(); this.saveInput();
         const btn = document.getElementById('btn-load-url'), spin = document.getElementById('url-spinner');
         btn.disabled = true; spin.style.display = 'inline-block';
         const projectId = idbCache.hashUrl(mp3);
@@ -1671,6 +1688,16 @@ const app = {
                 a.dataset.name = cached.name || projectName;
                 try { a.load(); } catch(e) {}
                 await net.waitAudioReady(a);
+                // decode audioBuffer 供"重新断句"使用
+                try {
+                    const buf = await cached.audioBlob.arrayBuffer();
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    try {
+                        state.audioBuffer = await ctx.decodeAudioData(buf);
+                    } finally {
+                        try { ctx.close(); } catch(e) {}
+                    }
+                } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); }
                 state.segments = useSegments;
                 state.subFileNames = {1:'', 2:'', 3:''};
                 state.currIndex = 0;
@@ -1707,20 +1734,44 @@ const app = {
             state._audioObjectUrl = URL.createObjectURL(ab);
             document.getElementById('main-audio').src = state._audioObjectUrl;
             ui.toast("✅ 音频下载成功！正在获取字幕...");
-            const lt = async u => u ? await net.fetchTextSmart(u) : null;
+            // 用 allSettled: 任一字幕下载失败不阻塞其他字幕和已下载的音频
+            const lt = async u => { if (!u) return null; try { return await net.fetchTextSmart(u); } catch(e) { console.warn('字幕下载失败:', u, e); return null; } };
             const audioReadyPromise = net.waitAudioReady(document.getElementById('main-audio'));
-            const [t1,t2,t3] = await Promise.all([lt(s1),lt(s2),lt(s3)]);
+            const results = await Promise.allSettled([lt(s1), lt(s2), lt(s3)]);
+            const t1 = results[0].status === 'fulfilled' ? results[0].value : null;
+            const t2 = results[1].status === 'fulfilled' ? results[1].value : null;
+            const t3 = results[2].status === 'fulfilled' ? results[2].value : null;
             await audioReadyPromise;
+            // 尝试用字幕解析；解析为空（HTML 错误页/格式错）时回退到智能断句
+            let parsedFromSrt = false;
             if (t1||t2||t3) {
-                if (t1) { state.segments = parseSRT(t1); if(t2) this.mergeSub(parseSRT(t2),'text2'); if(t3) this.mergeSub(parseSRT(t3),'text3'); }
-                else if (t2) { state.segments = parseSRT(t2).map(s=>({start:s.start,end:s.end,text2:s.text})); if(t3) this.mergeSub(parseSRT(t3),'text3'); }
-                else { state.segments = parseSRT(t3).map(s=>({start:s.start,end:s.end,text3:s.text})); }
-            } else {
-                ui.toast("正在进行智能断句，请稍候...");
+                const p1 = t1 ? parseSRT(t1) : [];
+                const p2 = t2 ? parseSRT(t2) : [];
+                const p3 = t3 ? parseSRT(t3) : [];
+                if (p1.length) {
+                    state.segments = p1;
+                    if (p2.length) this.mergeSub(p2,'text2');
+                    if (p3.length) this.mergeSub(p3,'text3');
+                    parsedFromSrt = true;
+                } else if (p2.length) {
+                    state.segments = p2.map(s=>({start:s.start,end:s.end,text2:s.text}));
+                    if (p3.length) this.mergeSub(p3,'text3');
+                    parsedFromSrt = true;
+                } else if (p3.length) {
+                    state.segments = p3.map(s=>({start:s.start,end:s.end,text3:s.text}));
+                    parsedFromSrt = true;
+                }
+            }
+            if (!parsedFromSrt) {
+                ui.toast(t1||t2||t3 ? "字幕解析为空，进行智能断句..." : "未提供字幕或下载失败，进行智能断句...");
                 await new Promise(r=>setTimeout(r,100));
                 const buf = await ab.arrayBuffer();
                 const ctx = new(window.AudioContext||window.webkitAudioContext)();
-                state.audioBuffer = await ctx.decodeAudioData(buf);
+                try {
+                    state.audioBuffer = await ctx.decodeAudioData(buf);
+                } finally {
+                    try { ctx.close(); } catch(e) {}
+                }
                 state.segments = await detectSilenceAsync(
                     state.audioBuffer,
                     parseFloat(document.getElementById('threshold-range').value)
@@ -1813,7 +1864,9 @@ const app = {
     next() {
         if (aiMode.active) { aiMode.stop(); ui.toast('已停止AI模式'); }
         if (state.currIndex < state.segments.length-1) {
-            state.userBlurState = state.permBlurMode==='show' ? false : true;
+            // permBlurMode='none'（用户点了显示/隐藏）时保留当前显隐状态，不强制重置
+            if (state.permBlurMode === 'show') state.userBlurState = false;
+            else if (state.permBlurMode === 'hide') state.userBlurState = true;
             this.loadItem(state.currIndex+1, true);
         } else {
             ui.toast('已经是最后一句了');
@@ -1822,13 +1875,15 @@ const app = {
     prev() {
         if (aiMode.active) { aiMode.stop(); ui.toast('已停止AI模式'); }
         if (state.currIndex > 0) {
-            state.userBlurState = state.permBlurMode==='show' ? false : true;
+            if (state.permBlurMode === 'show') state.userBlurState = false;
+            else if (state.permBlurMode === 'hide') state.userBlurState = true;
             this.loadItem(state.currIndex-1, true);
         }
     },
     jumpTo(v) {
         if (aiMode.active) { aiMode.stop(); ui.toast('已停止AI模式'); }
-        state.userBlurState = state.permBlurMode==='show' ? false : true;
+        if (state.permBlurMode === 'show') state.userBlurState = false;
+        else if (state.permBlurMode === 'hide') state.userBlurState = true;
         this.loadItem(parseInt(v), true);
     },
     toggleAutoSyncNext() {
@@ -1890,19 +1945,45 @@ const app = {
             .then(segs => { state.segments = segs; ui.renderEditor(); ui.toast("重新分析完成"); });
     },
     save() {
-        localStorage.setItem(CONST.STORAGE, JSON.stringify(state.segments));
-        localStorage.setItem(CONST.INDEX, state.currIndex);
+        safeSetItem(CONST.STORAGE, JSON.stringify(state.segments));
+        safeSetItem(CONST.INDEX, state.currIndex);
+        // 防抖回写离线缓存（用户改了字幕后，缓存里也要同步更新）
+        this._scheduleCacheSync();
+    },
+    _cacheSyncTimer: null,
+    _scheduleCacheSync() {
+        if (this._cacheSyncTimer) clearTimeout(this._cacheSyncTimer);
+        this._cacheSyncTimer = setTimeout(() => {
+            this._cacheSyncTimer = null;
+            this._syncCacheSegments();
+        }, 1500);
+    },
+    async _syncCacheSegments() {
+        if (!idbCache.isAvailable()) return;
+        const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
+        const mp3 = net.fixUrl((inputs.mp3 || '').trim());
+        // 本地 blob: 导入不入缓存（INPUTS.mp3 是 'blob:<filename>'）
+        if (!mp3 || mp3.startsWith('blob:')) return;
+        const projectId = idbCache.hashUrl(mp3);
+        try {
+            const cached = await idbCache.get(projectId);
+            // 只更新 segments 字段，保留 audioBlob / srts 等
+            if (cached && cached.audioBlob) {
+                cached.segments = state.segments;
+                await idbCache.put(cached);
+            }
+        } catch(e) { console.warn('缓存 segments 同步失败:', e); }
     },
     restoreProgress() {
         const d = localStorage.getItem(CONST.STORAGE), i = parseInt(localStorage.getItem(CONST.INDEX) || 0);
         if (!d) return;
-        state.segments = JSON.parse(d);
+        state.segments = safeParse(d, []);
         state.currIndex = i;
         ui.renderEditor();
         document.getElementById('restore-bar').style.display = 'none';
 
         const mainAudio = document.getElementById('main-audio');
-        const savedInputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
+        const savedInputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const mp3 = net.fixUrl((savedInputs.mp3 || '').trim());
 
         if (mainAudio.src && mainAudio.src !== location.href) {
@@ -1929,10 +2010,10 @@ const app = {
         }
     },
     exportProject() {
-        const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
-        const data = { version: 73, segments: state.segments, idx: state.currIndex, inputs: inputs };
+        const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
+        const data = { version: 75, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='shadow_v73.json'; a.click();
+        const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='shadow_v75.json'; a.click();
     },
     extractFilenameFromUrl(url) {
         if (!url) return '';
@@ -1962,7 +2043,8 @@ const app = {
         const f = el.files[0]; if (!f) return;
         const r = new FileReader();
         r.onload = e => {
-            const d = JSON.parse(e.target.result);
+            const d = safeParse(e.target.result, null);
+            if (!d) { ui.toast('❌ 工程文件损坏或格式错误'); return; }
             state.segments = d.segments || d;
             state.currIndex = d.idx || 0;
             if (d.inputs) {
@@ -2003,7 +2085,7 @@ const app = {
 const recorder = {
     rec: null, chunks: [], stream: null, isRec: false, _isInitializing: false, cmpTimer: null, // 修复：新增 cmpTimer 属性
     async toggle() {
-        if (aiMode.active) { ui.toast('AI模式运行中，请先停止AI模式'); return; }
+        if (aiMode.active && !aiMode.manualPracticeMode) { ui.toast('AI模式运行中，请先停止AI模式'); return; }
         if (this._isInitializing) return;
         const inPreview = document.getElementById('preview-view').classList.contains('active');
         const btn = inPreview ? document.getElementById('focus-btn-record') : document.getElementById('btn-record');
@@ -2029,7 +2111,9 @@ const recorder = {
     },
     playCmp() {
         const s = state.segments[state.currIndex], a = document.getElementById('main-audio'), r = document.getElementById('record-audio');
-        const b = new Blob(this.chunks,{type:'audio/mp3'});
+        // 用 MediaRecorder 实际的 mimeType，避免 Safari 录音播放不出来
+        const mimeType = (this.rec && this.rec.mimeType) || (this.chunks[0] && this.chunks[0].type) || 'audio/webm';
+        const b = new Blob(this.chunks, { type: mimeType });
         if (state._recordObjectUrl) { URL.revokeObjectURL(state._recordObjectUrl); state._recordObjectUrl = null; }
         state._recordObjectUrl = URL.createObjectURL(b);
         r.src = state._recordObjectUrl;
@@ -2060,7 +2144,7 @@ const recorder = {
 const previewMode = {
     cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '',
     _getKey() {
-        const inputs = JSON.parse(localStorage.getItem(CONST.INPUTS) || '{}');
+        const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const mp3 = (inputs.mp3 || '').trim();
         // 修复：本地文件(blob:)使用文件名作为key，避免刷新后失效且污染存储
         if (mp3.startsWith('blob:')) {
@@ -2071,14 +2155,14 @@ const previewMode = {
     loadFromStorage() {
         const key = this._getKey(); if (!key) return; this._audioKey = key;
         try {
-            const raw = localStorage.getItem(CONST.PREVIEW); if (!raw) return; const all = JSON.parse(raw); const data = all[key]; if (!data) return;
+            const raw = localStorage.getItem(CONST.PREVIEW); if (!raw) return; const all = safeParse(raw, {}); const data = all[key]; if (!data) return;
             this.starredIndices = data.starred || []; this.previewedCount = data.previewedCount || 0; this.previewDone = data.done || false; this.cursorIdx = data.cursor || 0;
         } catch(e) {}
     },
     saveToStorage() {
         const key = this._getKey(); if (!key) return; this._audioKey = key;
         try {
-            let all = {}; try { all = JSON.parse(localStorage.getItem(CONST.PREVIEW) || '{}'); } catch(e) {}
+            let all = safeParse(localStorage.getItem(CONST.PREVIEW), {})
             all[key] = { starred: this.starredIndices, previewedCount: this.previewedCount, done: this.previewDone, cursor: this.cursorIdx };
             localStorage.setItem(CONST.PREVIEW, JSON.stringify(all));
         } catch(e) {}
@@ -2439,11 +2523,16 @@ const aiMode = {
     },
     _enterManualPractice() {
         this.manualPracticeMode = true; document.getElementById('ai-mode-bar').classList.remove('ai-running'); document.getElementById('ai-mode-bar').classList.add('ai-manual');
-        document.getElementById('btn-ai-resume').style.display = 'block'; document.getElementById('text-container').classList.add('ai-manual'); this.setStatus('👆 手动复习', 'manual');
+        document.getElementById('btn-ai-resume').style.display = 'block'; document.getElementById('text-container').classList.add('ai-manual');
+        // 手动复习时解除文本模糊，让用户看到原文练习
+        state.userBlurState = false; ui.updatePractice(state.currIndex);
+        this.setStatus('👆 手动复习', 'manual');
         ui.toast('💡 可点"循环单句"/"播单句"练习，完成后点"继续AI →"');
     },
     resumeFromManual() {
-        if (!this.active || !this.manualPracticeMode) return; this.manualPracticeMode = false; engine.stopAll(); state.userBlurState = true; ui.updatePractice(state.currIndex);
+        if (!this.active || !this.manualPracticeMode) return; this.manualPracticeMode = false; engine.stopAll();
+        // 恢复模糊（AI 模式要求跟读时不看原文）
+        state.userBlurState = true; ui.updatePractice(state.currIndex);
         document.getElementById('ai-mode-bar').classList.add('ai-running'); document.getElementById('ai-mode-bar').classList.remove('ai-manual');
         document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('▶ 继续中...', '');
         this._cycleTimer = setTimeout(() => this.runCycle(), 600);
@@ -2470,7 +2559,17 @@ const aiMode = {
         } else { this._cycleTimer = setTimeout(() => { if (!this.active) return; this.runCycle(); }, 900); }
     },
     showRoundComplete(isReview = false) {
-        const total = state.segments.length; const failedCount = this.failedSentences.length; const passedCount = total - failedCount;
+        // 复习模式：用 reviewQueue 原长做总数（避免按全文句数算导致正确率失真）
+        let total, failedCount, passedCount;
+        if (isReview) {
+            total = this._lastReviewQueueLength || this.failedSentences.length;
+            failedCount = this.failedSentences.length;
+            passedCount = Math.max(0, total - failedCount);
+        } else {
+            total = state.segments.length;
+            failedCount = this.failedSentences.length;
+            passedCount = total - failedCount;
+        }
         const accuracy = total > 0 ? Math.round(passedCount / total * 100) : 100;
         let emoji, title, msg;
         if (isReview) {
@@ -2496,6 +2595,8 @@ const aiMode = {
     closeRoundModal() { document.getElementById('ai-round-modal').style.display = 'none'; },
     startReview() {
         if (!this.failedSentences.length) return; this.closeRoundModal(); this.reviewMode = true; this.reviewQueue = [...this.failedSentences];
+        // 记录复习队列原长，用于复习完成时计算正确率（避免被清空）
+        this._lastReviewQueueLength = this.reviewQueue.length;
         this.failedSentences = []; this.failCount = 0; state.currIndex = this.reviewQueue[0]; ui.updatePractice(state.currIndex);
         ui.toast('💪 开始复习 ' + this.reviewQueue.length + ' 个错误句子'); setTimeout(() => this.start(), 300);
     },
@@ -2547,8 +2648,16 @@ document.getElementById('audio-file').addEventListener('change', e => {
         state._audioObjectUrl = URL.createObjectURL(f);
         const mainAudioEl = document.getElementById('main-audio'); 
         mainAudioEl.src = state._audioObjectUrl;
-        mainAudioEl.dataset.name = f.name; // 新增：记录文件名用于生成预习进度指纹
-        try { mainAudioEl.load(); } catch(err) {} ui.updateAudioStatus();
+        mainAudioEl.dataset.name = f.name; // 记录文件名用于生成预习进度指纹
+        try { mainAudioEl.load(); } catch(err) {}
+        // 同步更新 INPUTS.mp3 为 blob: 标记，让 previewMode._getKey 走本地分支
+        // 避免 INPUTS.mp3 为空导致预习进度无法保存，或残留旧 URL 导致不同音频共用预习进度
+        const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
+        inputs.mp3 = 'blob:' + f.name;
+        safeSetItem(CONST.INPUTS, JSON.stringify(inputs));
+        // 切换到新音频时清除当前预习内存状态
+        previewMode.clearForNewAudio('local_' + f.name);
+        ui.updateAudioStatus();
     }
 });
 document.getElementById('ai-threshold').addEventListener('input', function() { const pct = ((this.value - this.min) / (this.max - this.min)) * 100; this.style.setProperty('--fill', pct + '%'); });
@@ -2569,6 +2678,14 @@ document.addEventListener('keydown', e => {
 // ============================================================
 //  工具函数
 // ============================================================
+function safeParse(str, fallback) {
+    if (str === null || str === undefined) return fallback;
+    try { return JSON.parse(str); } catch(e) { return fallback; }
+}
+function safeSetItem(key, value) {
+    try { localStorage.setItem(key, value); } catch(e) { console.warn('localStorage 写入失败:', key, e); }
+}
+
 function fmtTime(s, srt = false) {
     const d = new Date(0); d.setMilliseconds(s * 1000); const str = d.toISOString().substr(11, 12);
     return srt ? str.replace('.', ',') : str.substr(0, 8);
