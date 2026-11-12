@@ -393,8 +393,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value)"><option>1</option></select>
                 </div>
                 <div class="header-right-group">
-                    <button id="btn-wakelock" style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
-                    <div class="sleep-wrapper">
+                        <div class="sleep-wrapper">
                         <div class="icon-btn" onclick="ui.toggleSleepModal()">⏰</div>
                         <div id="sleep-display" class="sleep-display"></div>
                         <div id="sleep-popup" class="sleep-popup">
@@ -409,10 +408,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 </div>
             </div>
 
-            <div class="sub-switcher">
+                <div class="sub-switcher" style="position: relative;">
                 <button class="sub-btn active" onclick="ui.switchSubTab(0)">字幕1</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(1)">字幕2</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(2)">字幕3</button>
+                <button id="btn-wakelock" style="position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:12px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;color:#5F6368;cursor:pointer;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
             </div>
 
             <div class="practice-text-container" id="text-container" onclick="ui.toggleTextBlur()">
