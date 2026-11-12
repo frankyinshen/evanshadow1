@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- 影子跟读 Pro V73.3 | build:20260713 | 修复：播单句/循环单句改用currentTime实时位置判断收尾(不再靠setTimeout猜时长)，解决部分iPhone机型因硬件音频延迟导致的结尾丢词；新增：导出字幕自动沿用原文件名、编辑页"自动联动下一句起始时间"开关、预习进度改为从1计数、"下一句"到底时提示 -->
+<!-- 影子跟读 Pro V74 | build:20261112 | 新增：基于 IndexedDB 的离线缓存系统——音频+字幕下载后持久化保存，移动网络下也能离线使用；新增「离线缓存」Tab 可查看/播放/删除已缓存项目；加载流程改为先查缓存(0网络请求秒开)，未命中才联网且下载成功后自动回写；缓存命中但本地 segments 被改过时弹窗询问用本地还是原缓存；弱网(2g/slow-2g/省流)下给提示 -->
+<!-- V74.1 修复：iPhone 息屏后循环单句/区间循环不工作且音频继续往后播——根因是原代码完全依赖 requestAnimationFrame（息屏后停止），改为 audio 的 timeupdate+ended 事件为主（iOS 息屏后只要音频在播就继续触发），RAF 仅作亮屏时 UI 流畅辅助；新增 wakeLock 屏幕常亮开关作为补充方案（iOS Safari 16.4+） -->
+<!-- V74.2 修复：IndexedDB 在 sandbox iframe / 隐私模式 / file:// 受限环境下会抛 "access denied" 导致整个加载流程中断——idbCache.open 加 try/catch+unavailable 标志，所有读写方法在不可用时静默降级（get→null, getAll→[], put/delete 静默 no-op），cacheUI 给明确提示，loadFromUrl 自动退回纯网络下载模式 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V73.3</title>
+<title>影子跟读 Pro V74</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
@@ -264,7 +266,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V73.3</div>
+    <div class="nav-title">🎧 影子跟读 V73.4</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -281,6 +283,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <div class="input-tabs">
                 <div class="tab-btn active" onclick="ui.setTab('url')">🌍 网络链接</div>
                 <div class="tab-btn" onclick="ui.setTab('local')">📁 本地文件</div>
+                <div class="tab-btn" onclick="ui.setTab('cache')">💾 离线缓存</div>
             </div>
             <div id="group-url" class="input-group active">
                 <select id="history-select" class="history-select" onchange="app.fillHistory(this.value)">
@@ -309,6 +312,18 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <div class="btn-file sub-slot">📄 字幕 1 <input type="file" onchange="app.importSub(this,0)" accept=".srt,.txt"></div>
                     <div class="btn-file sub-slot">📄 字幕 2 <input type="file" onchange="app.importSub(this,1)" accept=".srt,.txt"></div>
                     <div class="btn-file sub-slot">📄 字幕 3 <input type="file" onchange="app.importSub(this,2)" accept=".srt,.txt"></div>
+                </div>
+                <div style="font-size:12px;color:#999;margin-top:8px;line-height:1.5;background:#FFF8E1;border:1px solid #FFE0B2;border-radius:8px;padding:8px 10px;">💡 本地文件导入不会自动进入离线缓存（因来源不是 URL）。如需长期离线使用，建议通过「🌍 网络链接」加载一次。</div>
+            </div>
+            <div id="group-cache" class="input-group">
+                <div id="cache-stats" style="background:#E8F0FE;border:1px solid #DADCE0;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#444;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">加载中...</div>
+                <div id="cache-list"></div>
+                <div style="font-size:12px;color:#999;margin-top:14px;line-height:1.5;background:#F1F3F4;border-radius:8px;padding:10px;">
+                    <div style="font-weight:700;color:#5F6368;margin-bottom:4px;">📦 说明</div>
+                    • 用 URL 加载过的音频+字幕会自动缓存到此处，下次同 URL 加载时 0 网络请求秒开<br>
+                    • 缓存键为音频 URL 的哈希，与显示文件名无关<br>
+                    • 若本地修改过字幕时间轴，重新加载同 URL 时会弹窗询问使用本地修改还是原缓存<br>
+                    • 数据存储在浏览器 IndexedDB 中，清空浏览器数据会一并删除
                 </div>
             </div>
             <div class="file-box" style="margin-top:20px;border-top:1px solid #eee;padding-top:10px;">
@@ -378,6 +393,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value)"><option>1</option></select>
                 </div>
                 <div class="header-right-group">
+                    <button id="btn-wakelock" style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
                     <div class="sleep-wrapper">
                         <div class="icon-btn" onclick="ui.toggleSleepModal()">⏰</div>
                         <div id="sleep-display" class="sleep-display"></div>
@@ -584,7 +600,10 @@ const CONST = {
     PADDING:  'shadow_v73_padding',
     AUTOSYNC: 'shadow_v74_autosync',
     PROXY: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='],
-    SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/'
+    SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/',
+    IDB_NAME: 'shadow_v74_cache',
+    IDB_STORE: 'projects',
+    IDB_VERSION: 1
 };
 const state = {
     segments: [],
@@ -601,6 +620,343 @@ const state = {
     autoSyncNextStart: true,
     _audioObjectUrl: null,
     _recordObjectUrl: null
+};
+
+// ============================================================
+//  IDB CACHE — 基于 IndexedDB 的离线缓存
+//  存储结构: { id, name, audioUrl, audioBlob, audioSize, srts:[{url,text,size}|null], segments, createdAt }
+//  id 由 mp3Url 哈希得到, 同一 URL 只保留一份
+// ============================================================
+const idbCache = {
+    _db: null,
+    _unavailable: false,
+    _unavailableReason: '',
+    isAvailable() { return !this._unavailable; },
+    // 检测当前环境是否支持 IndexedDB（sandbox iframe / 隐私模式等会禁用）
+    _checkSupport() {
+        try {
+            if (typeof indexedDB === 'undefined' || indexedDB === null) {
+                this._unavailable = true;
+                this._unavailableReason = '浏览器不支持 IndexedDB';
+                return false;
+            }
+            // 一些浏览器在 sandbox 下 indexedDB 存在但 open() 会抛错
+            // 这里只做静态检测，真正调用 open 时再捕获动态错误
+            return true;
+        } catch(e) {
+            this._unavailable = true;
+            this._unavailableReason = e.message || String(e);
+            return false;
+        }
+    },
+    async open() {
+        if (this._unavailable) return null;
+        if (this._db) return this._db;
+        if (!this._checkSupport()) return null;
+        return new Promise((resolve, reject) => {
+            try {
+                const req = indexedDB.open(CONST.IDB_NAME, CONST.IDB_VERSION);
+                req.onupgradeneeded = e => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(CONST.IDB_STORE)) {
+                        db.createObjectStore(CONST.IDB_STORE, { keyPath: 'id' });
+                    }
+                };
+                req.onsuccess = e => { this._db = e.target.result; resolve(this._db); };
+                req.onerror = e => {
+                    // 标记为不可用，下次直接降级（避免反复尝试）
+                    this._unavailable = true;
+                    this._unavailableReason = (e.target.error && e.target.error.message) || 'IDB 访问被拒绝';
+                    console.warn('[idbCache] IndexedDB 不可用，已降级为无缓存模式：', this._unavailableReason);
+                    resolve(null);
+                };
+            } catch(e) {
+                this._unavailable = true;
+                this._unavailableReason = e.message || String(e);
+                console.warn('[idbCache] IndexedDB 打开抛异常，已降级：', e);
+                resolve(null);
+            }
+        });
+    },
+    async _tx(mode) {
+        const db = await this.open();
+        if (!db) return null;
+        try {
+            return db.transaction(CONST.IDB_STORE, mode).objectStore(CONST.IDB_STORE);
+        } catch(e) {
+            console.warn('[idbCache] _tx 失败:', e);
+            return null;
+        }
+    },
+    async put(project) {
+        const store = await this._tx('readwrite');
+        if (!store) return; // 静默降级：上层流程继续，只是不入缓存
+        return new Promise((resolve, reject) => {
+            const r = store.put(project);
+            r.onsuccess = () => resolve();
+            r.onerror = () => reject(r.error);
+        });
+    },
+    async get(id) {
+        const store = await this._tx('readonly');
+        if (!store) return null; // 降级：视为未命中缓存
+        return new Promise((resolve, reject) => {
+            const r = store.get(id);
+            r.onsuccess = () => resolve(r.result);
+            r.onerror = () => reject(r.error);
+        });
+    },
+    async getAll() {
+        const store = await this._tx('readonly');
+        if (!store) return []; // 降级：空列表
+        return new Promise((resolve, reject) => {
+            const r = store.getAll();
+            r.onsuccess = () => resolve(r.result || []);
+            r.onerror = () => reject(r.error);
+        });
+    },
+    async delete(id) {
+        const store = await this._tx('readwrite');
+        if (!store) return;
+        return new Promise((resolve, reject) => {
+            const r = store.delete(id);
+            r.onsuccess = () => resolve();
+            r.onerror = () => reject(r.error);
+        });
+    },
+    async clearAll() {
+        const store = await this._tx('readwrite');
+        if (!store) return;
+        return new Promise((resolve, reject) => {
+            const r = store.clear();
+            r.onsuccess = () => resolve();
+            r.onerror = () => reject(r.error);
+        });
+    },
+    hashUrl(url) {
+        // 用规范化后的 URL 做哈希, 避免同文件因编码差异产生多份缓存
+        const s = net.fixUrl(url || '');
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = ((h << 5) - h) + s.charCodeAt(i);
+            h |= 0;
+        }
+        return 'p_' + Math.abs(h).toString(36);
+    },
+    extractFilename(url) {
+        if (!url) return '';
+        try {
+            let name = url.split('?')[0].split('#')[0].split('/').pop();
+            try { name = decodeURIComponent(name); } catch(e) {}
+            return name || '';
+        } catch(e) { return ''; }
+    },
+    formatSize(bytes) {
+        if (!bytes || bytes < 0) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+};
+
+// ============================================================
+//  CACHE UI — 离线缓存管理界面
+// ============================================================
+const cacheUI = {
+    async render() {
+        const statsEl = document.getElementById('cache-stats');
+        const listEl = document.getElementById('cache-list');
+        if (!statsEl || !listEl) return;
+        // 先检测 IndexedDB 是否可用
+        if (idbCache._unavailable || !idbCache._checkSupport()) {
+            statsEl.innerHTML = '<span style="color:var(--red);font-weight:600;">⚠️ 当前环境不支持 IndexedDB</span>';
+            listEl.innerHTML = '<div style="background:#FCE8E6;border:1px solid #F5C6CB;border-radius:10px;padding:14px 16px;font-size:13px;color:#C5221F;line-height:1.6;">' +
+                '<div style="font-weight:700;margin-bottom:6px;">原因：' + (idbCache._unavailableReason || '未知') + '</div>' +
+                '常见场景：预览窗口/嵌入式 iframe（沙箱）、浏览器隐私模式、Firefox 严格隐私保护等。<br><br>' +
+                '<strong>解决方法：</strong>把此 HTML 文件下载到本地，用 Chrome / Safari / Edge 浏览器直接打开（地址栏为 <code>file:///...</code>），即可正常使用离线缓存。其他功能不受影响。' +
+                '</div>';
+            return;
+        }
+        listEl.innerHTML = '<div style="text-align:center;color:#888;padding:30px;">加载中...</div>';
+        try {
+            const all = await idbCache.getAll();
+            if (!all || !all.length) {
+                statsEl.innerHTML = '📭 暂无离线缓存。在「🌍 网络链接」中点"🚀 极速加载"会自动保存到本地，下次使用同链接时即可离线秒开。';
+                listEl.innerHTML = '';
+                return;
+            }
+            const totalSize = all.reduce((s, p) => s + (p.audioSize || 0), 0);
+            statsEl.innerHTML = '<span style="font-size:14px;color:#444;">已缓存 <strong style="color:var(--primary);">' + all.length + '</strong> 个项目，共占用 <strong style="color:var(--primary);">' + idbCache.formatSize(totalSize) + '</strong></span> <button class="btn-mini" style="background:var(--red);margin-left:12px;" onclick="cacheUI.clearAll()">🗑 清空全部</button>';
+            all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            listEl.innerHTML = '';
+            all.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'sub-item';
+                const date = p.createdAt ? new Date(p.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                const subCount = (p.srts || []).filter(s => s && (s.text || s.url)).length;
+                const safeId = p.id.replace(/'/g, "\\'");
+                item.innerHTML = '<div class="sub-meta"><span class="idx-badge">📌 ' + ui.escapeHTML(p.name || '未命名') + '</span><span style="font-size:12px;color:#888;">' + idbCache.formatSize(p.audioSize || 0) + ' · ' + subCount + ' 条字幕 · ' + date + '</span></div>' +
+                    '<div class="sub-actions" style="grid-template-columns:1fr 1fr;">' +
+                    '<button class="action-btn btn-play-sm" onclick="cacheUI.load(\'' + safeId + '\')">▶ 加载使用</button>' +
+                    '<button class="action-btn btn-del" onclick="cacheUI.remove(\'' + safeId + '\')">✕ 删除</button>' +
+                    '</div>';
+                listEl.appendChild(item);
+            });
+        } catch(e) {
+            listEl.innerHTML = '<div style="color:var(--red);text-align:center;padding:30px;">加载失败: ' + (e.message || e) + '</div>';
+        }
+    },
+    async load(id) {
+        try {
+            const p = await idbCache.get(id);
+            if (!p || !p.audioBlob) { ui.toast('缓存不存在或损坏'); this.render(); return; }
+            ui.toast('⏳ 正在从离线缓存加载...');
+            // 加载音频
+            if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
+            state._audioObjectUrl = URL.createObjectURL(p.audioBlob);
+            const a = document.getElementById('main-audio');
+            a.src = state._audioObjectUrl;
+            a.dataset.name = p.name || '';
+            try { a.load(); } catch(e) {}
+            await net.waitAudioReady(a);
+            // 加载字幕
+            state.segments = Array.isArray(p.segments) ? p.segments : [];
+            state.subFileNames = {1:'', 2:'', 3:''};
+            state.currIndex = 0;
+            state.userBlurState = state.permBlurMode === 'show' ? false : true;
+            // 回填 URL 输入框(便于后续导出沿用原文件名)
+            document.getElementById('url-audio').value = p.audioUrl || '';
+            document.getElementById('url-srt-1').value = (p.srts && p.srts[0] && p.srts[0].url) || '';
+            document.getElementById('url-srt-2').value = (p.srts && p.srts[1] && p.srts[1].url) || '';
+            document.getElementById('url-srt-3').value = (p.srts && p.srts[2] && p.srts[2].url) || '';
+            app.saveInput();
+            localStorage.setItem(CONST.SESSION, p.audioUrl || '');
+            app.addHistory(p.audioUrl || '');
+            previewMode.clearForNewAudio(p.audioUrl || '');
+            ui.renderEditor();
+            ui.updateAudioStatus();
+            app.save();
+            ui.updatePractice(0);
+            ui.toast('✅ 已从离线缓存加载（0 网络请求）');
+            app.switchView('practice');
+        } catch(e) {
+            ui.toast('加载失败: ' + (e.message || e));
+        }
+    },
+    async remove(id) {
+        if (!confirm('确认删除这个离线缓存？删除后无法恢复，需要重新下载。')) return;
+        try {
+            await idbCache.delete(id);
+            ui.toast('已删除');
+            this.render();
+        } catch(e) { ui.toast('删除失败: ' + (e.message || e)); }
+    },
+    async clearAll() {
+        if (!confirm('确认清空全部离线缓存？此操作不可恢复！')) return;
+        if (!confirm('再次确认：将删除所有已缓存的音频和字幕，需要重新下载。')) return;
+        try {
+            await idbCache.clearAll();
+            ui.toast('已清空全部缓存');
+            this.render();
+        } catch(e) { ui.toast('清空失败: ' + (e.message || e)); }
+    }
+};
+
+// ============================================================
+//  WAKE LOCK — 屏幕常亮（防止 iPhone 息屏后循环中断的补充方案）
+//  支持: iOS Safari 16.4+, Chrome/Edge 84+, Android WebView
+//  不支持时优雅降级，按钮不可用并提示
+// ============================================================
+const wakeLock = {
+    sentinel: null,
+    enabled: false,
+    _visHandler: null,
+    isSupported() { return !!(navigator.wakeLock && navigator.wakeLock.request); },
+    async toggle() {
+        if (this.enabled) await this.release();
+        else await this.request();
+    },
+    async request() {
+        if (!this.isSupported()) {
+            ui.toast('❌ 当前浏览器不支持屏幕常亮（需 iOS Safari 16.4+ 或 Chrome 84+）');
+            return;
+        }
+        try {
+            // 必须在 visible 状态下请求
+            if (document.visibilityState !== 'visible') {
+                ui.toast('⚠️ 请先切回应用页面再开启');
+                return;
+            }
+            this.sentinel = await navigator.wakeLock.request('screen');
+            this.enabled = true;
+            this.sentinel.addEventListener('release', () => {
+                // 被系统释放（如切换标签页/打开其他应用）
+                if (this.enabled && document.visibilityState === 'visible') {
+                    // 在前台被释放，尝试重新获取
+                    setTimeout(() => { if (this.enabled) this._reacquire(); }, 200);
+                } else {
+                    this.enabled = false;
+                    this._updateUI();
+                }
+            });
+            // 监听 visibilitychange：回到前台时自动重新获取
+            if (!this._visHandler) {
+                this._visHandler = () => {
+                    if (document.visibilityState === 'visible' && this.enabled && !this.sentinel) {
+                        this._reacquire();
+                    }
+                };
+                document.addEventListener('visibilitychange', this._visHandler);
+            }
+            this._updateUI();
+            ui.toast('💡 屏幕已常亮（息屏也不会停）');
+        } catch(e) {
+            console.warn('wakeLock request failed:', e);
+            ui.toast('❌ 屏幕常亮启动失败: ' + (e.message || e.name));
+        }
+    },
+    async _reacquire() {
+        if (!this.isSupported() || !this.enabled) return;
+        try {
+            this.sentinel = await navigator.wakeLock.request('screen');
+            this.sentinel.addEventListener('release', () => {
+                if (this.enabled && document.visibilityState === 'visible') {
+                    setTimeout(() => { if (this.enabled) this._reacquire(); }, 200);
+                } else {
+                    this.enabled = false; this._updateUI();
+                }
+            });
+            this._updateUI();
+        } catch(e) { console.warn('wakeLock reacquire failed:', e); }
+    },
+    async release() {
+        if (this.sentinel) {
+            try { await this.sentinel.release(); } catch(e) {}
+            this.sentinel = null;
+        }
+        this.enabled = false;
+        if (this._visHandler) {
+            document.removeEventListener('visibilitychange', this._visHandler);
+            this._visHandler = null;
+        }
+        this._updateUI();
+        ui.toast('屏幕常亮已关闭');
+    },
+    _updateUI() {
+        const btn = document.getElementById('btn-wakelock');
+        if (!btn) return;
+        if (this.enabled) {
+            btn.style.background = 'var(--orange)';
+            btn.style.color = 'white';
+            btn.style.borderColor = 'var(--orange)';
+            btn.innerText = '💡 常亮ON';
+        } else {
+            btn.style.background = '#fff';
+            btn.style.color = '#5f6368';
+            btn.style.borderColor = '#ddd';
+            btn.innerText = '💡 常亮';
+        }
+    }
 };
 
 // ============================================================
@@ -746,8 +1102,19 @@ const net = {
 const engine = {
     mode: 'IDLE', reqId: null, editorTimer: null, isWaiting: false, waitTimer: null, segTimer: null,
     _pendingPlayCleanup: null,
-    startTicker() { if (this.reqId) cancelAnimationFrame(this.reqId); this.tick(); },
-        stopAll(releaseMic = false) {
+    _tickHandler: null,
+    startTicker() {
+        // 注册 timeupdate 监听器：iOS 息屏后 RAF 会停, 但 audio 在播时 timeupdate 仍会触发
+        const a = document.getElementById('main-audio');
+        if (!this._tickHandler) {
+            this._tickHandler = () => this._checkLoopBoundaries();
+            a.addEventListener('timeupdate', this._tickHandler);
+        }
+        // RAF 链路保留（亮屏时 UI 更新更流畅）
+        if (this.reqId) cancelAnimationFrame(this.reqId);
+        this.tick();
+    },
+    stopAll(releaseMic = false) {
         this.mode = 'IDLE'; this.isWaiting = false;
         if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; }
         if (this.segTimer) { clearTimeout(this.segTimer); this.segTimer = null; }
@@ -757,9 +1124,11 @@ const engine = {
         try { r.pause(); } catch(e) {}
         a.loop = false;
         if (this.reqId) { cancelAnimationFrame(this.reqId); this.reqId = null; }
+        // 清理 timeupdate 监听
+        if (this._tickHandler) { a.removeEventListener('timeupdate', this._tickHandler); this._tickHandler = null; }
         if (this.editorTimer) { clearTimeout(this.editorTimer); this.editorTimer = null; }
         recorder.stop(releaseMic);
-        if (recorder.cmpTimer) { clearInterval(recorder.cmpTimer); recorder.cmpTimer = null; } // 新增：清除录音对比定时器
+        if (recorder.cmpTimer) { clearInterval(recorder.cmpTimer); recorder.cmpTimer = null; }
         ui.resetButtons();
     },
     playSegment(i) {
@@ -791,25 +1160,38 @@ const engine = {
     },
     _watchUntil(endTime, onReach) {
         const a = document.getElementById('main-audio');
-        let rafId = null, stopped = false;
-        const cleanup = () => {
-            stopped = true;
-            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-            if (this._pendingPlayCleanup === cleanup) this._pendingPlayCleanup = null;
-        };
-        this._pendingPlayCleanup = cleanup;
-        const watch = () => {
+        let stopped = false, timerId = null;
+        const onTimeUpdate = () => {
             if (stopped) return;
             const reachedEnd = !a.paused && a.currentTime >= endTime;
             const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
-            if (reachedEnd || audioFullyEnded) {
-                cleanup();
-                onReach();
-                return;
-            }
-            rafId = requestAnimationFrame(watch);
+            if (reachedEnd || audioFullyEnded) fire();
         };
-        rafId = requestAnimationFrame(watch);
+        const onEnded = () => { if (!stopped) fire(); };
+        const fire = () => {
+            if (stopped) return;
+            cleanup();
+            onReach();
+        };
+        const cleanup = () => {
+            stopped = true;
+            a.removeEventListener('timeupdate', onTimeUpdate);
+            a.removeEventListener('ended', onEnded);
+            if (timerId) { clearTimeout(timerId); timerId = null; }
+            if (this._pendingPlayCleanup === cleanup) this._pendingPlayCleanup = null;
+        };
+        this._pendingPlayCleanup = cleanup;
+        // timeupdate 是 iOS 息屏后仍能触发的关键事件
+        a.addEventListener('timeupdate', onTimeUpdate);
+        a.addEventListener('ended', onEnded);
+        // setTimeout 兜底：根据剩余时长计算，避免极端情况下事件不触发卡死
+        const ct = a.currentTime;
+        const remainSec = Math.max(0.05, endTime - ct);
+        timerId = setTimeout(() => {
+            if (stopped) return;
+            // 强制检查一次；若仍超出也触发
+            if (a.currentTime >= endTime - 0.01 || a.ended || a.paused) fire();
+        }, remainSec * 1000 + 500);
         return cleanup;
     },
     _playSegmentTimed(win, onEnd) {
@@ -825,7 +1207,12 @@ const engine = {
         if (playP && playP.catch) playP.catch(e => { console.error(e); ui.toast("播放失败"); });
     },
     tick() {
+        // RAF 链路（亮屏时约 60Hz；息屏时停止，由 timeupdate 兜底）
         this.reqId = requestAnimationFrame(() => this.tick());
+        this._checkLoopBoundaries();
+    },
+    _checkLoopBoundaries() {
+        if (this.mode === 'IDLE') return;
         const a = document.getElementById('main-audio');
         const ct = a.currentTime;
         if (this.mode === 'LOOP_RANGE') {
@@ -1020,9 +1407,17 @@ const ui = {
         h.forEach((item, i) => { const o = document.createElement('option'); o.value = i; o.text = item.name; sel.appendChild(o); });
     },
     setTab(t) {
-        document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', (t==='url'&&i===0)||(t==='local'&&i===1)));
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            const txt = b.textContent || '';
+            const match = (t==='url' && txt.includes('网络')) ||
+                          (t==='local' && txt.includes('本地')) ||
+                          (t==='cache' && txt.includes('离线'));
+            b.classList.toggle('active', match);
+        });
         document.getElementById('group-url').style.display = t === 'url' ? 'block' : 'none';
         document.getElementById('group-local').style.display = t === 'local' ? 'block' : 'none';
+        document.getElementById('group-cache').style.display = t === 'cache' ? 'block' : 'none';
+        if (t === 'cache') cacheUI.render();
     },
     setLoadBtnText(t) {
         const btn = document.getElementById('btn-load-url');
@@ -1248,9 +1643,66 @@ const app = {
         if (!mp3) return ui.toast("请输入 MP3 链接");
         const btn = document.getElementById('btn-load-url'), spin = document.getElementById('url-spinner');
         btn.disabled = true; spin.style.display = 'inline-block';
+        const projectId = idbCache.hashUrl(mp3);
+        const projectName = idbCache.extractFilename(mp3);
         try {
+            // ============ 1) 先查离线缓存 ============
+            const cached = await idbCache.get(projectId);
+            if (cached && cached.audioBlob) {
+                ui.setLoadBtnText("✅ 命中离线缓存...");
+                // 检查本地是否有针对同音频修改过的 segments
+                const localSegsRaw = localStorage.getItem(CONST.STORAGE);
+                const localSessionMp3 = localStorage.getItem(CONST.SESSION);
+                let localSegs = null;
+                try { localSegs = localSegsRaw ? JSON.parse(localSegsRaw) : null; } catch(e) {}
+                const sameAudio = localSessionMp3 === mp3 && Array.isArray(localSegs) && localSegs.length > 0;
+                const cachedSegs = Array.isArray(cached.segments) ? cached.segments : [];
+                const localModified = sameAudio && JSON.stringify(localSegs) !== JSON.stringify(cachedSegs);
+                let useSegments = cachedSegs;
+                if (localModified) {
+                    const choice = await this._askSegmentChoice();
+                    if (choice === 'local') useSegments = localSegs;
+                }
+                // 从缓存加载音频
+                if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
+                state._audioObjectUrl = URL.createObjectURL(cached.audioBlob);
+                const a = document.getElementById('main-audio');
+                a.src = state._audioObjectUrl;
+                a.dataset.name = cached.name || projectName;
+                try { a.load(); } catch(e) {}
+                await net.waitAudioReady(a);
+                state.segments = useSegments;
+                state.subFileNames = {1:'', 2:'', 3:''};
+                state.currIndex = 0;
+                state.userBlurState = state.permBlurMode === 'show' ? false : true;
+                // 回填 URL 输入框(便于后续导出沿用原文件名)
+                document.getElementById('url-audio').value = cached.audioUrl || mp3;
+                document.getElementById('url-srt-1').value = (cached.srts && cached.srts[0] && cached.srts[0].url) || s1;
+                document.getElementById('url-srt-2').value = (cached.srts && cached.srts[1] && cached.srts[1].url) || s2;
+                document.getElementById('url-srt-3').value = (cached.srts && cached.srts[2] && cached.srts[2].url) || s3;
+                this.saveInput();
+                localStorage.setItem(CONST.SESSION, mp3);
+                this.addHistory(mp3);
+                previewMode.clearForNewAudio(mp3);
+                ui.renderEditor();
+                ui.updateAudioStatus();
+                this.save();
+                ui.updatePractice(0);
+                ui.toast("✅ 已从离线缓存加载（0 网络请求）");
+                app.switchView('practice');
+                return;
+            }
+            // ============ 2) 未命中：走网络 ============
+            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            const effType = conn ? conn.effectiveType : '';
+            if (effType === 'slow-2g' || effType === '2g') {
+                ui.toast('⚠️ 当前网络较慢(' + effType + ')，如失败请切到电信/WiFi');
+            } else if (conn && conn.saveData) {
+                ui.toast('⚠️ 浏览器开启了省流模式，下载可能较慢');
+            }
             ui.toast("正在下载音频...");
             const ab = await net.fetchBlobSmart(mp3);
+            const audioBlob = ab;
             if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
             state._audioObjectUrl = URL.createObjectURL(ab);
             document.getElementById('main-audio').src = state._audioObjectUrl;
@@ -1275,24 +1727,68 @@ const app = {
                 );
                 if (!state.segments.length) state.segments = [{start:0,end:state.audioBuffer.duration,text:"(自动断句失败)"}];
             }
-                       localStorage.setItem(CONST.SESSION, mp3);
+            const finalSegments = state.segments;
+            localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
             previewMode.clearForNewAudio(mp3);
             state.subFileNames = {1:'', 2:'', 3:''};
-            
-            // 新增：强制重置到第一句
+            // 强制重置到第一句
             state.currIndex = 0; 
             state.userBlurState = state.permBlurMode === 'show' ? false : true;
-            
             ui.renderEditor(); 
             ui.updateAudioStatus();
-            this.save(); // 新增：把重置后的 currIndex=0 存入本地缓存
-            ui.updatePractice(0); // 新增：让练习页的文本立刻显示第一句
-            
-            ui.toast("✅ 全部就绪，正在跳转...");
+            this.save();
+            ui.updatePractice(0);
+            // ============ 3) 回写缓存 ============
+            // IndexedDB 不可用时跳过（静默降级），其他情况才提示保存
+            if (!idbCache.isAvailable()) {
+                ui.toast("✅ 全部就绪（当前环境不支持离线缓存，仅本次可用）");
+            } else {
+                try {
+                    ui.setLoadBtnText("💾 正在保存到离线缓存...");
+                    const project = {
+                        id: projectId,
+                        name: projectName,
+                        audioUrl: mp3,
+                        audioBlob: audioBlob,
+                        audioSize: audioBlob.size,
+                        srts: [
+                            t1 ? { url: s1, text: t1, size: t1.length } : null,
+                            t2 ? { url: s2, text: t2, size: t2.length } : null,
+                            t3 ? { url: s3, text: t3, size: t3.length } : null
+                        ],
+                        segments: finalSegments,
+                        createdAt: Date.now()
+                    };
+                    await idbCache.put(project);
+                    if (idbCache.isAvailable()) {
+                        ui.toast("✅ 全部就绪，已保存到离线缓存");
+                    } else {
+                        ui.toast("✅ 全部就绪（当前环境不支持离线缓存，仅本次可用）");
+                    }
+                } catch(e) {
+                    console.warn('缓存写入失败:', e);
+                    ui.toast("✅ 全部就绪（缓存写入失败，不影响使用）");
+                }
+            }
             app.switchView('practice');
         } catch(e) { console.error(e); ui.setLoadBtnText("加载失败:" + e.message); }
         finally { btn.disabled=false; spin.style.display='none'; setTimeout(()=>ui.setLoadBtnText("default"),3000); }
+    },
+    _askSegmentChoice() {
+        return new Promise(resolve => {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:3000;display:flex;justify-content:center;align-items:center;';
+            modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.25);font-family:inherit;">' +
+                '<h3 style="margin:0 0 12px;font-size:17px;color:#202124;">💾 检测到本地有修改</h3>' +
+                '<p style="margin:0 0 18px;font-size:14px;color:#5F6368;line-height:1.6;">此音频已缓存到离线，但你之前在本地修改过字幕时间轴或文本。要使用哪一份？</p>' +
+                '<button id="seg-choice-local" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;">📝 用本地修改</button>' +
+                '<button id="seg-choice-cached" style="width:100%;padding:12px;border:none;border-radius:10px;background:#F1F3F4;color:#3C4043;font-size:14px;font-weight:700;cursor:pointer;">💾 用原缓存覆盖</button>' +
+                '</div>';
+            document.body.appendChild(modal);
+            modal.querySelector('#seg-choice-local').onclick = () => { modal.remove(); resolve('local'); };
+            modal.querySelector('#seg-choice-cached').onclick = () => { modal.remove(); resolve('cached'); };
+        });
     },
     mergeSub(newS, k) { state.segments.forEach(b => { const m=newS.find(n=>n.start>=b.start&&n.start<b.end); if(m) b[k]=m.text; }); },
     switchView(v) {
@@ -1822,6 +2318,7 @@ const aiMode = {
         this.active = false; this.manualPracticeMode = false; this.reviewMode = false;
         if (this._cycleTimer) { clearTimeout(this._cycleTimer); this._cycleTimer = null; }
         if (this._listenTimeout) { clearTimeout(this._listenTimeout); this._listenTimeout = null; }
+        if (this._playWatcherCleanup) { this._playWatcherCleanup(); this._playWatcherCleanup = null; }
         if (this._playRafId) { cancelAnimationFrame(this._playRafId); this._playRafId = null; }
         if (this.recognition) { try { this.recognition.abort(); } catch(e) {} this.recognition = null; }
         if (this._warmSR) { try { this._warmSR.abort(); } catch(e) {} this._warmSR = null; }
@@ -1849,13 +2346,42 @@ const aiMode = {
         this._startPlayWatcher(win.end);
     },
     _startPlayWatcher(endTime) {
-        if (this._playRafId) { cancelAnimationFrame(this._playRafId); this._playRafId = null; }
         const a = document.getElementById('main-audio');
+        // 清理旧监听
+        if (this._playWatcherCleanup) { this._playWatcherCleanup(); this._playWatcherCleanup = null; }
+        if (this._playRafId) { cancelAnimationFrame(this._playRafId); this._playRafId = null; }
+        let stopped = false;
+        const fire = () => {
+            if (stopped || !this.active) return;
+            stopped = true;
+            cleanup();
+            try { a.pause(); } catch(e) {}
+            this.startListening();
+        };
+        const onTimeUpdate = () => {
+            if (stopped || !this.active) return;
+            const reachedEnd = !a.paused && a.currentTime >= endTime;
+            const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
+            if (reachedEnd || audioFullyEnded) fire();
+        };
+        const onEnded = () => { if (!stopped && this.active) fire(); };
+        const cleanup = () => {
+            stopped = true;
+            a.removeEventListener('timeupdate', onTimeUpdate);
+            a.removeEventListener('ended', onEnded);
+            if (this._playRafId) { cancelAnimationFrame(this._playRafId); this._playRafId = null; }
+        };
+        this._playWatcherCleanup = cleanup;
+        // timeupdate: iOS 息屏后仍能触发
+        a.addEventListener('timeupdate', onTimeUpdate);
+        a.addEventListener('ended', onEnded);
+        // RAF 链路保留：亮屏时更即时
         const watch = () => {
-            if (!this.active) { this._playRafId = null; return; }
-            const reachedEnd = !a.paused && a.currentTime >= endTime; const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
+            if (stopped || !this.active) { this._playRafId = null; return; }
+            const reachedEnd = !a.paused && a.currentTime >= endTime;
+            const audioFullyEnded = a.ended || (a.duration > 0 && a.currentTime >= a.duration - 0.02);
             if (!reachedEnd && !audioFullyEnded) { this._playRafId = requestAnimationFrame(watch); return; }
-            try { a.pause(); } catch(e) {} this._playRafId = null; this.startListening();
+            fire();
         };
         this._playRafId = requestAnimationFrame(watch);
     },
