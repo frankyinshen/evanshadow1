@@ -12,16 +12,22 @@
 <!-- V76 | build:20261112 | 修复：cacheUI.load/loadProject/importSub 三处补 _loopInitialized 重置（防循环区间残留上一个音频）；state 显式声明 _loopInitialized:false；删 loadFromUrl 里 localSegs 死代码；updateSeg 还原输入框加 typeof 防护防脏数据崩处理器；delSeg/mergeSeg/splitSeg starredIndices 映射后加 .sort 防御性排序；版本号统一到 V76 -->
 <!-- V77 | build:20261112 | 修复：loadFromUrl 备份音频状态（src/objectUrl/audioBuffer），restoreBackup 完整恢复音频，加载过程不提前 revoke 旧 objectURL（防"字幕恢复但音频还是新的"字画错配）；importSub(k=0) 重置 currIndex 和 starredIndices（防练习页卡空白）；loadProject 调 clearForNewAudio 刷新 badge；previewMode.start 补 updateBadge；exportProject/exportSRT 回收 objectURL 防内存泄漏；recorder alert 改 toast；serverBrowser.parseAndRender new URL 加 try/catch 防畸形链接崩整个目录 -->
 <!-- V78 | build:20261112 | 修复：_syncCacheSegments 加 SESSION 校验（防加载失败后旧字幕写进新缓存）；recorder iOS 手势预热（toggle 开始录音时用静音 WAV 解锁 record-audio，避免后续 playCmp 延时 r.play() 被 iOS 拒绝）；applyReAnalyze 禁用按钮防连点竞态+加 catch；restoreBackup 清 _cacheSyncTimer + a.src 改 removeAttribute（防空 src 触发无效请求）；restoreProgress 重置 _loopInitialized + clamp currIndex；delSeg starredIndices 加越界过滤；visibilitychange 即时同步缓存防页面关闭丢失 -->
+<!-- V79 | build:20261113 | 1) P1: applyReAnalyze 空结果保护 + mergeSeg 修正 currIndex；2) P2: _watchUntil 精确定时器(按倍速自我重排) + recorder.stopAll 丢弃录音不触发 playCmp + 区间循环输入校验 + AI 弯引号归一 + GitHub 链接转换修正；3) P3: restoreBackup 恢复 dataset.name + detectSilenceAsync 30s 超时兜底 + applyReAnalyze 按钮加 id + restoreProgress 文案用 clamp 值 + loadProject 校验 segments 数组并 clamp currIndex + 睡眠定时关 AI/wakeLock + wakeLock enabled/sentinel 分离；4) 新增统计功能：从「英语精听播放器」移植统计收集/UI/分享长图/备份导入导出（version:3 兼容，可与精听互通） -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V78</title>
+<title>影子跟读 Pro V79</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
     --red: #EA4335; --purple: #A142F4; --ai: #00897B; --ai-dark: #00695C;
     --bg: #F8F9FA; --text: #202124; --border: #DADCE0;
     --preview: #F57C00; --preview-light: #FFF3E0; --preview-border: #FFE0B2;
+    /* V79: 统计 UI 用的 ios-* 变量（从精听播放器移植补齐） */
+    --ios-bg: #F8F9FA; --ios-card: #ffffff; --ios-text: #202124; --ios-subtext: #5F6368;
+    --ios-blue: #1A73E8; --ios-red: #EA4335; --ios-blur: rgba(255,255,255,0.95);
+    --ios-sep: rgba(0,0,0,0.08); --ios-divider: rgba(0,0,0,0.08); --ios-gray-btn: #F1F3F4;
+    --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
@@ -265,6 +271,90 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .browser-item-name { word-break: break-all; flex: 1; }
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.75; } 100% { opacity: 1; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============ V79: 统计页 / 分享 / 备份 CSS（从精听播放器移植） ============ */
+.stats-sheet { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--ios-bg); z-index: 5000; display: none; flex-direction: column; }
+.stats-sheet.open { display: flex; }
+.st-hdr { background: var(--ios-blur); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0.5px solid var(--ios-sep); padding: calc(var(--safe-top) + 8px) 16px 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.st-hdr-title { font-size: 17px; font-weight: 700; color: var(--ios-text); }
+.st-hdr-close { font-size: 24px; color: var(--ios-blue); cursor: pointer; background: none; border: none; padding: 4px 8px; line-height: 1; font-weight: 300; }
+.st-body { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; max-width: 640px; margin: 0 auto; width: 100%; }
+.st-card { background: var(--ios-card); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.st-card-title { font-size: 13px; font-weight: 700; color: var(--ios-subtext); margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.3px; }
+.st-stat-big { font-size: 32px; font-weight: 700; color: var(--ios-text); line-height: 1.1; }
+.st-stat-big .unit { font-size: 15px; color: var(--ios-subtext); font-weight: 500; margin-left: 4px; }
+.st-stat-sub { font-size: 13px; color: var(--ios-subtext); margin-top: 4px; }
+.st-week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.st-week-nav-btn { background: var(--ios-gray-btn); border: none; border-radius: 8px; padding: 6px 14px; font-size: 14px; color: var(--ios-text); cursor: pointer; font-weight: 600; }
+.st-week-nav-label { font-size: 15px; font-weight: 700; color: var(--ios-text); }
+.st-chart { width: 100%; height: 160px; display: block; }
+.st-day-list { margin-top: 8px; }
+.st-day-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 0.5px solid var(--ios-divider); font-size: 14px; }
+.st-day-row:last-child { border-bottom: none; }
+.st-day-date { width: 64px; color: var(--ios-subtext); font-weight: 600; flex-shrink: 0; }
+.st-day-bar { flex: 1; height: 24px; background: var(--ios-gray-btn); border-radius: 6px; margin: 0 12px; overflow: hidden; position: relative; }
+.st-day-bar-fill { height: 100%; background: var(--ios-blue); border-radius: 6px; min-width: 2px; transition: width 0.3s; }
+.st-day-time { width: 60px; text-align: right; color: var(--ios-text); font-weight: 600; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.st-tracks-card { }
+.st-track-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 0.5px solid var(--ios-divider); font-size: 13px; }
+.st-track-row:last-child { border-bottom: none; }
+.st-track-name { flex: 1; color: var(--ios-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
+.st-track-time { color: var(--ios-subtext); font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 12px; flex-shrink: 0; }
+.st-track-del { background: none; border: none; color: var(--ios-red); cursor: pointer; font-size: 18px; padding: 4px; line-height: 1; flex-shrink: 0; }
+.st-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.st-btn { flex: 1; min-width: 120px; padding: 12px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.st-btn-primary { background: var(--ios-blue); color: #fff; }
+.st-btn-secondary { background: var(--ios-gray-btn); color: var(--ios-text); }
+.st-note { font-size: 11px; color: var(--ios-subtext); text-align: center; margin-top: 12px; line-height: 1.5; }
+
+/* 分享选择器 */
+.share-picker-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 6000; display: none; }
+.share-picker-overlay.open { display: block; }
+.share-picker-sheet { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--ios-card); border-radius: 16px 16px 0 0; z-index: 6001; display: none; flex-direction: column; padding-bottom: var(--safe-bottom); max-height: 80vh; }
+.share-picker-sheet.open { display: flex; }
+.sp-header { padding: 16px; border-bottom: 0.5px solid var(--ios-divider); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.sp-title { font-size: 16px; font-weight: 700; }
+.sp-close { font-size: 24px; color: var(--ios-subtext); cursor: pointer; background: none; border: none; line-height: 1; }
+.sp-body { padding: 16px; overflow-y: auto; }
+.sp-section { margin-bottom: 18px; }
+.sp-section-title { font-size: 13px; font-weight: 700; color: var(--ios-subtext); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+.sp-opt { display: flex; align-items: center; padding: 12px; border-radius: 10px; background: var(--ios-gray-btn); margin-bottom: 8px; cursor: pointer; font-size: 14px; }
+.sp-opt input { margin-right: 12px; }
+.sp-opt-label { flex: 1; }
+.sp-range-pick { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.sp-range-pick input { flex: 1; padding: 8px; border: 1px solid var(--ios-divider); border-radius: 8px; font-size: 13px; }
+.sp-share-btn { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--ios-blue); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+
+/* 备份 sheet */
+.backup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 5500; display: none; }
+.backup-overlay.open { display: block; }
+.backup-sheet { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--ios-card); border-radius: 16px 16px 0 0; z-index: 5501; display: none; flex-direction: column; padding-bottom: var(--safe-bottom); max-height: 85vh; }
+.backup-sheet.open { display: flex; }
+.bs-header { padding: 16px; border-bottom: 0.5px solid var(--ios-divider); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.bs-title { font-size: 16px; font-weight: 700; }
+.bs-close { font-size: 24px; color: var(--ios-subtext); cursor: pointer; background: none; border: none; line-height: 1; }
+.bs-body { padding: 16px; overflow-y: auto; }
+.bs-action { display: block; width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; margin-bottom: 10px; text-align: left; }
+.bs-action-primary { background: var(--ios-blue); color: #fff; }
+.bs-action-secondary { background: var(--ios-gray-btn); color: var(--ios-text); }
+.bs-action-danger { background: #FCE8E6; color: var(--ios-red); }
+.bs-info { font-size: 12px; color: var(--ios-subtext); line-height: 1.6; margin: 12px 0; padding: 10px 12px; background: var(--ios-gray-btn); border-radius: 8px; }
+
+/* 区间导出 sheet */
+.partial-export-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 5600; display: none; }
+.partial-export-overlay.open { display: block; }
+.partial-export-sheet { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--ios-card); border-radius: 16px 16px 0 0; z-index: 5601; display: none; flex-direction: column; padding-bottom: var(--safe-bottom); max-height: 85vh; }
+.partial-export-sheet.open { display: flex; }
+.pe-header { padding: 16px; border-bottom: 0.5px solid var(--ios-divider); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.pe-title { font-size: 16px; font-weight: 700; }
+.pe-close { font-size: 24px; color: var(--ios-subtext); cursor: pointer; background: none; border: none; line-height: 1; }
+.pe-body { padding: 16px; overflow-y: auto; }
+.pe-range-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.pe-range-row input { flex: 1; padding: 8px; border: 1px solid var(--ios-divider); border-radius: 8px; font-size: 13px; }
+.pe-file-list { margin: 12px 0; max-height: 240px; overflow-y: auto; }
+.pe-file-row { display: flex; align-items: center; padding: 10px; border-bottom: 0.5px solid var(--ios-divider); font-size: 13px; }
+.pe-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-file-time { color: var(--ios-subtext); font-weight: 600; margin-left: 8px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -272,7 +362,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V78</div>
+    <div class="nav-title">🎧 影子跟读 V79</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -345,7 +435,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <span style="font-size:13px;font-weight:600;color:#555">🔪 断句灵敏度: </span>
                 <input type="range" id="threshold-range" min="0.01" max="0.1" step="0.01" value="0.02" style="flex:1" oninput="ui.updateThresh(this.value)">
                 <span id="threshold-val" style="font-family:monospace;font-size:12px;">0.02</span>
-                <button class="btn-mini" onclick="app.applyReAnalyze()">执行</button>
+                <button class="btn-mini" id="btn-reanalyze" onclick="app.applyReAnalyze()">执行</button>
             </div>
             <div class="slider-row" style="justify-content:space-between;">
                 <span style="font-size:13px;font-weight:600;color:#555">🔗 改结束时间时自动联动下一句开始时间</span>
@@ -399,6 +489,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value)"><option>1</option></select>
                 </div>
                 <div class="header-right-group">
+                    <button style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;" onclick="openStats()" aria-label="跟读统计">📊</button>
                     <div class="sleep-wrapper">
                         <div class="icon-btn" onclick="ui.toggleSleepModal()">⏰</div>
                         <div id="sleep-display" class="sleep-display"></div>
@@ -592,6 +683,44 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 <div id="toast" class="toast">提示</div>
 
+<!-- ============ V79: 统计页 / 分享 / 备份 HTML 结构 ============ -->
+<div id="statsSheet" class="stats-sheet">
+    <div class="st-hdr">
+        <span class="st-hdr-title">📊 跟读统计</span>
+        <button class="st-hdr-close" onclick="closeStats()" aria-label="关闭">×</button>
+    </div>
+    <div class="st-body" id="stBody"></div>
+</div>
+
+<div id="sharePickerOverlay" class="share-picker-overlay" onclick="closeSharePicker()"></div>
+<div id="sharePickerSheet" class="share-picker-sheet">
+    <div class="sp-header">
+        <span class="sp-title">📤 生成分享长图</span>
+        <button class="sp-close" onclick="closeSharePicker()" aria-label="关闭">×</button>
+    </div>
+    <div class="sp-body" id="spBody"></div>
+</div>
+
+<div id="backupOverlay" class="backup-overlay" onclick="closeBackupSheet()"></div>
+<div id="backupSheet" class="backup-sheet">
+    <div class="bs-header">
+        <span class="bs-title">💾 统计备份</span>
+        <button class="bs-close" onclick="closeBackupSheet()" aria-label="关闭">×</button>
+    </div>
+    <div class="bs-body" id="bsBody"></div>
+</div>
+
+<div id="partialExportOverlay" class="partial-export-overlay" onclick="closePartialExport()"></div>
+<div id="partialExportSheet" class="partial-export-sheet">
+    <div class="pe-header">
+        <span class="pe-title">📤 区间导出</span>
+        <button class="pe-close" onclick="closePartialExport()" aria-label="关闭">×</button>
+    </div>
+    <div class="pe-body" id="peBody"></div>
+</div>
+
+<input type="file" id="bsFileInput" accept=".json" style="display:none">
+
 <script>
 // ============================================================
 //  常量 & 全局状态
@@ -605,6 +734,7 @@ const CONST = {
     PREVIEW:  'shadow_v72_preview',
     PADDING:  'shadow_v73_padding',
     AUTOSYNC: 'shadow_v74_autosync',
+    STATS:    'shadow_stats_v1', // V79: 统计数据 storage key
     PROXY: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='],
     SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/',
     IDB_NAME: 'shadow_v74_cache',
@@ -628,6 +758,22 @@ const state = {
     _recordObjectUrl: null,
     _loopInitialized: false // 循环区间是否已初始化（首次 renderEditor 时设默认值，后续仅 clamp）
 };
+
+// V79: 统计相关全局变量
+var statsDB = {};              // { 'YYYY-MM-DD': { hashKey: { name, url, sec, count, source } } }
+var _stFlush = 0;              // 攒够 N 次再写盘
+var _sessionCounted = false;   // 当前音频是否已计入"播放次数"
+var _sessionSec = 0;           // 当前音频本次会话累计秒数（达 30s 计一次播放）
+var _lastAudioTime = -1;       // 上次记录时的音频 currentTime
+var _lastWallClock = -1;       // 上次记录时的墙钟时间（兜底用，避免 seek 后 delta 巨大）
+var _stWeekOff = 0;            // 统计页周偏移（0=本周, -1=上周, ...）
+var _stSelDay = null;          // 统计页选中的某一天（用于分享）
+var _drawChartTimer = null;    // 防抖绘制柱状图
+var _chartAC = null;           // drawBarChart 的 AbortController（防止重复绘制竞态）
+// PROGRAMME_EPOCH：分享长图"学习计划第 N 周"的起点
+var PROGRAMME_EPOCH = new Date('2026-01-01T00:00:00');
+// 初始化：读 localStorage 里已存的统计
+statsDB = safeParse(localStorage.getItem(CONST.STATS), {});
 
 // ============================================================
 //  IDB CACHE — 基于 IndexedDB 的离线缓存
@@ -886,8 +1032,8 @@ const cacheUI = {
 //  不支持时优雅降级，按钮不可用并提示
 // ============================================================
 const wakeLock = {
-    sentinel: null,
-    enabled: false,
+    sentinel: null,    // 当前持有的 WakeLockSentinel
+    enabled: false,    // 用户意图（开启还是关闭）—— 与 sentinel 分离
     _visHandler: null,
     isSupported() { return !!(navigator.wakeLock && navigator.wakeLock.request); },
     async toggle() {
@@ -900,26 +1046,22 @@ const wakeLock = {
             return;
         }
         try {
-            // 必须在 visible 状态下请求
             if (document.visibilityState !== 'visible') {
                 ui.toast('⚠️ 请先切回应用页面再开启');
                 return;
             }
             this.sentinel = await navigator.wakeLock.request('screen');
-            this.enabled = true;
+            this.enabled = true; // 用户意图：开启
+            // P3-7: release 事件只清 sentinel 不清 enabled（区分系统释放 vs 用户关闭）
             this.sentinel.addEventListener('release', () => {
-                // 被系统释放（如切换标签页/打开其他应用）
-                if (this.enabled && document.visibilityState === 'visible') {
-                    // 在前台被释放，尝试重新获取
-                    setTimeout(() => { if (this.enabled) this._reacquire(); }, 200);
-                } else {
-                    this.enabled = false;
-                    this._updateUI();
-                }
+                // 系统释放了锁（如切后台）—— 只清 sentinel，不改 enabled（用户意图）
+                this.sentinel = null;
+                this._updateUI();
             });
-            // 监听 visibilitychange：回到前台时自动重新获取
+            // 监听 visibilitychange：回前台时按用户意图自动重新获取
             if (!this._visHandler) {
                 this._visHandler = () => {
+                    // P3-7: 前台且用户意图仍是开启但当前没持锁，重新获取
                     if (document.visibilityState === 'visible' && this.enabled && !this.sentinel) {
                         this._reacquire();
                     }
@@ -938,21 +1080,19 @@ const wakeLock = {
         try {
             this.sentinel = await navigator.wakeLock.request('screen');
             this.sentinel.addEventListener('release', () => {
-                if (this.enabled && document.visibilityState === 'visible') {
-                    setTimeout(() => { if (this.enabled) this._reacquire(); }, 200);
-                } else {
-                    this.enabled = false; this._updateUI();
-                }
+                this.sentinel = null;
+                this._updateUI();
             });
             this._updateUI();
         } catch(e) { console.warn('wakeLock reacquire failed:', e); }
     },
     async release() {
+        // P3-7: release 是用户主动关闭——清 enabled（用户意图）+ 释放 sentinel
+        this.enabled = false;
         if (this.sentinel) {
             try { await this.sentinel.release(); } catch(e) {}
             this.sentinel = null;
         }
-        this.enabled = false;
         if (this._visHandler) {
             document.removeEventListener('visibilitychange', this._visHandler);
             this._visHandler = null;
@@ -963,6 +1103,7 @@ const wakeLock = {
     _updateUI() {
         const btn = document.getElementById('btn-wakelock');
         if (!btn) return;
+        // P3-7: UI 按 enabled（用户意图）显示，与 sentinel 解耦
         if (this.enabled) {
             btn.style.background = 'var(--orange)';
             btn.style.color = 'white';
@@ -1078,8 +1219,9 @@ const net = {
         url = url.trim();
         if (url.includes('gitee.com') && (url.includes('/edit/') || url.includes('/blob/')))
             url = url.replace(/\/edit\/|\/blob\//, '/raw/');
+        // P2-5: GitHub blob 链接转 raw：先替换 host 再替换路径，避免重复替换
         if (url.includes('github.com') && url.includes('/blob/'))
-            url = url.replace('/blob/', '/raw/').replace('github.com', 'raw.githubusercontent.com');
+            url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
         try {
             const u = new URL(url);
             u.pathname = u.pathname.split('/').map(seg => {
@@ -1150,8 +1292,11 @@ const engine = {
         // 清理 timeupdate 监听
         if (this._tickHandler) { a.removeEventListener('timeupdate', this._tickHandler); this._tickHandler = null; }
         if (this.editorTimer) { clearTimeout(this.editorTimer); this.editorTimer = null; }
-        recorder.stop(releaseMic);
+        // P2-2: stopAll 丢弃录音不触发 playCmp（避免切句时上一次录音串音）
+        recorder.stop(true);
         if (recorder.cmpTimer) { clearInterval(recorder.cmpTimer); recorder.cmpTimer = null; }
+        // P2-2: 清理 playCmp 内部延时播放录音的定时器
+        if (recorder._playCmpTimer) { clearTimeout(recorder._playCmpTimer); recorder._playCmpTimer = null; }
         ui.resetButtons();
     },
     playSegment(i) {
@@ -1204,17 +1349,21 @@ const engine = {
             if (this._pendingPlayCleanup === cleanup) this._pendingPlayCleanup = null;
         };
         this._pendingPlayCleanup = cleanup;
-        // timeupdate 是 iOS 息屏后仍能触发的关键事件
         a.addEventListener('timeupdate', onTimeUpdate);
         a.addEventListener('ended', onEnded);
-        // setTimeout 兜底：根据剩余时长计算，避免极端情况下事件不触发卡死
-        const ct = a.currentTime;
-        const remainSec = Math.max(0.05, endTime - ct);
-        timerId = setTimeout(() => {
+        // P2-1: 精确定时器——按倍速计算剩余时间到点检查，没到点就自我重排
+        // 解决 iOS 息屏后 timeupdate 频率降低导致单句循环/播单句卡住或越界
+        const arm = () => {
             if (stopped) return;
-            // 强制检查一次；若仍超出也触发
-            if (a.currentTime >= endTime - 0.01 || a.ended || a.paused) fire();
-        }, remainSec * 1000 + 500);
+            const rate = a.playbackRate || 1;
+            const ms = Math.max(10, ((endTime - a.currentTime) / rate) * 1000 - 20);
+            timerId = setTimeout(() => {
+                if (stopped) return;
+                if (a.currentTime >= endTime - 0.02 || a.ended) fire();
+                else arm();
+            }, ms);
+        };
+        arm();
         return cleanup;
     },
     _playSegmentTimed(win, onEnd) {
@@ -1325,7 +1474,16 @@ const engine = {
         else {
             this.stopAll();
             if (!state.segments.length) return ui.toast("无内容");
-            const start = Math.max(0, parseInt(document.getElementById('loop-start').value) - 1);
+            // P2-3: 输入校验 + clamp + 自动纠正起始>结束
+            const startEl = document.getElementById('loop-start');
+            const endEl = document.getElementById('loop-end');
+            let s = parseInt(startEl.value), e = parseInt(endEl.value);
+            const n = state.segments.length;
+            if (!Number.isFinite(s) || !Number.isFinite(e)) return ui.toast('请输入有效页码');
+            s = Math.min(Math.max(1, s), n); e = Math.min(Math.max(1, e), n);
+            if (s > e) { const tmp = s; s = e; e = tmp; }
+            startEl.value = s; endEl.value = e;
+            const start = s - 1; // 后续用 0-based 索引
             state.currIndex = start; ui.updatePractice(start);
             this.mode = 'LOOP_RANGE';
             const btn = document.getElementById('btn-range-play'); btn.classList.add('active'); btn.innerText = "停止";
@@ -1423,6 +1581,8 @@ const ui = {
         this.updatePermButtons();
         previewMode.loadFromStorage();
         previewMode.updateBadge();
+        // V79: 启动统计 ticker（绑定到 main-audio 的 play/pause/seeked/timeupdate）
+        startStatsTicker();
     },
     renderHistory() {
         const h = safeParse(localStorage.getItem(CONST.HIST), []);
@@ -1637,6 +1797,9 @@ const app = {
         upd();
         this.sleepIntervalId = setInterval(upd, 1000);
         this.sleepTimerId = setTimeout(() => {
+            // P3-6: 睡眠定时结束时先停 AI 模式 + 关常亮锁，再 stopAll，避免后台继续运行
+            if (aiMode.active) aiMode.stop();
+            if (wakeLock.enabled) wakeLock.release();
             engine.stopAll(); ui.toast("⏰ 定时结束");
             disp.style.display='none';
             if (this.sleepIntervalId) { clearInterval(this.sleepIntervalId); this.sleepIntervalId = null; }
@@ -1687,6 +1850,8 @@ const app = {
         const backupAudioObjectUrl = state._audioObjectUrl;
         const backupAudioSrc = document.getElementById('main-audio').src;
         const backupAudioBuffer = state.audioBuffer;
+        // P3-1: 备份音频 dataset.name，restoreBackup 时恢复（防 loadFromUrl 失败后 name 被新音频覆盖）
+        const backupDatasetName = document.getElementById('main-audio').dataset.name;
         // 校验通过后再清空，避免空链接误点导致当前工程被覆盖
         state.segments = []; ui.renderEditor(); this.saveInput();
         const btn = document.getElementById('btn-load-url'), spin = document.getElementById('url-spinner');
@@ -1706,6 +1871,8 @@ const app = {
             }
             state._audioObjectUrl = backupAudioObjectUrl;
             const a = document.getElementById('main-audio');
+            // P3-1: 恢复 dataset.name
+            a.dataset.name = backupDatasetName || '';
             // 用 removeAttribute 而非 a.src=''：空 src 会触发浏览器加载当前页面 URL 作为音频
             if (backupAudioSrc) {
                 a.src = backupAudioSrc;
@@ -1775,6 +1942,8 @@ const app = {
                 localStorage.setItem(CONST.SESSION, mp3);
                 this.addHistory(mp3);
                 previewMode.clearForNewAudio(mp3);
+                // V79: 重置会话统计（新音频开始，重新计次播放）
+                _sessionCounted = false; _sessionSec = 0;
                 state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
                 ui.renderEditor();
                 ui.updateAudioStatus();
@@ -1848,6 +2017,8 @@ const app = {
             localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
             previewMode.clearForNewAudio(mp3);
+            // V79: 重置会话统计（新音频开始，重新计次播放）
+            _sessionCounted = false; _sessionSec = 0;
             state.subFileNames = {1:'', 2:'', 3:''};
             // 强制重置到第一句
             state.currIndex = 0; 
@@ -2047,6 +2218,9 @@ const app = {
             if (state.segments[i].text2 !== undefined) state.segments[i].text2 = ((state.segments[i].text2||"") + " " + (state.segments[i+1].text2||"")).trim();
             if (state.segments[i].text3 !== undefined) state.segments[i].text3 = ((state.segments[i].text3||"") + " " + (state.segments[i+1].text3||"")).trim();
             state.segments.splice(i+1,1);
+            // P1-2: 修正 currIndex——合并后若当前句是被合并的下一句，挪到 i；若被合并的下一句在当前句之前，索引前移
+            if (i + 1 === state.currIndex) state.currIndex = i;
+            else if (i + 1 < state.currIndex) state.currIndex--;
             // 合并会影响 i+1 之后所有句子的索引：i+1 句消失，大于 i+1 的减 1
             // 同时如果 starredIndices 含 i+1，合并到 i（保留标记在合并后的句子上）
             previewMode.starredIndices = previewMode.starredIndices
@@ -2062,6 +2236,8 @@ const app = {
             previewMode.saveToStorage();
             previewMode.updateBadge();
             ui.renderEditor();
+            // P1-2: 合并后当前句内容已变，刷新练习页显示
+            ui.updatePractice(state.currIndex);
         }
     },
     addNewRow() {
@@ -2073,13 +2249,17 @@ const app = {
     applyReAnalyze() {
         if (!state.audioBuffer) return ui.toast("需先成功加载音频数据");
         // 禁用按钮防止连点：detectSilenceAsync 创建 Worker 是重度计算，并行会内存暴涨+竞态覆盖
-        const allBtns = document.querySelectorAll('.slider-row .btn-mini');
-        let execBtn = null;
-        allBtns.forEach(b => { if (b.onclick && b.onclick.toString().includes('applyReAnalyze')) execBtn = b; });
+        // P3-3: 用 id 直接获取按钮，替代 forEach 查找（更准确、避免误中其他 .btn-mini）
+        const execBtn = document.getElementById('btn-reanalyze');
         if (execBtn) { execBtn.disabled = true; execBtn.style.opacity = '0.5'; execBtn.style.cursor = 'not-allowed'; }
         ui.toast("重新分析中...");
         detectSilenceAsync(state.audioBuffer, parseFloat(document.getElementById('threshold-range').value))
             .then(segs => {
+                // P1-1: 空结果保护——重新断句返回空数组时不替换现有 segments（防误清空字幕）
+                if (!segs || !segs.length) {
+                    ui.toast('未检测到有效句子，已保留原字幕');
+                    return;
+                }
                 state.segments = segs;
                 // 重新断句后 segments 完全替换，currIndex 和 starredIndices 都失效
                 state.currIndex = 0;
@@ -2154,9 +2334,10 @@ const app = {
         const savedInputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const mp3 = net.fixUrl((savedInputs.mp3 || '').trim());
 
+        // P3-4: toast 文案用 clamp 后的 state.currIndex，保持和实际恢复位置一致
         if (mainAudio.src && mainAudio.src !== location.href) {
             ui.updateAudioStatus();
-            ui.toast('✅ 已恢复到第 ' + (i + 1) + ' 句');
+            ui.toast('✅ 已恢复到第 ' + (state.currIndex + 1) + ' 句');
             app.switchView('practice');
         } else if (mp3) {
             ui.toast('⏳ 正在重新加载音频，请稍候...');
@@ -2166,7 +2347,7 @@ const app = {
                 mainAudio.src = state._audioObjectUrl;
                 await net.waitAudioReady(mainAudio);
                 ui.updateAudioStatus();
-                ui.toast('✅ 音频就绪，已恢复到第 ' + (i + 1) + ' 句');
+                ui.toast('✅ 音频就绪，已恢复到第 ' + (state.currIndex + 1) + ' 句');
                 app.switchView('practice');
             }).catch(e => {
                 ui.toast('❌ 音频重载失败：' + e.message);
@@ -2179,9 +2360,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 78, segments: state.segments, idx: state.currIndex, inputs: inputs };
+        const data = { version: 79, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v78.json'; a.click();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v79.json'; a.click();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     extractFilenameFromUrl(url) {
@@ -2215,8 +2396,11 @@ const app = {
         r.onload = e => {
             const d = safeParse(e.target.result, null);
             if (!d) { ui.toast('❌ 工程文件损坏或格式错误'); return; }
+            // P3-5: segments 必须是数组（防格式错误导致后续 renderEditor 崩溃）
+            if (!Array.isArray(d.segments)) { ui.toast('工程文件格式错误'); return; }
             state.segments = d.segments || d;
-            state.currIndex = d.idx || 0;
+            // P3-5: clamp currIndex 防越界
+            state.currIndex = Math.min(Math.max(0, d.idx || 0), Math.max(0, state.segments.length - 1));
             if (d.inputs) {
                 if (d.inputs.mp3) document.getElementById('url-audio').value = d.inputs.mp3;
                 if (d.inputs.s1)  document.getElementById('url-srt-1').value = d.inputs.s1;
@@ -2319,10 +2503,12 @@ const recorder = {
         a.play();
         if (this.cmpTimer) clearInterval(this.cmpTimer); // 修复：清除旧定时器
         this.cmpTimer = setInterval(() => {
-            if (a.currentTime >= s.end || a.paused) { 
-                a.pause(); 
+            if (a.currentTime >= s.end || a.paused) {
+                a.pause();
                 clearInterval(this.cmpTimer); this.cmpTimer = null; // 修复：清除自身
-                setTimeout(() => {
+                // P2-2: 登记 setTimeout 到 _playCmpTimer，stopAll 时清理避免切句时旧录音串音
+                this._playCmpTimer = setTimeout(() => {
+                    this._playCmpTimer = null;
                     ui.toast("🎙️ 录音"); r.currentTime=0; r.play();
                     const inPreview = document.getElementById('preview-view').classList.contains('active');
                     const btn = inPreview ? document.getElementById('focus-btn-record') : document.getElementById('btn-record');
@@ -2799,6 +2985,8 @@ const aiMode = {
     },
     _normalize(s) {
         let str = s.toLowerCase();
+        // P2-4: 统一弯引号/反引号为直引号，避免 AI 评分时把 I'm 和 I'm 判定为不同
+        str = str.replace(/[''`]/g, "'");
         const contractions = { "i'm": "i am", "i've": "i have", "i'll": "i will", "i'd": "i would", "it's": "it is", "it'll": "it will", "it'd": "it would", "he's": "he is", "he'll": "he will", "he'd": "he would", "she's": "she is", "she'll": "she will", "she'd": "she would", "we're": "we are", "we've": "we have", "we'll": "we will", "we'd": "we would", "you're": "you are", "you've": "you have", "you'll": "you will", "you'd": "you would", "they're": "they are", "they've": "they have", "they'll": "they will", "they'd": "they would", "that's": "that is", "that'll": "that will", "that'd": "that would", "there's": "there is", "there'll": "there will", "what's": "what is", "what'll": "what will", "what've": "what have", "who's": "who is", "who'll": "who will", "who've": "who have", "don't": "do not", "doesn't": "does not", "didn't": "did not", "can't": "cannot", "couldn't": "could not", "won't": "will not", "wouldn't": "would not", "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not", "hasn't": "has not", "haven't": "have not", "hadn't": "had not", "shouldn't": "should not", "mustn't": "must not", "needn't": "need not", "let's": "let us", "here's": "here is", "how's": "how is" };
         for (const [key, val] of Object.entries(contractions)) { str = str.replace(new RegExp('\\b' + key + '\\b', 'g'), val); }
         return str.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -2861,10 +3049,14 @@ document.getElementById('ai-threshold').addEventListener('input', function() { c
 
 // 页面隐藏时立即同步未完成的缓存写入（防抖定时器可能在页面关闭前来不及执行）
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && app._cacheSyncTimer) {
-        clearTimeout(app._cacheSyncTimer);
-        app._cacheSyncTimer = null;
-        app._syncCacheSegments();
+    if (document.visibilityState === 'hidden') {
+        if (app._cacheSyncTimer) {
+            clearTimeout(app._cacheSyncTimer);
+            app._cacheSyncTimer = null;
+            app._syncCacheSegments();
+        }
+        // V79: 页面隐藏时 flush 统计（避免播放时切后台丢秒）
+        try { flushStats(); } catch(e) {}
     }
 });
 
@@ -2927,11 +3119,829 @@ function detectSilenceAsync(audioBuffer, threshold) {
         const pcm = audioBuffer.getChannelData(0); const copy = new Float32Array(pcm.length); copy.set(pcm); const sr = audioBuffer.sampleRate;
         const workerCode = 'self.onmessage = function(e) { const { pcm, sr, th } = e.data; const min = 0.4 * sr; let res = [], sp = false, st = 0, sil = 0; for (let i = 0; i < pcm.length; i += 200) { if (Math.abs(pcm[i]) > th) { if (!sp) { sp = true; st = i; } sil = 0; } else if (sp) { if (!sil) sil = i; if (i - sil > min) { const s = st/sr, en = sil/sr; if (en-s > 0.3) res.push({start:s, end:en, text:""}); sp = false; sil = 0; } } } if (sp) res.push({start:st/sr, end:pcm.length/sr, text:""}); self.postMessage(res); };';
         const blob = new Blob([workerCode], {type: 'application/javascript'}); const workerUrl = URL.createObjectURL(blob); const worker = new Worker(workerUrl);
-        worker.onmessage = (e) => { worker.terminate(); URL.revokeObjectURL(workerUrl); resolve(e.data); };
-        worker.onerror = () => { worker.terminate(); URL.revokeObjectURL(workerUrl); resolve(detectSilence(audioBuffer, threshold)); };
+        let settled = false;
+        const finish = (data) => {
+            if (settled) return; settled = true;
+            // P3-2: 30 秒超时兜底——Worker 卡死时降级到主线程 detectSilence
+            if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+            try { worker.terminate(); URL.revokeObjectURL(workerUrl); } catch(e) {}
+            resolve(data);
+        };
+        worker.onmessage = (e) => { finish(e.data); };
+        worker.onerror = () => { finish(detectSilence(audioBuffer, threshold)); };
+        // P3-2: Worker 卡死兜底超时
+        let timeoutId = setTimeout(() => {
+            console.warn('detectSilenceAsync Worker 30s 超时，降级到主线程');
+            finish(detectSilence(audioBuffer, threshold));
+        }, 30000);
         worker.postMessage({ pcm: copy, sr, th: threshold }, [copy.buffer]);
     });
 }
+
+// ============================================================
+//  V79: 统计模块（从「英语精听播放器」移植并适配影子跟读）
+//  - 只统计原音播放时长（音量>=40% 的有效播放）
+//  - 数据结构 statsDB: { 'YYYY-MM-DD': { hashKey: { name, url, sec, count, source } } }
+//  - 备份/导入 version 3，source 字段标识来源（shadow/listening），可与精听互通
+// ============================================================
+
+// ---- 基础辅助 ----
+function _nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+// 注：commitStatsDelta 用的墙钟差需要 Date.now() 才对（performance.now 不受系统时间影响，
+// 但跨息屏唤醒会算大量"墙钟差"——这里实际是用 wall clock 作为 seek 检测的兜底）
+function _wallMs() { return Date.now(); }
+
+function todayKey() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function getWeekDates(wOff) {
+    // wOff: 周偏移（0=本周，-1=上周…），返回该周 7 天的 YYYY-MM-DD 数组（周一到周日）
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    // JS getDay() 周日=0；要周一为起点：偏移 1 天（周日时 -6）
+    const dow = now.getDay();
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(now); monday.setDate(now.getDate() + diffToMon + wOff*7);
+    const arr = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(monday); d.setDate(monday.getDate() + i);
+        arr.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
+    }
+    return arr;
+}
+
+function fmtMD(k) {
+    // k: 'YYYY-MM-DD' → 'M月D日'
+    if (!k) return '';
+    const p = k.split('-');
+    if (p.length < 3) return k;
+    return parseInt(p[1]) + '月' + parseInt(p[2]) + '日';
+}
+
+function fmtHM(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (h > 0) return h + '时' + m + '分' + (s > 0 ? s + '秒' : '');
+    if (m > 0) return m + '分' + (s > 0 ? s + '秒' : '');
+    return s + '秒';
+}
+
+function urlHash(url) {
+    if (!url) return 'h_0';
+    const s = String(url);
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+    return 'h_' + Math.abs(h).toString(36);
+}
+
+function getCumulativeTotal() {
+    // 累计所有天的总秒数
+    let total = 0;
+    for (const day in statsDB) {
+        const d = statsDB[day];
+        if (!d || typeof d !== 'object') continue;
+        for (const k in d) { if (d[k] && typeof d[k].sec === 'number') total += d[k].sec; }
+    }
+    return total;
+}
+
+function getDaySec(key) {
+    const d = statsDB[key]; if (!d) return 0;
+    let s = 0; for (const k in d) { if (d[k] && typeof d[k].sec === 'number') s += d[k].sec; }
+    return s;
+}
+
+function getDayTracks(key) {
+    const d = statsDB[key]; if (!d) return [];
+    return Object.entries(d).map(([k, v]) => ({ hashKey: k, ...v })).sort((a,b) => (b.sec||0) - (a.sec||0));
+}
+
+function deleteStatRecord(day, hashKey) {
+    if (!statsDB[day]) return;
+    delete statsDB[day][hashKey];
+    if (!Object.keys(statsDB[day]).length) delete statsDB[day];
+    flushStats();
+    renderStats();
+    ui.toast('已删除');
+}
+
+function flushStats() {
+    try { localStorage.setItem(CONST.STATS, JSON.stringify(statsDB)); }
+    catch(e) { console.warn('flushStats 失败:', e); }
+}
+
+function pruneStatsDB() {
+    // 删掉 90 天前的数据（避免无限增长）
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
+    const cutKey = cutoff.getFullYear() + '-' + String(cutoff.getMonth()+1).padStart(2,'0') + '-' + String(cutoff.getDate()).padStart(2,'0');
+    let changed = false;
+    for (const day in statsDB) {
+        if (day < cutKey) { delete statsDB[day]; changed = true; }
+    }
+    if (changed) flushStats();
+}
+
+function isDark() {
+    // 简单暗色判断：无 prefers-color-scheme 时按系统时间
+    try {
+        if (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) return true;
+    } catch(e) {}
+    return false;
+}
+
+// ---- 统计收集 ----
+function isAudible(a) {
+    // 只统计未静音 + 音量 >= 0.4 的有效播放（避免插耳机后无声仍计时）
+    if (!a) return false;
+    if (a.muted) return false;
+    if (typeof a.volume === 'number' && a.volume < 0.4) return false;
+    return true;
+}
+
+function startStatsTicker() {
+    const a = document.getElementById('main-audio');
+    if (!a) return;
+    if (a._statsBound) return; a._statsBound = true;
+    const commit = (useWall) => _commitStatsDelta(useWall);
+    a.addEventListener('play', () => {
+        if (!isAudible(a)) return;
+        _lastAudioTime = a.currentTime;
+        _lastWallClock = _wallMs();
+    });
+    a.addEventListener('pause', () => commit(true));   // 暂停时按墙钟差提交（避免丢秒）
+    a.addEventListener('seeked', () => {
+        // seek 后重置基准，避免把"跳过的时间"也算成播放
+        _lastAudioTime = a.currentTime;
+        _lastWallClock = _wallMs();
+    });
+    a.addEventListener('timeupdate', () => {
+        if (!isAudible(a) || a.paused) return;
+        commit(false);  // 播放中按 currentTime 差提交
+    });
+    // 页面卸载前 flush（visibilitychange 已绑定）
+}
+
+function _commitStatsDelta(useWallClock) {
+    if (_lastAudioTime < 0) return;
+    const a = document.getElementById('main-audio');
+    const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
+    const trackUrl = net.fixUrl((inputs.mp3 || '').trim());
+    if (!trackUrl || trackUrl.startsWith('blob:')) {
+        // 本地文件不入统计（每次导入是不同 blob，无可比性）
+        _lastAudioTime = a.currentTime;
+        _lastWallClock = _wallMs();
+        return;
+    }
+    const trackName = idbCache.extractFilename(trackUrl) || '未知音频';
+
+    let delta;
+    if (useWallClock) delta = Math.min((_wallMs() - _lastWallClock) / 1000, 10);
+    else delta = a.currentTime - _lastAudioTime;
+
+    if (delta > 0 && delta <= 10.5) {
+        var today = todayKey();
+        if (!statsDB[today]) statsDB[today] = {};
+        var k = urlHash(trackUrl);
+        if (!statsDB[today][k]) statsDB[today][k] = { name: trackName, url: trackUrl, sec: 0, count: 0, source: 'shadow' };
+        statsDB[today][k].sec += delta;
+        _sessionSec += delta;
+        // 单次会话累计 >=30s 才算一次"练习"
+        if (!_sessionCounted && _sessionSec >= 30) {
+            statsDB[today][k].count = (statsDB[today][k].count || 0) + 1;
+            _sessionCounted = true;
+        }
+        if (++_stFlush >= 30) { _stFlush = 0; flushStats(); }
+    }
+    _lastAudioTime = a.currentTime;
+    _lastWallClock = _wallMs();
+}
+
+// ---- 统计 UI ----
+function openStats() {
+    pruneStatsDB();
+    _stWeekOff = 0;
+    document.getElementById('statsSheet').classList.add('open');
+    renderStats();
+}
+
+function closeStats() {
+    document.getElementById('statsSheet').classList.remove('open');
+}
+
+function stNavWeek(dir) {
+    _stWeekOff += dir;
+    if (_stWeekOff > 0) _stWeekOff = 0; // 不允许超过本周
+    renderStats();
+}
+
+function renderStats() {
+    const body = document.getElementById('stBody');
+    if (!body) return;
+    const dates = getWeekDates(_stWeekOff);
+    const weekTotal = dates.reduce((s, k) => s + getDaySec(k), 0);
+    const cumTotal = getCumulativeTotal();
+    const today = todayKey();
+    const todaySec = getDaySec(today);
+    const weekMax = Math.max(1, ...dates.map(k => getDaySec(k)));
+
+    // 累计
+    let html = '';
+    html += '<div class="st-card"><div class="st-card-title">累计跟读总时长</div>' +
+        '<div class="st-stat-big">' + fmtHM(cumTotal).replace(/(\d+)([时分秒])/g, '<strong>$1</strong><span class="unit">$2</span>') + '</div>' +
+        '<div class="st-stat-sub">今日已练习 ' + fmtHM(todaySec) + '</div></div>';
+
+    // 本周
+    const wLabel = _stWeekOff === 0 ? '本周' : Math.abs(_stWeekOff) + ' 周前';
+    html += '<div class="st-card"><div class="st-card-title">' + wLabel + '跟读时长</div>' +
+        '<div class="st-stat-big">' + fmtHM(weekTotal) + '</div>' +
+        '<div class="st-week-nav">' +
+            '<button class="st-week-nav-btn" onclick="stNavWeek(-1)" aria-label="上一周">‹</button>' +
+            '<span class="st-week-nav-label">' + fmtMD(dates[0]) + ' - ' + fmtMD(dates[6]) + '</span>' +
+            '<button class="st-week-nav-btn" onclick="stNavWeek(1)" ' + (_stWeekOff >= 0 ? 'disabled style="opacity:0.4"' : '') + ' aria-label="下一周">›</button>' +
+        '</div>' +
+        '<canvas class="st-chart" id="stChart"></canvas>' +
+        '<div class="st-day-list">';
+    dates.forEach(k => {
+        const s = getDaySec(k);
+        const pct = (s / weekMax) * 100;
+        const isToday = k === today;
+        html += '<div class="st-day-row">' +
+            '<span class="st-day-date">' + fmtMD(k).replace('月', '/').replace('日', '') + (isToday ? '•' : '') + '</span>' +
+            '<div class="st-day-bar"><div class="st-day-bar-fill" style="width:' + pct + '%"></div></div>' +
+            '<span class="st-day-time">' + fmtHM(s) + '</span>' +
+        '</div>';
+    });
+    html += '</div></div>';
+
+    // 今日跟读文件明细
+    const todayTracks = getDayTracks(today);
+    html += '<div class="st-card st-tracks-card"><div class="st-card-title">今日跟读文件 (' + todayTracks.length + ')</div>';
+    if (!todayTracks.length) {
+        html += '<div style="font-size:13px;color:var(--ios-subtext);text-align:center;padding:12px;">暂无跟读记录</div>';
+    } else {
+        todayTracks.forEach(t => {
+            html += '<div class="st-track-row">' +
+                '<span class="st-track-name" title="' + ui.escapeHTML(t.url) + '">' + ui.escapeHTML(t.name) + '</span>' +
+                '<span class="st-track-time">' + fmtHM(t.sec) + (t.count ? ' · ' + t.count + '次' : '') + '</span>' +
+                '<button class="st-track-del" onclick="deleteStatRecord(\'' + today + '\',\'' + t.hashKey + '\')" aria-label="删除">×</button>' +
+            '</div>';
+        });
+    }
+    html += '</div>';
+
+    // 操作按钮
+    html += '<div class="st-actions">' +
+        '<button class="st-btn st-btn-primary" onclick="openSharePicker()">📤 生成分享长图</button>' +
+        '<button class="st-btn st-btn-secondary" onclick="openBackupSheet()">💾 备份/导入</button>' +
+    '</div>';
+    html += '<div class="st-note">仅统计原音播放时长（音量≥40%）<br>每次会话累计 ≥30 秒计为一次练习</div>';
+
+    body.innerHTML = html;
+
+    // 防抖绘制柱状图
+    if (_drawChartTimer) clearTimeout(_drawChartTimer);
+    _drawChartTimer = setTimeout(() => drawBarChart(dates.map(k => getDaySec(k)), dates), 60);
+}
+
+function drawBarChart(values, dates) {
+    const canvas = document.getElementById('stChart');
+    if (!canvas) return;
+    // AbortController：防重复绘制竞态
+    if (_chartAC) try { _chartAC.abort(); } catch(e) {}
+    _chartAC = (typeof AbortController !== 'undefined') ? new AbortController() : { abort: () => {} };
+    const sig = _chartAC.signal;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight || 160;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+    if (sig.aborted) return;
+
+    const max = Math.max(1, ...values);
+    const padL = 4, padR = 4, padT = 12, padB = 22;
+    const innerW = w - padL - padR, innerH = h - padT - padB;
+    const barW = innerW / 7 * 0.6, gap = innerW / 7 * 0.4;
+    const today = todayKey();
+
+    ctx.font = '10px -apple-system, Roboto, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < 7; i++) {
+        if (sig.aborted) return;
+        const v = values[i] || 0;
+        const bh = (v / max) * innerH;
+        const x = padL + i * (barW + gap) + gap/2;
+        const y = padT + innerH - bh;
+        const isToday = dates[i] === today;
+        // bar
+        ctx.fillStyle = isToday ? '#1A73E8' : '#DADCE0';
+        if (bh > 0) {
+            const r = Math.min(4, bh/2);
+            ctx.beginPath();
+            ctx.moveTo(x, y + r);
+            ctx.arcTo(x, y, x + r, y, r);
+            ctx.lineTo(x + barW - r, y);
+            ctx.arcTo(x + barW, y, x + barW, y + r, r);
+            ctx.lineTo(x + barW, y + bh);
+            ctx.lineTo(x, y + bh);
+            ctx.closePath(); ctx.fill();
+        }
+        // 日期标签
+        ctx.fillStyle = isToday ? '#1A73E8' : '#5F6368';
+        const md = fmtMD(dates[i]);
+        const m = md.match(/(\d+)月(\d+)日/);
+        ctx.fillText(m ? (m[2]) : ('D'+(i+1)), x + barW/2, h - 8);
+        // 时长标签（最大值或今日）
+        if (isToday || v === max) {
+            ctx.fillStyle = isToday ? '#1A73E8' : '#5F6368';
+            ctx.fillText(fmtHM(v).replace(/[时分]/g, ':').replace('秒','s'), x + barW/2, y - 8);
+        }
+    }
+}
+
+// ---- 分享长图 ----
+function getProgrammeWeekNum() {
+    // 距 PROGRAMME_EPOCH 第几周（从 1 开始）
+    const ms = Date.now() - PROGRAMME_EPOCH.getTime();
+    if (ms < 0) return 1;
+    return Math.floor(ms / (7 * 24 * 3600 * 1000)) + 1;
+}
+
+function openSharePicker() {
+    const overlay = document.getElementById('sharePickerOverlay');
+    const sheet = document.getElementById('sharePickerSheet');
+    overlay.classList.add('open'); sheet.classList.add('open');
+    const dates = getWeekDates(_stWeekOff);
+    const body = document.getElementById('spBody');
+    body.innerHTML =
+        '<div class="sp-section">' +
+            '<div class="sp-section-title">选择范围</div>' +
+            '<label class="sp-opt"><input type="radio" name="sp-range" value="day" checked><span class="sp-opt-label">仅今天 (' + fmtMD(todayKey()) + ')</span></label>' +
+            '<label class="sp-opt"><input type="radio" name="sp-range" value="week"><span class="sp-opt-label">' + (_stWeekOff === 0 ? '本周' : Math.abs(_stWeekOff)+'周前') + ' (' + fmtMD(dates[0]) + ' - ' + fmtMD(dates[6]) + ')</span></label>' +
+            '<label class="sp-opt"><input type="radio" name="sp-range" value="range"><span class="sp-opt-label">自定义区间</span></label>' +
+            '<div id="spRangePick" class="sp-range-pick" style="display:none">' +
+                '<input type="date" id="spRangeStart" value="' + dates[0] + '">' +
+                '<span>—</span>' +
+                '<input type="date" id="spRangeEnd" value="' + dates[6] + '">' +
+            '</div>' +
+        '</div>' +
+        '<div class="sp-section">' +
+            '<div class="sp-section-title">附加选项</div>' +
+            '<label class="sp-opt"><input type="checkbox" id="spBarChart" checked><span class="sp-opt-label">显示柱状图（仅本周）</span></label>' +
+            '<label class="sp-opt"><input type="checkbox" id="spWeekExtra" checked><span class="sp-opt-label">显示"学习计划第 N 周"</span></label>' +
+        '</div>' +
+        '<button class="sp-share-btn" onclick="doShareFromPicker()">📤 生成长图</button>';
+
+    // 切换"自定义区间"时显示日期选择器
+    setTimeout(() => {
+        document.querySelectorAll('input[name="sp-range"]').forEach(r => {
+            r.addEventListener('change', () => {
+                const pick = document.getElementById('spRangePick');
+                pick.style.display = (document.querySelector('input[name="sp-range"]:checked').value === 'range') ? 'flex' : 'none';
+            });
+        });
+    }, 0);
+}
+
+function closeSharePicker() {
+    document.getElementById('sharePickerOverlay').classList.remove('open');
+    document.getElementById('sharePickerSheet').classList.remove('open');
+}
+
+function toggleWeekExtra() { /* 占位：复选框原生已处理 */ }
+function toggleRangePicker() { /* 占位 */ }
+
+function doShareFromPicker() {
+    const sel = document.querySelector('input[name="sp-range"]:checked');
+    if (!sel) return ui.toast('请选择范围');
+    const showBar = document.getElementById('spBarChart').checked;
+    const weekExtra = document.getElementById('spWeekExtra').checked;
+    if (sel.value === 'day') doShareDay(showBar, weekExtra);
+    else if (sel.value === 'week') doShareWeek(showBar, weekExtra);
+    else {
+        const s = document.getElementById('spRangeStart').value;
+        const e = document.getElementById('spRangeEnd').value;
+        if (!s || !e) return ui.toast('请选择起止日期');
+        doShareRange(s, e, showBar, weekExtra);
+    }
+}
+
+function doShareDay(showBar, weekExtra) {
+    const k = todayKey();
+    const tracks = getDayTracks(k);
+    const total = getDaySec(k);
+    buildShareImage([k], '今日跟读 (' + fmtMD(k) + ')', false, false, tracks, total);
+}
+
+function doShareWeek(showBar, weekExtra) {
+    const dates = getWeekDates(_stWeekOff);
+    const total = dates.reduce((s,k) => s + getDaySec(k), 0);
+    // 收集本周所有 tracks 聚合
+    const tm = {};
+    dates.forEach(k => {
+        getDayTracks(k).forEach(t => {
+            const hk = t.hashKey;
+            if (!tm[hk]) tm[hk] = { name: t.name, url: t.url, sec: 0, count: 0, source: t.source };
+            tm[hk].sec += t.sec || 0;
+            tm[hk].count = (tm[hk].count||0) + (t.count||0);
+        });
+    });
+    const tracks = Object.values(tm).sort((a,b)=>(b.sec||0)-(a.sec||0)).slice(0, 6);
+    buildShareImage(dates, _stWeekOff === 0 ? '本周跟读' : Math.abs(_stWeekOff)+'周前', showBar, weekExtra, tracks, total);
+}
+
+function doShareRange(s, e, showBar, weekExtra) {
+    // 枚举 [s..e] 的所有天
+    const dates = [];
+    const d0 = new Date(s + 'T00:00:00'), d1 = new Date(e + 'T00:00:00');
+    if (isNaN(d0.getTime()) || isNaN(d1.getTime())) return ui.toast('日期格式错误');
+    if (d0 > d1) { const t = d0; d0.setTime(d1.getTime()); d1.setTime(t.getTime()); }
+    const cur = new Date(d0);
+    while (cur <= d1) {
+        dates.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0'));
+        cur.setDate(cur.getDate() + 1);
+    }
+    const total = dates.reduce((sk,k) => sk + getDaySec(k), 0);
+    const tm = {};
+    dates.forEach(k => {
+        getDayTracks(k).forEach(t => {
+            const hk = t.hashKey;
+            if (!tm[hk]) tm[hk] = { name: t.name, url: t.url, sec: 0, count: 0, source: t.source };
+            tm[hk].sec += t.sec || 0;
+            tm[hk].count = (tm[hk].count||0) + (t.count||0);
+        });
+    });
+    const tracks = Object.values(tm).sort((a,b)=>(b.sec||0)-(a.sec||0)).slice(0, 6);
+    buildShareImage(dates, fmtMD(s) + ' - ' + fmtMD(e), false, false, tracks, total);
+}
+
+function buildShareImage(dates, label, showBarChart, weekExtra, tracks, totalSec) {
+    closeSharePicker();
+    ui.toast('⏳ 正在生成分享长图...');
+
+    // 长图尺寸：固定宽 750，高按内容动态
+    const W = 750;
+    const padX = 40;
+    const sectionGap = 28;
+    let y = 0;
+    // 先估算高度
+    const headerH = 140;
+    const labelH = 50;
+    const totalH = 110;
+    const chartH = showBarChart ? 200 : 0;
+    const listH = tracks.length ? tracks.length * 56 + 60 : 80;
+    const footerH = 80;
+    const weekExtraH = weekExtra ? 50 : 0;
+    const H = headerH + labelH + totalH + weekExtraH + chartH + listH + footerH + sectionGap * 5;
+    const dpr = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+
+    // 背景：白色
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
+
+    // 顶部色带
+    const grd = ctx.createLinearGradient(0, 0, W, 0);
+    grd.addColorStop(0, '#1A73E8'); grd.addColorStop(1, '#34A853');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, 8);
+
+    // 标题
+    y = 50;
+    ctx.fillStyle = '#1A73E8';
+    ctx.font = 'bold 30px -apple-system, "PingFang SC", sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('📊 Evan Yin 的英语跟读学习报告', padX, y);
+
+    // 副标题（label）
+    y += 32;
+    ctx.fillStyle = '#5F6368';
+    ctx.font = '18px -apple-system, "PingFang SC", sans-serif';
+    ctx.fillText(label, padX, y);
+
+    // 右上：日期范围
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#5F6368';
+    ctx.font = '14px -apple-system, sans-serif';
+    if (dates.length === 1) ctx.fillText(fmtMD(dates[0]), W - padX, y);
+    else ctx.fillText(fmtMD(dates[0]) + ' - ' + fmtMD(dates[6]), W - padX, y);
+    ctx.textAlign = 'left';
+
+    // 分割线
+    y += 24;
+    ctx.strokeStyle = '#E8EAED'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(W - padX, y); ctx.stroke();
+
+    // 累计总时长
+    y += 40;
+    ctx.fillStyle = '#5F6368';
+    ctx.font = '14px -apple-system, sans-serif';
+    ctx.fillText('累计跟读时长', padX, y);
+    y += 36;
+    ctx.fillStyle = '#1A73E8';
+    ctx.font = 'bold 38px -apple-system, sans-serif';
+    ctx.fillText(fmtHM(totalSec), padX, y);
+
+    // 计划第 N 周
+    if (weekExtra) {
+        y += sectionGap;
+        ctx.fillStyle = '#34A853';
+        ctx.font = 'bold 18px -apple-system, sans-serif';
+        ctx.fillText('📅 学习计划第 ' + getProgrammeWeekNum() + ' 周', padX, y);
+    }
+
+    // 柱状图（仅 showBarChart）
+    if (showBarChart && dates.length === 7) {
+        y += sectionGap + 10;
+        ctx.fillStyle = '#5F6368';
+        ctx.font = '14px -apple-system, sans-serif';
+        ctx.fillText('每日跟读', padX, y);
+        y += 16;
+        const ch = 160, cw = W - padX*2;
+        const max = Math.max(1, ...dates.map(k => getDaySec(k)));
+        const barW = cw / 7 * 0.55, gap = cw / 7 * 0.45;
+        const today = todayKey();
+        for (let i = 0; i < 7; i++) {
+            const v = getDaySec(dates[i]) || 0;
+            const bh = (v / max) * (ch - 30);
+            const x = padX + i * (cw/7) + gap/2;
+            const by = y + (ch - 30) - bh;
+            ctx.fillStyle = dates[i] === today ? '#1A73E8' : '#DADCE0';
+            if (bh > 0) ctx.fillRect(x, by, barW, bh);
+            ctx.fillStyle = '#5F6368';
+            ctx.font = '11px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            const m = fmtMD(dates[i]).match(/(\d+)月(\d+)日/);
+            ctx.fillText(m ? m[2] : '', x + barW/2, y + ch - 12);
+        }
+        ctx.textAlign = 'left';
+        y += ch;
+    }
+
+    // 跟读明细
+    y += sectionGap;
+    ctx.strokeStyle = '#E8EAED';
+    ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(W - padX, y); ctx.stroke();
+    y += 24;
+    ctx.fillStyle = '#5F6368';
+    ctx.font = '14px -apple-system, sans-serif';
+    ctx.fillText('跟读明细', padX, y);
+    y += 20;
+
+    if (tracks.length === 0) {
+        y += 30;
+        ctx.fillStyle = '#9AA0A6';
+        ctx.font = '14px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('暂无跟读记录', W/2, y);
+        ctx.textAlign = 'left';
+    } else {
+        tracks.forEach((t, i) => {
+            y += 30;
+            ctx.fillStyle = '#202124';
+            ctx.font = 'bold 14px -apple-system, sans-serif';
+            let name = t.name || '未知音频';
+            if (name.length > 28) name = name.substring(0, 28) + '...';
+            ctx.fillText((i+1) + '. ' + name, padX, y);
+            ctx.fillStyle = '#1A73E8';
+            ctx.font = 'bold 14px -apple-system, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(fmtHM(t.sec) + (t.count ? ' · ' + t.count + '次练习' : ''), W - padX, y);
+            ctx.textAlign = 'left';
+        });
+    }
+
+    // 底部水印
+    y = H - 40;
+    ctx.fillStyle = '#9AA0A6';
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Evan Yin 影子跟读 · ' + new Date().toLocaleDateString('zh-CN'), W/2, y);
+    ctx.textAlign = 'left';
+
+    // 导出
+    setTimeout(() => {
+        try {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'shadow_share_' + todayKey() + '.png';
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 2000);
+                ui.toast('✅ 长图已生成');
+            }, 'image/png');
+        } catch(e) {
+            console.error('生成长图失败:', e);
+            ui.toast('❌ 生成失败: ' + (e.message || e));
+        }
+    }, 50);
+}
+
+// ---- 备份导出 / 导入（version 3, source 字段，兼容精听） ----
+function openBackupSheet() {
+    document.getElementById('backupOverlay').classList.add('open');
+    document.getElementById('backupSheet').classList.add('open');
+    const cum = getCumulativeTotal();
+    const dayCount = Object.keys(statsDB).length;
+    const body = document.getElementById('bsBody');
+    body.innerHTML =
+        '<div class="bs-info">当前统计：累计跟读 <strong>' + fmtHM(cum) + '</strong>，覆盖 <strong>' + dayCount + '</strong> 天。<br>' +
+            '备份文件 version: 3，含 source 字段，可与「英语精听播放器」互通。</div>' +
+        '<button class="bs-action bs-action-primary" onclick="doExportStats()">📤 导出全部统计</button>' +
+        '<button class="bs-action bs-action-secondary" onclick="openPartialExport()">📅 按区间导出</button>' +
+        '<button class="bs-action bs-action-secondary" onclick="document.getElementById(\'bsFileInput\').click()">📥 从文件导入</button>' +
+        '<button class="bs-action bs-action-danger" onclick="clearAllStats()">🗑 清空全部统计</button>';
+}
+
+function closeBackupSheet() {
+    document.getElementById('backupOverlay').classList.remove('open');
+    document.getElementById('backupSheet').classList.remove('open');
+}
+
+function clearAllStats() {
+    if (!confirm('确认清空所有跟读统计？此操作不可撤销。')) return;
+    statsDB = {}; flushStats();
+    closeBackupSheet();
+    if (document.getElementById('statsSheet').classList.contains('open')) renderStats();
+    ui.toast('已清空');
+}
+
+function doExportStats() {
+    var payload = {
+        version: 3,
+        source: 'shadow',
+        exportedAt: new Date().toISOString(),
+        statsDB: statsDB
+    };
+    const b = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(b);
+    const a = document.createElement('a');
+    const d = new Date();
+    const ymd = '' + d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    a.href = url; a.download = 'shadow_stats_backup_' + ymd + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    ui.toast('✅ 已导出');
+    closeBackupSheet();
+}
+
+function doImportStats() {
+    document.getElementById('bsFileInput').click();
+}
+
+function onImportFileChosen(evt) {
+    const f = evt.target.files[0]; evt.target.value = '';
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = e => {
+        try {
+            const data = JSON.parse(e.target.result);
+            confirmImportData(data);
+        } catch(err) {
+            ui.toast('❌ 文件解析失败: ' + err.message);
+        }
+    };
+    r.readAsText(f);
+}
+
+function confirmImportData(data) {
+    // 兼容 version 2（无 source）和 version 3（带 source）
+    if (!data || !data.statsDB || typeof data.statsDB !== 'object') {
+        ui.toast('❌ 文件格式错误（缺少 statsDB）');
+        return;
+    }
+    const incomingSource = data.source || (data.payload && data.payload.source) || 'unknown';
+    const incomingDB = data.statsDB;
+    let addedDays = 0, merged = 0;
+
+    Object.keys(incomingDB).forEach(day => {
+        const dayData = incomingDB[day];
+        if (!dayData || typeof dayData !== 'object') return;
+        if (!statsDB[day]) { statsDB[day] = {}; addedDays++; }
+        Object.keys(dayData).forEach(k => {
+            const rec = dayData[k];
+            if (!rec || typeof rec.sec !== 'number') return;
+            // 给每条记录补 source 字段（version 2 没有）
+            if (!rec.source) rec.source = incomingSource;
+            if (!statsDB[day][k]) {
+                statsDB[day][k] = { name: rec.name || '未知', url: rec.url || '', sec: rec.sec, count: rec.count || 0, source: rec.source };
+                merged++;
+            } else {
+                // 合并策略：sec/count 取 max（避免重复加和）
+                const cur = statsDB[day][k];
+                cur.sec = Math.max(cur.sec || 0, rec.sec);
+                cur.count = Math.max(cur.count || 0, rec.count || 0);
+                if (!cur.name && rec.name) cur.name = rec.name;
+                if (!cur.url && rec.url) cur.url = rec.url;
+                if (!cur.source) cur.source = rec.source;
+                merged++;
+            }
+        });
+    });
+
+    flushStats();
+    closeBackupSheet();
+    if (document.getElementById('statsSheet').classList.contains('open')) renderStats();
+    ui.toast('✅ 导入完成：新增 ' + addedDays + ' 天，合并 ' + merged + ' 条记录');
+}
+
+function cancelImport() { closeBackupSheet(); }
+
+// ---- 区间导出 ----
+function openPartialExport() {
+    const dates = getWeekDates(_stWeekOff);
+    document.getElementById('partialExportOverlay').classList.add('open');
+    document.getElementById('partialExportSheet').classList.add('open');
+    const body = document.getElementById('peBody');
+    body.innerHTML =
+        '<div class="pe-range-row">' +
+            '<input type="date" id="peStart" value="' + dates[0] + '">' +
+            '<span>—</span>' +
+            '<input type="date" id="peEnd" value="' + dates[6] + '">' +
+        '</div>' +
+        '<button class="sp-share-btn" onclick="loadFilesForDateRange()">🔍 查询</button>' +
+        '<div class="pe-file-list" id="peFileList"></div>' +
+        '<button class="sp-share-btn" id="peExportBtn" style="display:none;background:#34A853" onclick="doPartialExport()">📤 导出选中区间</button>';
+}
+
+function closePartialExport() {
+    document.getElementById('partialExportOverlay').classList.remove('open');
+    document.getElementById('partialExportSheet').classList.remove('open');
+}
+
+var _peRange = { start: '', end: '' };
+function loadFilesForDateRange() {
+    const s = document.getElementById('peStart').value;
+    const e = document.getElementById('peEnd').value;
+    if (!s || !e) return ui.toast('请选择起止日期');
+    _peRange = { start: s, end: e };
+    const d0 = new Date(s + 'T00:00:00'), d1 = new Date(e + 'T00:00:00');
+    if (d0 > d1) { const t = d0; d0.setTime(d1.getTime()); d1.setTime(t.getTime()); }
+    const dates = [];
+    const cur = new Date(d0);
+    while (cur <= d1) {
+        dates.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0'));
+        cur.setDate(cur.getDate() + 1);
+    }
+    const tm = {};
+    dates.forEach(k => {
+        getDayTracks(k).forEach(t => {
+            const hk = t.hashKey;
+            if (!tm[hk]) tm[hk] = { name: t.name, url: t.url, sec: 0, count: 0, source: t.source };
+            tm[hk].sec += t.sec || 0;
+            tm[hk].count = (tm[hk].count||0) + (t.count||0);
+        });
+    });
+    const tracks = Object.values(tm).sort((a,b)=>(b.sec||0)-(a.sec||0));
+    const listEl = document.getElementById('peFileList');
+    if (!tracks.length) {
+        listEl.innerHTML = '<div style="text-align:center;color:var(--ios-subtext);padding:20px;">该区间无跟读记录</div>';
+        document.getElementById('peExportBtn').style.display = 'none';
+        return;
+    }
+    listEl.innerHTML = tracks.map(t =>
+        '<div class="pe-file-row">' +
+            '<span class="pe-file-name">' + ui.escapeHTML(t.name) + '</span>' +
+            '<span class="pe-file-time">' + fmtHM(t.sec) + (t.count ? ' · ' + t.count + '次' : '') + '</span>' +
+        '</div>'
+    ).join('');
+    document.getElementById('peExportBtn').style.display = 'block';
+}
+
+function doPartialExport() {
+    const s = _peRange.start, e = _peRange.end;
+    if (!s || !e) return ui.toast('请先查询');
+    const d0 = new Date(s + 'T00:00:00'), d1 = new Date(e + 'T00:00:00');
+    const dates = [];
+    const cur = new Date(Math.min(d0.getTime(), d1.getTime()));
+    const end = new Date(Math.max(d0.getTime(), d1.getTime()));
+    while (cur <= end) {
+        dates.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0'));
+        cur.setDate(cur.getDate() + 1);
+    }
+    const subDB = {};
+    dates.forEach(k => { if (statsDB[k]) subDB[k] = statsDB[k]; });
+    var payload = {
+        version: 3, source: 'shadow',
+        exportedAt: new Date().toISOString(),
+        range: { start: s, end: e },
+        statsDB: subDB
+    };
+    const b = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(b);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'shadow_stats_' + s + '_to_' + e + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    ui.toast('✅ 已导出 ' + dates.length + ' 天');
+    closePartialExport();
+}
+
+// 文件输入绑定
+document.getElementById('bsFileInput').addEventListener('change', onImportFileChosen);
 
 // ============================================================
 //  初始化
