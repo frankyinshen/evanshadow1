@@ -1356,7 +1356,21 @@ const engine = {
         const arm = () => {
             if (stopped) return;
             const rate = a.playbackRate || 1;
-            const ms = Math.max(10, ((endTime - a.currentTime) / rate) * 1000 - 20);
+            const ct = a.currentTime;
+            // 关键保护：currentTime/duration 异常（NaN）时不 arm，交给 timeupdate/ended 事件兜底
+            // 否则 Math.max(10, NaN)=NaN，setTimeout(fn,NaN)=setTimeout(fn,0) 会导致无限快速循环卡死
+            if (!isFinite(ct)) return;
+            const remaining = endTime - ct;
+            if (!isFinite(remaining) || remaining <= 0) {
+                // 已到或超过终点，延迟 50ms 检查一次（等 audio 时间更新）
+                timerId = setTimeout(() => {
+                    if (stopped) return;
+                    if (a.currentTime >= endTime - 0.02 || a.ended) fire();
+                    else if (isFinite(a.currentTime)) arm();
+                }, 50);
+                return;
+            }
+            const ms = Math.max(10, (remaining / rate) * 1000 - 20);
             timerId = setTimeout(() => {
                 if (stopped) return;
                 if (a.currentTime >= endTime - 0.02 || a.ended) fire();
