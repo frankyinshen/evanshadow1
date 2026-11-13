@@ -12,18 +12,18 @@
 <!-- V76 | build:20261112 | 修复：cacheUI.load/loadProject/importSub 三处补 _loopInitialized 重置（防循环区间残留上一个音频）；state 显式声明 _loopInitialized:false；删 loadFromUrl 里 localSegs 死代码；updateSeg 还原输入框加 typeof 防护防脏数据崩处理器；delSeg/mergeSeg/splitSeg starredIndices 映射后加 .sort 防御性排序；版本号统一到 V76 -->
 <!-- V77 | build:20261112 | 修复：loadFromUrl 备份音频状态（src/objectUrl/audioBuffer），restoreBackup 完整恢复音频，加载过程不提前 revoke 旧 objectURL（防"字幕恢复但音频还是新的"字画错配）；importSub(k=0) 重置 currIndex 和 starredIndices（防练习页卡空白）；loadProject 调 clearForNewAudio 刷新 badge；previewMode.start 补 updateBadge；exportProject/exportSRT 回收 objectURL 防内存泄漏；recorder alert 改 toast；serverBrowser.parseAndRender new URL 加 try/catch 防畸形链接崩整个目录 -->
 <!-- V78 | build:20261112 | 修复：_syncCacheSegments 加 SESSION 校验（防加载失败后旧字幕写进新缓存）；recorder iOS 手势预热（toggle 开始录音时用静音 WAV 解锁 record-audio，避免后续 playCmp 延时 r.play() 被 iOS 拒绝）；applyReAnalyze 禁用按钮防连点竞态+加 catch；restoreBackup 清 _cacheSyncTimer + a.src 改 removeAttribute（防空 src 触发无效请求）；restoreProgress 重置 _loopInitialized + clamp currIndex；delSeg starredIndices 加越界过滤；visibilitychange 即时同步缓存防页面关闭丢失 -->
-<!-- V79 | build:20261113 | 1) P1: applyReAnalyze 空结果保护 + mergeSeg 修正 currIndex；2) P2: _watchUntil 精确定时器(按倍速自我重排) + recorder.stopAll 丢弃录音不触发 playCmp + 区间循环输入校验 + AI 弯引号归一 + GitHub 链接转换修正；3) P3: restoreBackup 恢复 dataset.name + detectSilenceAsync 30s 超时兜底 + applyReAnalyze 按钮加 id + restoreProgress 文案用 clamp 值 + loadProject 校验 segments 数组并 clamp currIndex + 睡眠定时关 AI/wakeLock + wakeLock enabled/sentinel 分离；4) 新增统计功能：从「英语精听播放器」移植统计收集/UI/分享长图/备份导入导出（version:3 兼容，可与精听互通） -->
+<!-- V79.1 | build:20261113 | 1) P1: applyReAnalyze 空结果保护 + mergeSeg 修正 currIndex；2) P2: _watchUntil 精确定时器(按倍速自我重排) + recorder.stopAll 丢弃录音不触发 playCmp + 区间循环输入校验 + AI 弯引号归一 + GitHub 链接转换修正；3) P3: restoreBackup 恢复 dataset.name + detectSilenceAsync 30s 超时兜底 + applyReAnalyze 按钮加 id + restoreProgress 文案用 clamp 值 + loadProject 校验 segments 数组并 clamp currIndex + 睡眠定时关 AI/wakeLock + wakeLock enabled/sentinel 分离；4) 新增统计功能：从「英语精听播放器」移植统计收集/UI/分享长图/备份导入导出（version:3 兼容，可与精听互通） -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V79</title>
+<title>影子跟读 Pro V79.1</title>
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
     --red: #EA4335; --purple: #A142F4; --ai: #00897B; --ai-dark: #00695C;
     --bg: #F8F9FA; --text: #202124; --border: #DADCE0;
     --preview: #F57C00; --preview-light: #FFF3E0; --preview-border: #FFE0B2;
-    /* V79: 统计 UI 用的 ios-* 变量（从精听播放器移植补齐） */
+    /* V79.1: 统计 UI 用的 ios-* 变量（从精听播放器移植补齐） */
     --ios-bg: #F8F9FA; --ios-card: #ffffff; --ios-text: #202124; --ios-subtext: #5F6368;
     --ios-blue: #1A73E8; --ios-red: #EA4335; --ios-blur: rgba(255,255,255,0.95);
     --ios-sep: rgba(0,0,0,0.08); --ios-divider: rgba(0,0,0,0.08); --ios-gray-btn: #F1F3F4;
@@ -272,7 +272,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.75; } 100% { opacity: 1; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ============ V79: 统计页 / 分享 / 备份 CSS（从精听播放器移植） ============ */
+/* ============ V79.1: 统计页 / 分享 / 备份 CSS（从精听播放器移植） ============ */
 .stats-sheet { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--ios-bg); z-index: 5000; display: none; flex-direction: column; }
 .stats-sheet.open { display: flex; }
 .st-hdr { background: var(--ios-blur); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0.5px solid var(--ios-sep); padding: calc(var(--safe-top) + 8px) 16px 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
@@ -362,7 +362,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V79</div>
+    <div class="nav-title">🎧 影子跟读 V79.1</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -683,7 +683,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 <div id="toast" class="toast">提示</div>
 
-<!-- ============ V79: 统计页 / 分享 / 备份 HTML 结构 ============ -->
+<!-- ============ V79.1: 统计页 / 分享 / 备份 HTML 结构 ============ -->
 <div id="statsSheet" class="stats-sheet">
     <div class="st-hdr">
         <span class="st-hdr-title">📊 跟读统计</span>
@@ -734,7 +734,7 @@ const CONST = {
     PREVIEW:  'shadow_v72_preview',
     PADDING:  'shadow_v73_padding',
     AUTOSYNC: 'shadow_v74_autosync',
-    STATS:    'shadow_stats_v1', // V79: 统计数据 storage key
+    STATS:    'shadow_stats_v1', // V79.1: 统计数据 storage key
     PROXY: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='],
     SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/',
     IDB_NAME: 'shadow_v74_cache',
@@ -759,7 +759,7 @@ const state = {
     _loopInitialized: false // 循环区间是否已初始化（首次 renderEditor 时设默认值，后续仅 clamp）
 };
 
-// V79: 统计相关全局变量
+// V79.1: 统计相关全局变量
 var statsDB = {};              // { 'YYYY-MM-DD': { hashKey: { name, url, sec, count, source } } }
 var _stFlush = 0;              // 攒够 N 次再写盘
 var _sessionCounted = false;   // 当前音频是否已计入"播放次数"
@@ -1356,21 +1356,7 @@ const engine = {
         const arm = () => {
             if (stopped) return;
             const rate = a.playbackRate || 1;
-            const ct = a.currentTime;
-            // 关键保护：currentTime/duration 异常（NaN）时不 arm，交给 timeupdate/ended 事件兜底
-            // 否则 Math.max(10, NaN)=NaN，setTimeout(fn,NaN)=setTimeout(fn,0) 会导致无限快速循环卡死
-            if (!isFinite(ct)) return;
-            const remaining = endTime - ct;
-            if (!isFinite(remaining) || remaining <= 0) {
-                // 已到或超过终点，延迟 50ms 检查一次（等 audio 时间更新）
-                timerId = setTimeout(() => {
-                    if (stopped) return;
-                    if (a.currentTime >= endTime - 0.02 || a.ended) fire();
-                    else if (isFinite(a.currentTime)) arm();
-                }, 50);
-                return;
-            }
-            const ms = Math.max(10, (remaining / rate) * 1000 - 20);
+            const ms = Math.max(10, ((endTime - a.currentTime) / rate) * 1000 - 20);
             timerId = setTimeout(() => {
                 if (stopped) return;
                 if (a.currentTime >= endTime - 0.02 || a.ended) fire();
@@ -1595,7 +1581,7 @@ const ui = {
         this.updatePermButtons();
         previewMode.loadFromStorage();
         previewMode.updateBadge();
-        // V79: 启动统计 ticker（绑定到 main-audio 的 play/pause/seeked/timeupdate）
+        // V79.1: 启动统计 ticker（绑定到 main-audio 的 play/pause/seeked/timeupdate）
         startStatsTicker();
     },
     renderHistory() {
@@ -1956,7 +1942,7 @@ const app = {
                 localStorage.setItem(CONST.SESSION, mp3);
                 this.addHistory(mp3);
                 previewMode.clearForNewAudio(mp3);
-                // V79: 重置会话统计（新音频开始，重新计次播放）
+                // V79.1: 重置会话统计（新音频开始，重新计次播放）
                 _sessionCounted = false; _sessionSec = 0;
                 state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
                 ui.renderEditor();
@@ -2031,7 +2017,7 @@ const app = {
             localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
             previewMode.clearForNewAudio(mp3);
-            // V79: 重置会话统计（新音频开始，重新计次播放）
+            // V79.1: 重置会话统计（新音频开始，重新计次播放）
             _sessionCounted = false; _sessionSec = 0;
             state.subFileNames = {1:'', 2:'', 3:''};
             // 强制重置到第一句
@@ -2376,7 +2362,7 @@ const app = {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const data = { version: 79, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v79.json'; a.click();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_V79.1.json'; a.click();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     extractFilenameFromUrl(url) {
@@ -3069,7 +3055,7 @@ document.addEventListener('visibilitychange', () => {
             app._cacheSyncTimer = null;
             app._syncCacheSegments();
         }
-        // V79: 页面隐藏时 flush 统计（避免播放时切后台丢秒）
+        // V79.1: 页面隐藏时 flush 统计（避免播放时切后台丢秒）
         try { flushStats(); } catch(e) {}
     }
 });
@@ -3153,7 +3139,7 @@ function detectSilenceAsync(audioBuffer, threshold) {
 }
 
 // ============================================================
-//  V79: 统计模块（从「英语精听播放器」移植并适配影子跟读）
+//  V79.1: 统计模块（从「英语精听播放器」移植并适配影子跟读）
 //  - 只统计原音播放时长（音量>=40% 的有效播放）
 //  - 数据结构 statsDB: { 'YYYY-MM-DD': { hashKey: { name, url, sec, count, source } } }
 //  - 备份/导入 version 3，source 字段标识来源（shadow/listening），可与精听互通
