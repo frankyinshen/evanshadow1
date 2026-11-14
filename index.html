@@ -12,18 +12,21 @@
 <!-- V76 | build:20261112 | 修复：cacheUI.load/loadProject/importSub 三处补 _loopInitialized 重置（防循环区间残留上一个音频）；state 显式声明 _loopInitialized:false；删 loadFromUrl 里 localSegs 死代码；updateSeg 还原输入框加 typeof 防护防脏数据崩处理器；delSeg/mergeSeg/splitSeg starredIndices 映射后加 .sort 防御性排序；版本号统一到 V76 -->
 <!-- V77 | build:20261112 | 修复：loadFromUrl 备份音频状态（src/objectUrl/audioBuffer），restoreBackup 完整恢复音频，加载过程不提前 revoke 旧 objectURL（防"字幕恢复但音频还是新的"字画错配）；importSub(k=0) 重置 currIndex 和 starredIndices（防练习页卡空白）；loadProject 调 clearForNewAudio 刷新 badge；previewMode.start 补 updateBadge；exportProject/exportSRT 回收 objectURL 防内存泄漏；recorder alert 改 toast；serverBrowser.parseAndRender new URL 加 try/catch 防畸形链接崩整个目录 -->
 <!-- V78 | build:20261112 | 修复：_syncCacheSegments 加 SESSION 校验（防加载失败后旧字幕写进新缓存）；recorder iOS 手势预热（toggle 开始录音时用静音 WAV 解锁 record-audio，避免后续 playCmp 延时 r.play() 被 iOS 拒绝）；applyReAnalyze 禁用按钮防连点竞态+加 catch；restoreBackup 清 _cacheSyncTimer + a.src 改 removeAttribute（防空 src 触发无效请求）；restoreProgress 重置 _loopInitialized + clamp currIndex；delSeg starredIndices 加越界过滤；visibilitychange 即时同步缓存防页面关闭丢失 -->
-<!-- V79.5 | build:20261113 | 1) P1: applyReAnalyze 空结果保护 + mergeSeg 修正 currIndex；2) P2: _watchUntil 精确定时器(按倍速自我重排) + recorder.stopAll 丢弃录音不触发 playCmp + 区间循环输入校验 + AI 弯引号归一 + GitHub 链接转换修正；3) P3: restoreBackup 恢复 dataset.name + detectSilenceAsync 30s 超时兜底 + applyReAnalyze 按钮加 id + restoreProgress 文案用 clamp 值 + loadProject 校验 segments 数组并 clamp currIndex + 睡眠定时关 AI/wakeLock + wakeLock enabled/sentinel 分离；4) 新增统计功能：从「英语精听播放器」移植统计收集/UI/分享长图/备份导入导出（version:3 兼容，可与精听互通） -->
+<!-- V79 | build:20261113 | 1) P1: applyReAnalyze 空结果保护 + mergeSeg 修正 currIndex；2) P2: _watchUntil 精确定时器(按倍速自我重排) + recorder.stopAll 丢弃录音不触发 playCmp + 区间循环输入校验 + AI 弯引号归一 + GitHub 链接转换修正；3) P3: restoreBackup 恢复 dataset.name + detectSilenceAsync 30s 超时兜底 + applyReAnalyze 按钮加 id + restoreProgress 文案用 clamp 值 + loadProject 校验 segments 数组并 clamp currIndex + 睡眠定时关 AI/wakeLock + wakeLock enabled/sentinel 分离；4) 新增统计功能：从「英语精听播放器」移植统计收集/UI/分享长图/备份导入导出（version:3 兼容，可与精听互通） -->
+<!-- V80 | build:20261113 | 9 处修复：1) 预习模式键盘快捷键分流（重点句阶段 ←/→/Space，逐句听阶段 ←/Space 重放、→ 不跳过）；2) 预习模式跟随 activeSub——主文本按 state.activeSub 取 text2/text3/text，_getSub2 改名 _getSub 返回除主字幕外其他非空字幕；3) 自动联动下一句 start 超过 end 时截断到 end-0.01 并 toast 提示；4) ui.init currIndex clamp 防 localStorage 越界；5) mergeSub 时间戳容错匹配（精确区间命中失败时按 0.5s 容差找最近）；6) serverBrowser fetch 加 no-store 防缓存陈旧目录；7) cacheUI.load 备份/恢复（备份 segments/currIndex/audioObjectUrl/audioSrc/audioBuffer/dataset.name，失败 restoreBackup，成功 commitAudioSwap 模式 revoke 旧 url）；8) exportProject/exportSRT 加 appendChild+remove（修复部分浏览器下载不触发）；9) loadFromUrl 统一 decode audioBuffer（无论有无字幕），有字幕时也能用「重新断句」；版本号统一到 V80 -->
+<!-- V82 | build:20261113 | 新增绿底「EVAN跟读」图标：电脑/安卓用 SVG data URL link icon，iPhone 用 apple-touch-icon 180x180 PNG（满铺直角底色防黑角，SVG 加 width/height 防 Safari Canvas 比例异常，sizes 用 setAttribute 兼容）；importSub k=0 补 previewedCount=0；5 处精准补丁（分享长图弹窗 z-index:7000 + blob 空值保护、importSub 清 doneIndices、doShareDay/doShareRange 传 weekExtra、从头预习 restart() 按钮、三处 play().catch 兜底、弯引号 Unicode 转义）；版本号统一到 V82.8 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V79.5</title>
+<title>影子跟读 Pro V82.8</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230F3F24'/%3E%3Cstop offset='0.55' stop-color='%2315803D'/%3E%3Cstop offset='1' stop-color='%2316A34A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='16' y='16' width='480' height='480' rx='112' fill='url(%23bg)'/%3E%3Cpath d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='%23FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/%3E%3Cpath d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='%23FFFFFF' stroke-width='22' stroke-linecap='round'/%3E%3Crect x='112' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='358' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='150' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='351' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='188' y='230' width='16' height='48' rx='8' fill='%23FFFFFF' fill-opacity='0.78'/%3E%3Crect x='218' y='202' width='16' height='104' rx='8' fill='%23FFFFFF' fill-opacity='0.92'/%3E%3Crect x='248' y='182' width='16' height='144' rx='8' fill='%23BEF264'/%3E%3Crect x='278' y='208' width='16' height='92' rx='8' fill='%23D9F99D'/%3E%3Crect x='308' y='232' width='16' height='44' rx='8' fill='%23ECFCCB'/%3E%3Ccircle cx='396' cy='108' r='26' fill='%23FFFFFF'/%3E%3Cpath d='M385 108 L393 116 L408 100' fill='none' stroke='%2315803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ctext x='256' y='402' text-anchor='middle' font-family='PingFang SC,Microsoft YaHei,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='%23FFFFFF'%3EEVAN跟读%3C/text%3E%3C/svg%3E">
 <style>
 :root {
     --primary: #1A73E8; --green: #34A853; --orange: #FBBC04;
     --red: #EA4335; --purple: #A142F4; --ai: #00897B; --ai-dark: #00695C;
     --bg: #F8F9FA; --text: #202124; --border: #DADCE0;
     --preview: #F57C00; --preview-light: #FFF3E0; --preview-border: #FFE0B2;
-    /* V79.5: 统计 UI 用的 ios-* 变量（从精听播放器移植补齐） */
+    /* V79: 统计 UI 用的 ios-* 变量（从精听播放器移植补齐） */
     --ios-bg: #F8F9FA; --ios-card: #ffffff; --ios-text: #202124; --ios-subtext: #5F6368;
     --ios-blue: #1A73E8; --ios-red: #EA4335; --ios-blur: rgba(255,255,255,0.95);
     --ios-sep: rgba(0,0,0,0.08); --ios-divider: rgba(0,0,0,0.08); --ios-gray-btn: #F1F3F4;
@@ -272,7 +275,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.75; } 100% { opacity: 1; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ============ V79.5: 统计页 / 分享 / 备份 CSS（从精听播放器移植） ============ */
+/* ============ V79: 统计页 / 分享 / 备份 CSS（从精听播放器移植） ============ */
 .stats-sheet { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--ios-bg); z-index: 5000; display: none; flex-direction: column; }
 .stats-sheet.open { display: flex; }
 .st-hdr { background: var(--ios-blur); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 0.5px solid var(--ios-sep); padding: calc(var(--safe-top) + 8px) 16px 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
@@ -362,7 +365,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V79.5</div>
+    <div class="nav-title">🎧 影子跟读 V82.8</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -405,9 +408,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <div id="group-local" class="input-group">
                 <div class="file-box">
                     <div class="btn-file primary">♫ 导入 MP3 <input type="file" id="audio-file" accept="audio/*"></div>
-                    <div class="btn-file sub-slot">📄 字幕 1 <input type="file" onchange="app.importSub(this,0)" accept=".srt,.txt"></div>
-                    <div class="btn-file sub-slot">📄 字幕 2 <input type="file" onchange="app.importSub(this,1)" accept=".srt,.txt"></div>
-                    <div class="btn-file sub-slot">📄 字幕 3 <input type="file" onchange="app.importSub(this,2)" accept=".srt,.txt"></div>
+                    <div class="btn-file sub-slot">📄 字幕 1 <input type="file" onchange="app.importSub(this,0)" accept=".srt,.txt" onclick="this.value=null"></div>
+                    <div class="btn-file sub-slot">📄 字幕 2 <input type="file" onchange="app.importSub(this,1)" accept=".srt,.txt" onclick="this.value=null"></div>
+                    <div class="btn-file sub-slot">📄 字幕 3 <input type="file" onchange="app.importSub(this,2)" accept=".srt,.txt" onclick="this.value=null"></div>
                 </div>
                 <div style="font-size:12px;color:#999;margin-top:8px;line-height:1.5;background:#FFF8E1;border:1px solid #FFE0B2;border-radius:8px;padding:8px 10px;">💡 本地文件导入不会自动进入离线缓存（因来源不是 URL）。如需长期离线使用，建议通过「🌍 网络链接」加载一次。</div>
             </div>
@@ -599,6 +602,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <button class="btn-preview-replay" onclick="previewMode.replayCurrentSentence()">🔄 再听一次</button>
                     <button class="btn-preview-skip" onclick="previewMode.prevSentence()">⏮ 上一句</button>
                 </div>
+                <div style="margin-top:4px;">
+                    <button class="btn-preview-skip" style="width:100%;" onclick="previewMode.restart()">🔄 从头预习</button>
+                </div>
                 <div id="preview-goto-focus-btn-wrap" style="margin-top:8px;display:none;">
                     <button style="width:100%;padding:11px;border:none;border-radius:10px;background:var(--preview);color:#fff;font-size:14px;font-weight:700;cursor:pointer;" onclick="previewMode.earlyFinish()">
                         ⭐ 提前结束，去练习已标记的 <span id="preview-early-count">0</span> 个重点句
@@ -683,7 +689,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 <div id="toast" class="toast">提示</div>
 
-<!-- ============ V79.5: 统计页 / 分享 / 备份 HTML 结构 ============ -->
+<!-- ============ V79: 统计页 / 分享 / 备份 HTML 结构 ============ -->
 <div id="statsSheet" class="stats-sheet">
     <div class="st-hdr">
         <span class="st-hdr-title">📊 跟读统计</span>
@@ -734,7 +740,7 @@ const CONST = {
     PREVIEW:  'shadow_v72_preview',
     PADDING:  'shadow_v73_padding',
     AUTOSYNC: 'shadow_v74_autosync',
-    STATS:    'shadow_stats_v1', // V79.5: 统计数据 storage key
+    STATS:    'shadow_stats_v1', // V79: 统计数据 storage key
     PROXY: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='],
     SERVER_BROWSER_BASE_URL: 'https://res.evanyin.dpdns.org/',
     IDB_NAME: 'shadow_v74_cache',
@@ -756,10 +762,11 @@ const state = {
     autoSyncNextStart: true,
     _audioObjectUrl: null,
     _recordObjectUrl: null,
-    _loopInitialized: false // 循环区间是否已初始化（首次 renderEditor 时设默认值，后续仅 clamp）
+    _loopInitialized: false, // 循环区间是否已初始化（首次 renderEditor 时设默认值，后续仅 clamp）
+    _loadedAudioUrl: '' // V81: 当前已真正加载成功的音频 URL（本地导入为 ''，统计用此判断而非读输入框）
 };
 
-// V79.5: 统计相关全局变量
+// V79: 统计相关全局变量
 var statsDB = {};              // { 'YYYY-MM-DD': { hashKey: { name, url, sec, count, source } } }
 var _stFlush = 0;              // 攒够 N 次再写盘
 var _sessionCounted = false;   // 当前音频是否已计入"播放次数"
@@ -960,12 +967,39 @@ const cacheUI = {
         }
     },
     async load(id) {
+        // 备份当前工程（含音频状态）：cancel / 加载失败时恢复（参考 loadFromUrl 的 restoreBackup 模式）
+        const backupSegments = state.segments;
+        const backupCurrIndex = state.currIndex;
+        const backupAudioObjectUrl = state._audioObjectUrl;
+        const backupAudioSrc = document.getElementById('main-audio').src;
+        const backupAudioBuffer = state.audioBuffer;
+        const backupDatasetName = document.getElementById('main-audio').dataset.name;
+        const restoreBackup = () => {
+            if (app._cacheSyncTimer) { clearTimeout(app._cacheSyncTimer); app._cacheSyncTimer = null; }
+            state.segments = backupSegments;
+            state.currIndex = backupCurrIndex;
+            state.audioBuffer = backupAudioBuffer;
+            // 恢复音频：revoke 新创建的 objectURL（如果有且和备份不同），还原旧的
+            if (state._audioObjectUrl && state._audioObjectUrl !== backupAudioObjectUrl) {
+                try { URL.revokeObjectURL(state._audioObjectUrl); } catch(e) {}
+            }
+            state._audioObjectUrl = backupAudioObjectUrl;
+            const a = document.getElementById('main-audio');
+            a.dataset.name = backupDatasetName || '';
+            if (backupAudioSrc) {
+                a.src = backupAudioSrc;
+            } else {
+                a.removeAttribute('src');
+                try { a.load(); } catch(e) {}
+            }
+            ui.renderEditor();
+            ui.updatePractice(state.currIndex);
+        };
         try {
             const p = await idbCache.get(id);
             if (!p || !p.audioBlob) { ui.toast('缓存不存在或损坏'); this.render(); return; }
             ui.toast('⏳ 正在从离线缓存加载...');
-            // 加载音频
-            if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
+            // 加载音频：先创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke，失败时能回滚）
             state._audioObjectUrl = URL.createObjectURL(p.audioBlob);
             const a = document.getElementById('main-audio');
             a.src = state._audioObjectUrl;
@@ -996,16 +1030,28 @@ const cacheUI = {
             localStorage.setItem(CONST.SESSION, p.audioUrl || '');
             app.addHistory(p.audioUrl || '');
             previewMode.clearForNewAudio(p.audioUrl || '');
+            // 加载成功后从 localStorage 恢复该音频的预习进度，让 badge 显示正确数字
+            previewMode.loadFromStorage();
+            previewMode.updateBadge();
+            state._loadedAudioUrl = p.audioUrl || ''; // V81: 缓存加载成功，记录用于统计
             state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
             _sessionCounted = false; _sessionSec = 0; // 重置统计会话，防播放次数统计不准
             ui.renderEditor();
             ui.updateAudioStatus();
             app.save();
             ui.updatePractice(0);
+            // 加载成功：revoke 旧音频 objectURL（避免内存泄漏，commitAudioSwap 模式）
+            if (backupAudioObjectUrl && backupAudioObjectUrl !== state._audioObjectUrl) { try { URL.revokeObjectURL(backupAudioObjectUrl); } catch(e) {} }
             ui.toast('✅ 已从离线缓存加载（0 网络请求）');
             app.switchView('practice');
         } catch(e) {
-            ui.toast('加载失败: ' + (e.message || e));
+            // 加载失败时恢复原工程（避免清空后失败导致数据永久丢失）
+            if (backupSegments && backupSegments.length) {
+                restoreBackup();
+                ui.toast('加载失败，原工程已恢复: ' + (e.message || e));
+            } else {
+                ui.toast('加载失败: ' + (e.message || e));
+            }
         }
     },
     async remove(id) {
@@ -1146,7 +1192,7 @@ const serverBrowser = {
         let dp = url.replace(CONST.SERVER_BROWSER_BASE_URL, '/'); if (!dp.startsWith('/')) dp = '/' + dp;
         try { dp = decodeURIComponent(dp); } catch(e) {}
         pathEl.textContent = dp;
-        fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+        fetch(url, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(html => this.parseAndRender(html, url))
             .catch(e => { listEl.innerHTML = '<div class="browser-item loading" style="color:red;">加载失败: ' + e.message + '</div>'; });
     },
@@ -1303,12 +1349,23 @@ const engine = {
     playSegment(i) {
         this.stopAll();
         const s = state.segments[i], a = document.getElementById('main-audio');
-        if (!a.src) return ui.toast("音频未就绪");
+        // V81: 空值保护——s 不存在或音频未就绪时直接返回，避免后续 currentTime/seek 崩溃
+        if (!s) return;
+        if (!a || !a.src) return ui.toast("音频未就绪");
         a.playbackRate = state.playbackRate;
         a.currentTime = s.start;
-        this._watchUntil(s.end, () => { try { a.pause(); } catch(e) {} });
+        // V81: 改为在 a.play() Promise resolve 后再注册 _watchUntil（参考 _playSegmentTimed），
+        // 避免 seek 未完成时 currentTime 还是旧值被 arm() 误判“已到终点”立即暂停音频
+        const registerWatch = () => {
+            this._watchUntil(s.end, () => { try { a.pause(); } catch(e) {} });
+        };
         const playP = a.play();
-        if (playP && playP.catch) playP.catch(e => console.error(e));
+        if (playP && playP.then) {
+            playP.then(() => { registerWatch(); }).catch(e => { console.error(e); ui.toast('播放失败'); });
+        } else {
+            // 兼容不返回 Promise 的旧浏览器
+            registerWatch();
+        }
     },
     getPaddedWindow(idx) {
         const segs = state.segments, cur = segs[idx];
@@ -1434,7 +1491,7 @@ const engine = {
         } else if (this.mode === 'FULL_PLAY') {
             // 同理：全篇循环也优先判断是否播完，不依赖 a.paused，
             // 避免个别机型 loop 属性失效/原生 pause 导致卡在最后一句
-            if (a.ended || (a.duration > 0 && ct >= a.duration - 0.5)) {
+            if (a.ended || (a.duration > 0 && ct >= a.duration - 0.05)) {
                 a.currentTime = 0; state.currIndex = 0; ui.updatePractice(0);
                 const playP = a.play();
                 if (playP && playP.catch) playP.catch(e => console.error(e));
@@ -1528,11 +1585,12 @@ const engine = {
             if (!this.check()) return;
             const a = document.getElementById('main-audio');
             a.currentTime = 0; state.currIndex = 0; ui.updatePractice(0); a.loop = true;
+            a.playbackRate = state.playbackRate; // V81: 全文磨耳朵沿用用户设定的倍速
             a.play().then(() => {
                 this.mode = 'FULL_PLAY';
                 const btn = document.getElementById('btn-full-play'); btn.classList.add('active'); btn.innerText = "⏹ 停止";
                 this.startTicker();
-            });
+            }).catch(e => { console.error(e); ui.toast('播放失败'); });
         }
     },
     check() {
@@ -1588,7 +1646,7 @@ const ui = {
         const parsedSegments = safeParse(d, []);
         if (parsedSegments.length) {
             state.segments = parsedSegments;
-            state.currIndex = parseInt(localStorage.getItem(CONST.INDEX) || 0);
+            state.currIndex = Math.min(Math.max(0, parseInt(localStorage.getItem(CONST.INDEX) || 0) || 0), Math.max(0, parsedSegments.length - 1));
             this.renderEditor();
             this.updatePractice(state.currIndex);
 
@@ -1608,7 +1666,7 @@ const ui = {
         this.updatePermButtons();
         previewMode.loadFromStorage();
         previewMode.updateBadge();
-        // V79.5: 启动统计 ticker（绑定到 main-audio 的 play/pause/seeked/timeupdate）
+        // V79: 启动统计 ticker（绑定到 main-audio 的 play/pause/seeked/timeupdate）
         startStatsTicker();
     },
     renderHistory() {
@@ -1879,8 +1937,19 @@ const app = {
         const backupAudioBuffer = state.audioBuffer;
         // P3-1: 备份音频 dataset.name，restoreBackup 时恢复（防 loadFromUrl 失败后 name 被新音频覆盖）
         const backupDatasetName = document.getElementById('main-audio').dataset.name;
+        // V81: 备份 4 个 URL 输入框值 + localStorage.INPUTS + state._loadedAudioUrl，
+        // 加载失败 restoreBackup 时一并还原，防输入框被中途改写后留下脏数据
+        const backupUrlInputs = {
+            mp3: document.getElementById('url-audio').value,
+            s1:  document.getElementById('url-srt-1').value,
+            s2:  document.getElementById('url-srt-2').value,
+            s3:  document.getElementById('url-srt-3').value
+        };
+        const backupLsInputs = localStorage.getItem(CONST.INPUTS);
+        const backupLoadedAudioUrl = state._loadedAudioUrl;
         // 校验通过后再清空，避免空链接误点导致当前工程被覆盖
         state.segments = []; ui.renderEditor(); this.saveInput();
+        state._loadedAudioUrl = ''; // V81: 加载中先置空，成功后再赋值
         const btn = document.getElementById('btn-load-url'), spin = document.getElementById('url-spinner');
         btn.disabled = true; spin.style.display = 'inline-block';
         const projectId = idbCache.hashUrl(mp3);
@@ -1907,6 +1976,14 @@ const app = {
                 a.removeAttribute('src');
                 try { a.load(); } catch(e) {} // 清空 src 后重置内部状态
             }
+            // V81: 还原 URL 输入框 + localStorage.INPUTS + _loadedAudioUrl
+            document.getElementById('url-audio').value = backupUrlInputs.mp3;
+            document.getElementById('url-srt-1').value = backupUrlInputs.s1;
+            document.getElementById('url-srt-2').value = backupUrlInputs.s2;
+            document.getElementById('url-srt-3').value = backupUrlInputs.s3;
+            if (backupLsInputs != null) { try { localStorage.setItem(CONST.INPUTS, backupLsInputs); } catch(e) {} }
+            else { try { localStorage.removeItem(CONST.INPUTS); } catch(e) {} }
+            state._loadedAudioUrl = backupLoadedAudioUrl;
             ui.renderEditor();
             ui.updatePractice(state.currIndex);
         };
@@ -1969,7 +2046,10 @@ const app = {
                 localStorage.setItem(CONST.SESSION, mp3);
                 this.addHistory(mp3);
                 previewMode.clearForNewAudio(mp3);
-                // V79.5: 重置会话统计（新音频开始，重新计次播放）
+                // V81: 重新加载该音频已有的预习重点句（防角标假失踪）
+                previewMode.loadFromStorage(); previewMode.updateBadge();
+                state._loadedAudioUrl = mp3; // V81: 缓存命中加载成功，记录用于统计
+                // V79: 重置会话统计（新音频开始，重新计次播放）
                 _sessionCounted = false; _sessionSec = 0;
                 state._loopInitialized = false; // 新音频：重新初始化循环区间默认值
                 ui.renderEditor();
@@ -1993,6 +2073,16 @@ const app = {
             state.audioBuffer = null; // 清空旧 audioBuffer，防"重新断句"用旧音频数据
             const ab = await net.fetchBlobSmart(mp3);
             const audioBlob = ab;
+            // 统一 decode audioBuffer（无论有无字幕），让"重新断句"可用
+            try {
+                const buf = await ab.arrayBuffer();
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                try {
+                    state.audioBuffer = await ctx.decodeAudioData(buf);
+                } finally {
+                    try { ctx.close(); } catch(e) {}
+                }
+            } catch(e) { console.warn('audioBuffer decode 失败:', e); state.audioBuffer = null; }
             // 创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke）
             state._audioObjectUrl = URL.createObjectURL(ab);
             document.getElementById('main-audio').src = state._audioObjectUrl;
@@ -2026,15 +2116,11 @@ const app = {
                 }
             }
             if (!parsedFromSrt) {
-                ui.toast(t1||t2||t3 ? "字幕解析为空，进行智能断句..." : "未提供字幕或下载失败，进行智能断句...");
-                await new Promise(r=>setTimeout(r,100));
-                const buf = await ab.arrayBuffer();
-                const ctx = new(window.AudioContext||window.webkitAudioContext)();
-                try {
-                    state.audioBuffer = await ctx.decodeAudioData(buf);
-                } finally {
-                    try { ctx.close(); } catch(e) {}
+                // decode 失败且无字幕时给明确提示，而不是笼统的"加载失败"
+                if (!state.audioBuffer) {
+                    throw new Error('音频编码不支持自动断句，请提供 SRT 字幕文件');
                 }
+                ui.toast(t1||t2||t3 ? "字幕解析为空，进行智能断句..." : "未提供字幕或下载失败，进行智能断句...");
                 state.segments = await detectSilenceAsync(
                     state.audioBuffer,
                     parseFloat(document.getElementById('threshold-range').value)
@@ -2045,7 +2131,10 @@ const app = {
             localStorage.setItem(CONST.SESSION, mp3);
             this.addHistory(mp3);
             previewMode.clearForNewAudio(mp3);
-            // V79.5: 重置会话统计（新音频开始，重新计次播放）
+            // V81: 重新加载该音频已有的预习重点句（防角标假失踪）
+            previewMode.loadFromStorage(); previewMode.updateBadge();
+            state._loadedAudioUrl = mp3; // V81: 网络加载成功，记录用于统计
+            // V79: 重置会话统计（新音频开始，重新计次播放）
             _sessionCounted = false; _sessionSec = 0;
             state.subFileNames = {1:'', 2:'', 3:''};
             // 强制重置到第一句
@@ -2118,7 +2207,21 @@ const app = {
             modal.querySelector('#seg-choice-cancel').onclick = () => { modal.remove(); resolve('cancel'); };
         });
     },
-    mergeSub(newS, k) { state.segments.forEach(b => { const m=newS.find(n=>n.start>=b.start&&n.start<b.end); if(m) b[k]=m.text; }); },
+    mergeSub(newS, k) {
+        state.segments.forEach(b => {
+            // 精确匹配：翻译字幕的 start 落在主字幕区间内
+            let m = newS.find(n => n.start >= b.start && n.start < b.end);
+            if (!m) {
+                // 容错匹配：找 start 最接近的（容差 0.5 秒）
+                let minDiff = 0.5;
+                for (const n of newS) {
+                    const diff = Math.abs(n.start - b.start);
+                    if (diff < minDiff) { minDiff = diff; m = n; }
+                }
+            }
+            if (m) b[k] = m.text;
+        });
+    },
     switchView(v) {
         if (aiMode.active) aiMode.stop();
         engine.stopAll();
@@ -2214,9 +2317,16 @@ const app = {
             state.segments[i][k]=n;
             if (state.autoSyncNextStart && k === 'end' && i + 1 < state.segments.length && !isNaN(state.segments[i].end)) {
                 const newStart = Math.round((state.segments[i].end + 0.01) * 100) / 100;
-                state.segments[i+1].start = newStart;
+                // 保护：联动后的 start 不能超过下一句的 end
+                if (newStart < state.segments[i+1].end) {
+                    state.segments[i+1].start = newStart;
+                } else {
+                    // 超过下一句 end，截断到 end-0.01 并提示
+                    state.segments[i+1].start = Math.round((state.segments[i+1].end - 0.01) * 100) / 100;
+                    ui.toast('⚠️ 联动起始时间已截断（超过下一句结束时间）');
+                }
                 const nextStartInput = document.getElementById('start-input-' + (i+1));
-                if (nextStartInput) nextStartInput.value = newStart.toFixed(2);
+                if (nextStartInput) nextStartInput.value = state.segments[i+1].start.toFixed(2);
             }
         }
         this.save();
@@ -2233,6 +2343,11 @@ const app = {
             .map(idx => idx === i ? -1 : (idx > i ? idx - 1 : idx))
             .filter(idx => idx >= 0 && idx <= maxValid)
             .sort((a, b) => a - b); // 防御性排序，确保升序
+        // V81: doneIndices 同步维护（与 starredIndices 同样的映射规则）
+        previewMode.doneIndices = previewMode.doneIndices
+            .map(idx => idx === i ? -1 : (idx > i ? idx - 1 : idx))
+            .filter(idx => idx >= 0 && idx <= maxValid)
+            .sort((a, b) => a - b);
         // 持久化 + 刷新界面 badge，避免刷新页面后读回旧的错位索引
         previewMode.saveToStorage();
         previewMode.updateBadge();
@@ -2249,6 +2364,10 @@ const app = {
             // 拆分后第 i 句之后的所有句子索引 +1（原 i+1 变 i+2、原 i+2 变 i+3...）
             // 第 i 句本身保留（内容变短），i+1 是新拆出来的未标记句
             previewMode.starredIndices = previewMode.starredIndices
+                .map(idx => idx > i ? idx + 1 : idx)
+                .sort((a, b) => a - b);
+            // V81: doneIndices 同步维护（拆分点后的句子索引 +1）
+            previewMode.doneIndices = previewMode.doneIndices
                 .map(idx => idx > i ? idx + 1 : idx)
                 .sort((a, b) => a - b);
             previewMode.saveToStorage();
@@ -2279,6 +2398,15 @@ const app = {
                 });
             // 去重（合并后可能有重复的 i）
             previewMode.starredIndices = [...new Set(previewMode.starredIndices)]
+                .sort((a, b) => a - b);
+            // V81: doneIndices 同步维护（被合并的 i+1 挪到 i，大于 i+1 的减 1，去重）
+            previewMode.doneIndices = previewMode.doneIndices
+                .map(idx => {
+                    if (idx === i + 1) return i;
+                    if (idx > i + 1) return idx - 1;
+                    return idx;
+                });
+            previewMode.doneIndices = [...new Set(previewMode.doneIndices)]
                 .sort((a, b) => a - b);
             // 持久化 + 刷新界面 badge
             previewMode.saveToStorage();
@@ -2313,11 +2441,13 @@ const app = {
                 state.currIndex = 0;
                 // 重点句基于旧时间轴标记，重新断句后时间轴全变，标记无意义，清空并提示
                 if (previewMode.starredIndices.length) {
-                    previewMode.starredIndices = [];
+                    previewMode.starredIndices = []; previewMode.doneIndices = [];
                     previewMode.saveToStorage();
                     previewMode.updateBadge();
                     ui.toast("重新分析完成，重点句已重置（时间轴已变）");
                 } else {
+                    // V81: starredIndices 为空时 doneIndices 也可能残留，一并清掉持久化
+                    if (previewMode.doneIndices.length) { previewMode.doneIndices = []; previewMode.saveToStorage(); }
                     ui.toast("重新分析完成");
                 }
                 state._loopInitialized = false; // 重新断句后重置循环区间默认值
@@ -2389,16 +2519,39 @@ const app = {
             app.switchView('practice');
         } else if (mp3) {
             ui.toast('⏳ 正在重新加载音频，请稍候...');
-            net.fetchBlobSmart(mp3).then(async ab => {
+            // V81: 先查离线缓存，命中则用 cached.audioBlob 建 objectURL（不覆盖已恢复的 segments/currIndex），
+            // 未命中再回退 net.fetchBlobSmart(mp3) 下载并 decode，避免每次恢复进度都重新联网下载
+            const projectId = idbCache.hashUrl(mp3);
+            idbCache.get(projectId).then(async cached => {
+                let audioBlob = null, cachedName = '';
+                if (cached && cached.audioBlob) {
+                    audioBlob = cached.audioBlob;
+                    cachedName = cached.name || '';
+                } else {
+                    // 未命中缓存：回退网络下载
+                    audioBlob = await net.fetchBlobSmart(mp3);
+                }
                 if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
-                state._audioObjectUrl = URL.createObjectURL(ab);
+                state._audioObjectUrl = URL.createObjectURL(audioBlob);
                 mainAudio.src = state._audioObjectUrl;
+                mainAudio.dataset.name = cachedName || idbCache.extractFilename(mp3) || '';
+                try { mainAudio.load(); } catch(e) {}
                 await net.waitAudioReady(mainAudio);
+                // V81: 异步 decode audioBuffer 供"重新断句"使用（失败置 null，不影响播放）
+                try {
+                    const buf = await audioBlob.arrayBuffer();
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    try { state.audioBuffer = await ctx.decodeAudioData(buf); }
+                    finally { try { ctx.close(); } catch(e) {} }
+                } catch(e) { console.warn('restoreProgress audioBuffer decode 失败:', e); state.audioBuffer = null; }
+                // V81: 音频就绪后同步统计归属（_loadedAudioUrl）并重置会话计数
+                state._loadedAudioUrl = mp3;
+                _sessionCounted = false; _sessionSec = 0;
                 ui.updateAudioStatus();
                 ui.toast('✅ 音频就绪，已恢复到第 ' + (state.currIndex + 1) + ' 句');
                 app.switchView('practice');
             }).catch(e => {
-                ui.toast('❌ 音频重载失败：' + e.message);
+                ui.toast('❌ 音频重载失败：' + (e.message || e));
                 ui.updateAudioStatus();
             });
         } else {
@@ -2408,9 +2561,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 79, segments: state.segments, idx: state.currIndex, inputs: inputs };
+        const data = { version: 82.8, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_V79.5.json'; a.click();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v82.8.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     extractFilenameFromUrl(url) {
@@ -2435,7 +2588,7 @@ const app = {
             filename = audioBase ? (audioBase + '_sub' + slot + '.srt') : ('sub_' + slot + '.srt');
         }
         if (!/\.(srt|txt)$/i.test(filename)) filename += '.srt';
-        const a = document.createElement('a'); const _url = URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.href=_url; a.download=filename; a.click();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(new Blob([c],{type:'text/plain'})); a.href=_url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     loadProject(el) {
@@ -2462,6 +2615,8 @@ const app = {
             state._loopInitialized = false; // 新工程：重新初始化循环区间默认值
             // 切换工程时清除当前预习内存状态（badge 会显示 0，进预习模式时按新 URL 重新读）
             previewMode.clearForNewAudio((d.inputs && d.inputs.mp3) || '');
+            // V81: 重新加载该音频已有的预习重点句（防角标假失踪）
+            previewMode.loadFromStorage(); previewMode.updateBadge();
             ui.renderEditor(); ui.updateAudioStatus();
         };
         r.readAsText(f);
@@ -2486,6 +2641,10 @@ const app = {
                 // 主字幕整个替换 segments，相当于换新内容：重置进度和重点句
                 state.currIndex = 0;
                 previewMode.starredIndices = [];
+                previewMode.doneIndices = [];
+                previewMode.cursorIdx = 0;
+                previewMode.previewDone = false;
+                previewMode.previewedCount = 0;
                 previewMode.saveToStorage();
                 previewMode.updateBadge();
                 state._loopInitialized = false;
@@ -2539,6 +2698,8 @@ const recorder = {
     },
     playCmp() {
         const s = state.segments[state.currIndex], a = document.getElementById('main-audio'), r = document.getElementById('record-audio');
+        // V81: 空值保护——s 不存在时不播
+        if (!s) return;
         // 用 MediaRecorder 实际的 mimeType，避免 Safari 录音播放不出来
         const mimeType = (this.rec && this.rec.mimeType) || (this.chunks[0] && this.chunks[0].type) || 'audio/webm';
         const b = new Blob(this.chunks, { type: mimeType });
@@ -2546,25 +2707,21 @@ const recorder = {
         state._recordObjectUrl = URL.createObjectURL(b);
         r.src = state._recordObjectUrl;
         ui.toast("▶️ 原音");
-        a.playbackRate = state.playbackRate; // 修复：沿用用户设定的速率
-        a.currentTime = s.start; 
-        a.play();
-        if (this.cmpTimer) clearInterval(this.cmpTimer); // 修复：清除旧定时器
-        this.cmpTimer = setInterval(() => {
-            if (a.currentTime >= s.end || a.paused) {
-                a.pause();
-                clearInterval(this.cmpTimer); this.cmpTimer = null; // 修复：清除自身
-                // P2-2: 登记 setTimeout 到 _playCmpTimer，stopAll 时清理避免切句时旧录音串音
-                this._playCmpTimer = setTimeout(() => {
-                    this._playCmpTimer = null;
-                    ui.toast("🎙️ 录音"); r.currentTime=0; r.play();
-                    const inPreview = document.getElementById('preview-view').classList.contains('active');
-                    const btn = inPreview ? document.getElementById('focus-btn-record') : document.getElementById('btn-record');
-                    r.onended = () => { if(btn) btn.classList.remove('playing'); ui.toast("播放完毕"); };
-                    if(btn) btn.classList.add('playing');
-                }, 500);
-            }
-        }, 30);
+        // V81: 去掉 setInterval(...,30) 轮询（同样有“seek 未完成误判到终点”竞态），
+        // 改用 engine._playSegmentTimed 播原音（play resolve 后才注册监控），播完后延时 500ms 播录音，
+        // 沿用 _playCmpTimer 以便 engine.stopAll 清理避免切句时旧录音串音
+        if (this.cmpTimer) { clearInterval(this.cmpTimer); this.cmpTimer = null; }
+        if (this._playCmpTimer) { clearTimeout(this._playCmpTimer); this._playCmpTimer = null; }
+        engine._playSegmentTimed({ start: s.start, end: s.end }, () => {
+            this._playCmpTimer = setTimeout(() => {
+                this._playCmpTimer = null;
+                ui.toast("🎙️ 录音"); r.currentTime=0; r.play().catch(e => { console.error(e); if(btn) btn.classList.remove('playing'); ui.toast('录音播放失败'); });
+                const inPreview = document.getElementById('preview-view').classList.contains('active');
+                const btn = inPreview ? document.getElementById('focus-btn-record') : document.getElementById('btn-record');
+                r.onended = () => { if(btn) btn.classList.remove('playing'); ui.toast("播放完毕"); };
+                if(btn) btn.classList.add('playing');
+            }, 500);
+        });
     }
 };
 
@@ -2572,7 +2729,7 @@ const recorder = {
 //  PREVIEW MODE — 预习模式
 // ============================================================
 const previewMode = {
-    cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '',
+    cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '', doneIndices: [],
     _getKey() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const mp3 = (inputs.mp3 || '').trim();
@@ -2587,23 +2744,28 @@ const previewMode = {
         try {
             const raw = localStorage.getItem(CONST.PREVIEW); if (!raw) return; const all = safeParse(raw, {}); const data = all[key]; if (!data) return;
             this.starredIndices = data.starred || []; this.previewedCount = data.previewedCount || 0; this.previewDone = data.done || false; this.cursorIdx = data.cursor || 0;
+            this.doneIndices = Array.isArray(data.doneIndices) ? data.doneIndices : []; // V81: 已练熟句子持久化
         } catch(e) {}
     },
     saveToStorage() {
         const key = this._getKey(); if (!key) return; this._audioKey = key;
         try {
             let all = safeParse(localStorage.getItem(CONST.PREVIEW), {})
-            all[key] = { starred: this.starredIndices, previewedCount: this.previewedCount, done: this.previewDone, cursor: this.cursorIdx };
+            all[key] = { starred: this.starredIndices, previewedCount: this.previewedCount, done: this.previewDone, cursor: this.cursorIdx, doneIndices: this.doneIndices };
             localStorage.setItem(CONST.PREVIEW, JSON.stringify(all));
         } catch(e) {}
     },
     clearForNewAudio(mp3Url) {
-        this.starredIndices = []; this.previewedCount = 0; this.previewDone = false; this.cursorIdx = 0; this.focusCursor = 0; this._audioKey = mp3Url; this.updateBadge();
+        this.starredIndices = []; this.previewedCount = 0; this.previewDone = false; this.cursorIdx = 0; this.focusCursor = 0; this.doneIndices = []; this._audioKey = mp3Url; this.updateBadge();
     },
-    _getSub2(seg) {
+    _getSub(seg) {
         if (!seg) return '';
-        if (seg.text2 && seg.text2.trim()) return seg.text2;
-        if (seg.text3 && seg.text3.trim()) return seg.text3;
+        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+        // 返回除主字幕外其他非空字幕
+        for (const k of ['text', 'text2', 'text3']) {
+            if (k === mainKey) continue;
+            if (seg[k] && seg[k].trim()) return seg[k];
+        }
         return '';
     },
     updateBadge() {
@@ -2654,7 +2816,8 @@ const previewMode = {
     _gotoSentence(idx) {
         if (idx >= state.segments.length) { this.cursorIdx = state.segments.length; this._finishListenPhase(); return; }
         this.cursorIdx = idx; state.currIndex = idx; const seg = state.segments[idx];
-        const text = seg.text || '(无内容)'; const text2 = this._getSub2(seg);
+        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+        const text = seg[mainKey] || seg.text || '(无内容)'; const text2 = this._getSub(seg);
         document.getElementById('preview-sentence-num').innerText = '#' + (idx+1) + ' / ' + state.segments.length;
         document.getElementById('preview-sentence-text').innerText = text;
         const t2el = document.getElementById('preview-sentence-text2');
@@ -2709,7 +2872,7 @@ const previewMode = {
             clearBtn.style.cssText = 'width:100%;padding:8px;border:1px solid #ffb3b3;background:#fff0f0;color:#c5221f;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;';
             clearBtn.onclick = () => {
                 if (confirm('确认清空全部重点句？')) {
-                    this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0;
+                    this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0; this.doneIndices = [];
                     this.saveToStorage(); this.updateBadge(); this._renderFocusList();
                 }
             };
@@ -2717,14 +2880,18 @@ const previewMode = {
         }
         this.starredIndices.forEach((segIdx, i) => {
             const seg = state.segments[segIdx]; if (!seg) return;
-            const text = seg.text || '(无内容)'; const text2 = this._getSub2(seg);
+            const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+            const text = seg[mainKey] || seg.text || '(无内容)'; const text2 = this._getSub(seg);
             const item = document.createElement('div'); item.className = 'focus-item'; item.id = 'focus-item-' + i;
             const checkDone = document.createElement('div'); checkDone.className = 'focus-check'; checkDone.dataset.idx = i;
+            // V81: 按持久化的 doneIndices 还原初始“已练熟”勾选状态（按 segIdx 匹配，与 starredIndices 维护同步）
+            const isDoneInit = this.doneIndices.includes(segIdx);
+            if (isDoneInit) { checkDone.classList.add('checked'); checkDone.innerText = '✓'; }
             checkDone.onclick = (e) => { e.stopPropagation(); this._toggleFocusDone(i, checkDone, item); };
             const numEl = document.createElement('div'); numEl.className = 'focus-num'; numEl.innerText = '#' + (segIdx+1);
             const leftCol = document.createElement('div'); leftCol.className = 'focus-item-left'; leftCol.appendChild(checkDone); leftCol.appendChild(numEl);
             const body = document.createElement('div'); body.className = 'focus-item-body';
-            const textEl = document.createElement('div'); textEl.className = 'focus-item-text'; textEl.innerText = text; body.appendChild(textEl);
+            const textEl = document.createElement('div'); textEl.className = 'focus-item-text'; textEl.innerText = text; if (isDoneInit) { item.classList.add('done'); textEl.style.textDecoration = 'line-through'; } body.appendChild(textEl);
             let text2El = null;
             if (text2 && text2 !== text) {
                 text2El = document.createElement('div'); text2El.className = 'focus-item-text2'; text2El.innerText = text2; text2El.style.display = 'none'; body.appendChild(text2El);
@@ -2738,7 +2905,10 @@ const previewMode = {
             }
             const delIcon = document.createElement('button'); delIcon.className = 'focus-item-play del-btn'; delIcon.innerText = '✕';
             delIcon.onclick = (e) => {
-                e.stopPropagation(); this.starredIndices.splice(i, 1);
+                e.stopPropagation(); const removedSegIdx = this.starredIndices[i];
+                this.starredIndices.splice(i, 1);
+                // V81: 同步移除被删句的 doneIndices 记录（按 segIdx）
+                this.doneIndices = this.doneIndices.filter(d => d !== removedSegIdx);
                 this.focusCursor = Math.min(this.focusCursor, this.starredIndices.length - 1);
                 if (this.starredIndices.length === 0) { this.previewDone = false; this.cursorIdx = 0; }
                 this.saveToStorage(); this.updateBadge(); this._renderFocusList();
@@ -2750,16 +2920,26 @@ const previewMode = {
         });
     },
     _toggleFocusDone(i, checkEl, itemEl) {
+        const segIdx = this.starredIndices[i];
         const isDone = checkEl.classList.contains('checked');
-        if (isDone) { checkEl.classList.remove('checked'); checkEl.innerText = ''; itemEl.classList.remove('done'); const textEl = itemEl.querySelector('.focus-item-text'); if (textEl) textEl.style.textDecoration = ''; }
-        else { checkEl.classList.add('checked'); checkEl.innerText = '✓'; itemEl.classList.add('done'); const textEl = itemEl.querySelector('.focus-item-text'); if (textEl) textEl.style.textDecoration = 'line-through'; }
+        if (isDone) {
+            checkEl.classList.remove('checked'); checkEl.innerText = ''; itemEl.classList.remove('done'); const textEl = itemEl.querySelector('.focus-item-text'); if (textEl) textEl.style.textDecoration = '';
+            // V81: 取消“已练熟” —— 从 doneIndices 中移除 segIdx
+            if (segIdx != null) { this.doneIndices = this.doneIndices.filter(d => d !== segIdx); this.saveToStorage(); }
+        } else {
+            checkEl.classList.add('checked'); checkEl.innerText = '✓'; itemEl.classList.add('done'); const textEl = itemEl.querySelector('.focus-item-text'); if (textEl) textEl.style.textDecoration = 'line-through';
+            // V81: 标记“已练熟” —— 加入 doneIndices
+            if (segIdx != null && !this.doneIndices.includes(segIdx)) { this.doneIndices.push(segIdx); this.saveToStorage(); }
+        }
     },
     _jumpToFocusSentence(segIdx) {
         engine.stopAll(); state.currIndex = segIdx;
         document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', this.starredIndices[i] === segIdx); });
         const curItem = document.getElementById('focus-item-' + this.focusCursor);
         if (curItem) curItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        const text = state.segments[segIdx].text || '';
+        // 跟随 activeSub 取主文本，与 _renderFocusList / _gotoSentence 保持一致
+        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+        const text = state.segments[segIdx][mainKey] || state.segments[segIdx].text || '';
         const nowEl = document.getElementById('focus-now-playing');
         nowEl.innerText = '▶ 第 ' + (segIdx+1) + ' 句：' + (text.length > 40 ? text.substring(0, 40) + '...' : text);
         nowEl.classList.add('show');
@@ -2789,6 +2969,9 @@ const previewMode = {
     },
     earlyFinish() { engine.stopAll(); this.previewDone = true; this.saveToStorage(); this.updateBadge(); this._showFocusPhase(); },
     tryExit() {
+        // V81: 若已在重点句练习阶段，直接退出，不弹"预习完成"弹窗（避免重复引导）
+        const focusPhase = document.getElementById('preview-focus-phase');
+        if (focusPhase && focusPhase.classList.contains('active')) { this.exit(); return; }
         if (this.starredIndices.length > 0) {
             const cnt = this.starredIndices.length; const statsEl = document.getElementById('preview-done-stats');
             statsEl.innerHTML = '已预习 <strong>' + this.cursorIdx + '</strong> 句<br>标记重点句 <strong>' + cnt + '</strong> 个';
@@ -2800,6 +2983,13 @@ const previewMode = {
     continueListen() {
         if (this.cursorIdx >= state.segments.length) { ui.toast('所有句子已预习完毕'); return; }
         this.previewDone = false; this.saveToStorage(); this._showListenPhase(); this._updateEarlyBtn(); this._gotoSentence(this.cursorIdx);
+    },
+    restart() {
+        if (!confirm('确认从头开始预习？当前进度将重置。')) return;
+        this.cursorIdx = 0; this.previewDone = false; this.previewedCount = 0;
+        this.saveToStorage(); this._showListenPhase(); this._updateEarlyBtn();
+        this._gotoSentence(0);
+        ui.toast('已从头开始预习');
     }
 };
 
@@ -2810,7 +3000,7 @@ const aiMode = {
     active: false, failCount: 0, maxFails: 3, threshold: 100, recognition: null, audioCtx: null, _cycleTimer: null, _listenTimeout: null, _playRafId: null, _warmSR: null, manualPracticeMode: false, failedSentences: [], reviewMode: false, reviewQueue: [], _prevPermBlurMode: 'none',
     toggle() { if (this.active) this.stop(); else this.start(); },
     updateThreshold(v) { this.threshold = parseInt(v); document.getElementById('ai-threshold-val').innerText = v + '%'; const slider = document.getElementById('ai-threshold'); const pct = ((v - slider.min) / (slider.max - slider.min)) * 100; slider.style.setProperty('--fill', pct + '%'); },
-    async start() {
+    async start(isReview = false) {
         if (!state.segments.length) return ui.toast('请先加载内容');
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2823,7 +3013,11 @@ const aiMode = {
         } catch(e) { console.warn('AudioContext unlock warn:', e); }
         try { const stream = await navigator.mediaDevices.getUserMedia({audio:true}); stream.getTracks().forEach(t=>t.stop()); } catch(e) { ui.toast('❌ 麦克风权限被拒绝'); return; }
         engine.stopAll(true);
-        this.active = true; if (!this.reviewMode) { this.failedSentences = []; } this.failCount = 0; this.manualPracticeMode = false; this._setBtn('running');
+        // V81: 非复习启动时重置复习状态，避免上次复习残留锁死新一轮练习（复习启动由 startReview 调 start(true)）
+        if (!isReview) { this.reviewMode = false; this.reviewQueue = []; this.failedSentences = []; }
+        this.active = true; this.failCount = 0; this.manualPracticeMode = false; this._setBtn('running');
+        // V81: 记录本轮起始句索引，showRoundComplete 非复习模式计算正确率时用作分母基准
+        this._runStartIdx = state.currIndex;
         document.getElementById('ai-mode-bar').classList.add('ai-running'); document.getElementById('ai-mode-bar').classList.remove('ai-manual');
         document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('🚀 启动中', '');
         this._prevPermBlurMode = state.permBlurMode; state.permBlurMode = 'hide'; state.userBlurState = true; ui.updatePermButtons(); ui.updatePractice(state.currIndex);
@@ -2848,6 +3042,8 @@ const aiMode = {
     runCycle() {
         if (!this.active) return;
         if (this.reviewMode && this.reviewQueue.length === 0) {
+            // V81: 复习队列空时立即重置 reviewMode，避免残留锁死后续新一轮练习/再次复习
+            this.reviewMode = false;
             this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
             this.setStatus('复习完成', 'success'); this.playBeep('complete');
             state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
@@ -2857,8 +3053,18 @@ const aiMode = {
         const seg = state.segments[idx]; if (!seg) { this.stop(); return; }
         const a = document.getElementById('main-audio'); this._preWarmSR();
         const win = engine.getPaddedWindow(idx); a.currentTime = win.start; a.playbackRate = state.playbackRate;
-        const playP = a.play(); if (playP) playP.catch(e => { console.error('AI play failed:', e); this.stop(); });
-        this._startPlayWatcher(win.end);
+        const playP = a.play();
+        // V81: 等 a.play() Promise resolve 后再启动 _startPlayWatcher（避免 seek 未完成时 currentTime 还是旧值被误判到达终点立即 fire → startListening）；
+        // play 期间被 stop 的话 active 已 false，then 内暂停音频后直接返回
+        if (playP && playP.then) {
+            playP.then(() => {
+                if (!this.active) { try { a.pause(); } catch(e) {} return; }
+                this._startPlayWatcher(win.end);
+            }).catch(e => { console.error('AI play failed:', e); this.stop(); });
+        } else {
+            // 兼容不返回 Promise 的旧浏览器
+            this._startPlayWatcher(win.end);
+        }
     },
     _startPlayWatcher(endTime) {
         const a = document.getElementById('main-audio');
@@ -2909,7 +3115,7 @@ const aiMode = {
         const r = this._warmSR || new SR(); this._warmSR = null; r.lang = 'en-US'; r.continuous = false; r.interimResults = false; r.maxAlternatives = 3; this.recognition = r;
         const key = state.activeSub===1?'text2':(state.activeSub===2?'text3':'text'); const refText = state.segments[state.currIndex][key] || '';
         const wordCount = refText.trim().split(/\s+/).filter(Boolean).length; const dynamicTimeout = Math.min(25000, Math.max(12000, wordCount * 1200));
-        let settled = false; let retried = false; const settle = fn => { if (settled) return; settled = true; clearTimeout(this._listenTimeout); fn(); };
+        let settled = false; let retried = false; const settle = fn => { if (!this.active) return; if (settled) return; settled = true; clearTimeout(this._listenTimeout); fn(); };
         r.onresult = e => settle(() => {
             const ref = this._normalize(refText); let best = { sim: -1, t: '' };
             for (let i = 0; i < e.results[0].length; i++) { const t = this._normalize(e.results[0][i].transcript); const s = this._similarity(ref, t); if (s > best.sim) best = { sim: s, t }; }
@@ -2919,12 +3125,16 @@ const aiMode = {
             console.warn('SR error:', e.error); if (e.error === 'no-speech') { this.setStatus('🔇 未听到', 'fail'); } else if (e.error === 'aborted') { return; } else { this.setStatus('⚠️ ' + e.error, 'fail'); } this._scheduleOnFail();
         });
         r.onend = () => {
+            // V81: active 守卫——AI 已停止时不再处理 onend（避免重启 r2 / 调度 _scheduleOnFail 误触发下一轮）
+            if (!this.active) return;
             if (!settled && !retried) {
                 retried = true; console.log('[AI] onend 无结果，自动重试一次...');
                 try {
                     const r2 = new (window.SpeechRecognition || window.webkitSpeechRecognition)(); r2.lang = 'en-US'; r2.continuous = false; r2.interimResults = false; r2.maxAlternatives = 3;
-                    r2.onresult = r.onresult; r2.onerror = e => settle(() => { this.setStatus('⚠️ ' + e.error, 'fail'); this._scheduleOnFail(); });
-                    r2.onend = () => settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); }); this.recognition = r2; r2.start();
+                    r2.onresult = r.onresult;
+                    // V81: r2 回调同样加 active 守卫（settle 内已有，这里提前返回更清晰且防 r2.start() 后旧回调仍调度 _scheduleOnFail）
+                    r2.onerror = e => { if (!this.active) return; settle(() => { this.setStatus('⚠️ ' + e.error, 'fail'); this._scheduleOnFail(); }); };
+                    r2.onend = () => { if (!this.active) return; settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); }); }; this.recognition = r2; r2.start();
                 } catch(e) { settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); }); }
                 return;
             }
@@ -2997,7 +3207,8 @@ const aiMode = {
             failedCount = this.failedSentences.length;
             passedCount = Math.max(0, total - failedCount);
         } else {
-            total = state.segments.length;
+            // V81: 用本轮实际练习的句数做分母（从 _runStartIdx 起到末尾），避免从中间句开始练习时正确率失真
+            total = Math.max(1, state.segments.length - (this._runStartIdx || 0));
             failedCount = this.failedSentences.length;
             passedCount = total - failedCount;
         }
@@ -3019,22 +3230,26 @@ const aiMode = {
         document.getElementById('round-msg').innerText = msg;
         const fill = document.getElementById('round-accuracy-fill'); fill.style.width = '0%'; setTimeout(() => { fill.style.width = accuracy + '%'; }, 100);
         const reviewBtn = document.getElementById('round-review-btn');
-        if (!isReview && this.failedSentences.length > 0) { reviewBtn.style.display = 'block'; reviewBtn.innerText = '💪 再次练习错误句子 (' + this.failedSentences.length + ' 句)'; }
-        else { reviewBtn.style.display = 'none'; }
+        // V81: 复习模式结束时若仍有未过句子，也显示「继续复习未过句子」按钮（不再仅在非复习模式显示），让用户能继续练错题
+        if (this.failedSentences.length > 0) {
+            reviewBtn.style.display = 'block';
+            reviewBtn.innerText = (isReview ? '💪 继续复习未过句子 (' : '💪 再次练习错误句子 (') + this.failedSentences.length + ' 句)';
+        } else { reviewBtn.style.display = 'none'; }
         document.getElementById('ai-round-modal').style.display = 'flex';
     },
-    closeRoundModal() { document.getElementById('ai-round-modal').style.display = 'none'; },
+    closeRoundModal() { document.getElementById('ai-round-modal').style.display = 'none'; this.reviewMode = false; this.reviewQueue = []; },
     startReview() {
         if (!this.failedSentences.length) return; this.closeRoundModal(); this.reviewMode = true; this.reviewQueue = [...this.failedSentences];
         // 记录复习队列原长，用于复习完成时计算正确率（避免被清空）
         this._lastReviewQueueLength = this.reviewQueue.length;
         this.failedSentences = []; this.failCount = 0; state.currIndex = this.reviewQueue[0]; ui.updatePractice(state.currIndex);
-        ui.toast('💪 开始复习 ' + this.reviewQueue.length + ' 个错误句子'); setTimeout(() => this.start(), 300);
+        ui.toast('💪 开始复习 ' + this.reviewQueue.length + ' 个错误句子'); setTimeout(() => this.start(true), 300);
     },
     _normalize(s) {
         let str = s.toLowerCase();
         // P2-4: 统一弯引号/反引号为直引号，避免 AI 评分时把 I'm 和 I'm 判定为不同
-        str = str.replace(/[''`]/g, "'");
+        // 使用 Unicode 转义防止编辑器转换弯引号
+        str = str.replace(/[\u2018\u2019`]/g, "'");
         const contractions = { "i'm": "i am", "i've": "i have", "i'll": "i will", "i'd": "i would", "it's": "it is", "it'll": "it will", "it'd": "it would", "he's": "he is", "he'll": "he will", "he'd": "he would", "she's": "she is", "she'll": "she will", "she'd": "she would", "we're": "we are", "we've": "we have", "we'll": "we will", "we'd": "we would", "you're": "you are", "you've": "you have", "you'll": "you will", "you'd": "you would", "they're": "they are", "they've": "they have", "they'll": "they will", "they'd": "they would", "that's": "that is", "that'll": "that will", "that'd": "that would", "there's": "there is", "there'll": "there will", "what's": "what is", "what'll": "what will", "what've": "what have", "who's": "who is", "who'll": "who will", "who've": "who have", "don't": "do not", "doesn't": "does not", "didn't": "did not", "can't": "cannot", "couldn't": "could not", "won't": "will not", "wouldn't": "would not", "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not", "hasn't": "has not", "haven't": "have not", "hadn't": "had not", "shouldn't": "should not", "mustn't": "must not", "needn't": "need not", "let's": "let us", "here's": "here is", "how's": "how is" };
         for (const [key, val] of Object.entries(contractions)) { str = str.replace(new RegExp('\\b' + key + '\\b', 'g'), val); }
         return str.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -3080,6 +3295,7 @@ document.getElementById('audio-file').addEventListener('change', e => {
         if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
         state._audioObjectUrl = URL.createObjectURL(f);
         state.audioBuffer = null; // 清空旧 audioBuffer，防"重新断句"用旧音频数据
+        state._loadedAudioUrl = ''; // V81: 本地导入不入统计（每次导入是不同 blob）
         const mainAudioEl = document.getElementById('main-audio'); 
         mainAudioEl.src = state._audioObjectUrl;
         mainAudioEl.dataset.name = f.name; // 记录文件名用于生成预习进度指纹
@@ -3091,7 +3307,21 @@ document.getElementById('audio-file').addEventListener('change', e => {
         safeSetItem(CONST.INPUTS, JSON.stringify(inputs));
         // 切换到新音频时清除当前预习内存状态
         previewMode.clearForNewAudio('local_' + f.name);
+        // V81: 重新加载该音频已有的预习重点句（防角标假失踪）
+        previewMode.loadFromStorage(); previewMode.updateBadge();
         ui.updateAudioStatus();
+        // V81: 本地导入也异步 decode audioBuffer，让"重新断句"可用（与 loadFromUrl 一致）
+        (async () => {
+            try {
+                const buf = await f.arrayBuffer();
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                try {
+                    state.audioBuffer = await ctx.decodeAudioData(buf);
+                } finally {
+                    try { ctx.close(); } catch(e) {}
+                }
+            } catch(e) { console.warn('本地导入 audioBuffer decode 失败（不影响播放，仅"重新断句"不可用）:', e); state.audioBuffer = null; }
+        })();
     }
 });
 document.getElementById('ai-threshold').addEventListener('input', function() { const pct = ((this.value - this.min) / (this.max - this.min)) * 100; this.style.setProperty('--fill', pct + '%'); });
@@ -3104,7 +3334,7 @@ document.addEventListener('visibilitychange', () => {
             app._cacheSyncTimer = null;
             app._syncCacheSegments();
         }
-        // V79.5: 页面隐藏时 flush 统计（避免播放时切后台丢秒）
+        // V79: 页面隐藏时 flush 统计（避免播放时切后台丢秒）
         try { flushStats(); } catch(e) {}
     }
 });
@@ -3115,6 +3345,21 @@ document.addEventListener('keydown', e => {
     const inPractice = document.getElementById('practice-view').classList.contains('active') || 
                        document.getElementById('preview-view').classList.contains('active');
     if (!inPractice) return;
+    // 预习模式快捷键分流
+    const inPreviewFocus = document.getElementById('preview-view').classList.contains('active') && 
+                           document.getElementById('preview-focus-phase').classList.contains('active');
+    const inPreviewListen = document.getElementById('preview-view').classList.contains('active') && !inPreviewFocus;
+    if (inPreviewFocus) {
+        if (e.code === 'ArrowLeft')  { e.preventDefault(); previewMode.focusPrev(); return; }
+        if (e.code === 'ArrowRight') { e.preventDefault(); previewMode.focusNext(); return; }
+        if (e.code === 'Space')      { e.preventDefault(); engine.playOnce(); return; }
+    }
+    if (inPreviewListen) {
+        if (e.code === 'ArrowLeft')  { e.preventDefault(); previewMode.prevSentence(); return; }
+        if (e.code === 'Space')      { e.preventDefault(); previewMode.replayCurrentSentence(); return; }
+        // 右键在逐句听阶段不做操作（避免误触跳过）
+        if (e.code === 'ArrowRight') { e.preventDefault(); ui.toast('请点击 ✅ 我会了 或 ⭐ 加入重点 前进'); return; }
+    }
     if (e.code === 'Space') { e.preventDefault(); engine.playOnce(); }
     else if (e.code === 'ArrowLeft')  { e.preventDefault(); app.prev(); }
     else if (e.code === 'ArrowRight') { e.preventDefault(); app.next(); }
@@ -3188,7 +3433,7 @@ function detectSilenceAsync(audioBuffer, threshold) {
 }
 
 // ============================================================
-//  V79.5: 统计模块（从「英语精听播放器」移植并适配影子跟读）
+//  V79: 统计模块（从「英语精听播放器」移植并适配影子跟读）
 //  - 只统计原音播放时长（音量>=40% 的有效播放）
 //  - 数据结构 statsDB: { 'YYYY-MM-DD': { hashKey: { name, url, sec, count, source } } }
 //  - 备份/导入 version 3，source 字段标识来源（shadow/listening），可与精听互通
@@ -3335,8 +3580,9 @@ function startStatsTicker() {
 function _commitStatsDelta(useWallClock) {
     if (_lastAudioTime < 0) return;
     const a = document.getElementById('main-audio');
-    const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-    const trackUrl = net.fixUrl((inputs.mp3 || '').trim());
+    // V81: 用 state._loadedAudioUrl 判断当前音频是否入统计（仅在加载成功时赋值，本地导入为空），
+    // 不再读取 #url-audio / localStorage.INPUTS，避免加载失败污染输入框导致统计错挂到新 URL
+    const trackUrl = net.fixUrl((state._loadedAudioUrl || '').trim());
     if (!trackUrl || trackUrl.startsWith('blob:')) {
         // 本地文件不入统计（每次导入是不同 blob，无可比性）
         _lastAudioTime = a.currentTime;
@@ -3505,7 +3751,9 @@ function drawBarChart(values, dates) {
         // 时长标签（最大值或今日）
         if (isToday || v === max) {
             ctx.fillStyle = isToday ? '#1A73E8' : '#5F6368';
-            ctx.fillText(fmtHM(v).replace(/[时分]/g, ':').replace('秒','s'), x + barW/2, y - 8);
+            // V81: 柱顶时长标签改紧凑格式（h/m/s），避免原 fmtHM 畸形“时:分:s”格式
+            const lbl = v >= 3600 ? (v/3600).toFixed(1)+'h' : (v >= 60 ? Math.round(v/60)+'m' : Math.round(v)+'s');
+            ctx.fillText(lbl, x + barW/2, y - 8);
         }
     }
 }
@@ -3581,7 +3829,7 @@ function doShareDay(showBar, weekExtra) {
     const k = todayKey();
     const tracks = getDayTracks(k);
     const total = getDaySec(k);
-    buildShareImage([k], '今日跟读 (' + fmtMD(k) + ')', false, false, tracks, total);
+    buildShareImage([k], '今日跟读 (' + fmtMD(k) + ')', false, weekExtra, tracks, total);
 }
 
 function doShareWeek(showBar, weekExtra) {
@@ -3623,7 +3871,7 @@ function doShareRange(s, e, showBar, weekExtra) {
         });
     });
     const tracks = Object.values(tm).sort((a,b)=>(b.sec||0)-(a.sec||0)).slice(0, 6);
-    buildShareImage(dates, fmtMD(s) + ' - ' + fmtMD(e), false, false, tracks, total);
+    buildShareImage(dates, fmtMD(s) + ' - ' + fmtMD(e), false, weekExtra, tracks, total);
 }
 
 function buildShareImage(dates, label, showBarChart, weekExtra, tracks, totalSec) {
@@ -3676,7 +3924,7 @@ function buildShareImage(dates, label, showBarChart, weekExtra, tracks, totalSec
     ctx.fillStyle = '#5F6368';
     ctx.font = '14px -apple-system, sans-serif';
     if (dates.length === 1) ctx.fillText(fmtMD(dates[0]), W - padX, y);
-    else ctx.fillText(fmtMD(dates[0]) + ' - ' + fmtMD(dates[6]), W - padX, y);
+    else ctx.fillText(fmtMD(dates[0]) + ' - ' + fmtMD(dates[dates.length - 1]), W - padX, y);
     ctx.textAlign = 'left';
 
     // 分割线
@@ -3771,15 +4019,13 @@ function buildShareImage(dates, label, showBarChart, weekExtra, tracks, totalSec
     ctx.fillText('Evan Yin 影子跟读 · ' + new Date().toLocaleDateString('zh-CN'), W/2, y);
     ctx.textAlign = 'left';
 
-    // 导出
+    // V81: 改为弹窗展示生成的长图（附带下载按钮），不再直接下载
     setTimeout(() => {
         try {
             canvas.toBlob(blob => {
+                if (!blob) { ui.toast('❌ 图片生成失败'); return; }
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = 'shadow_share_' + todayKey() + '.png';
-                document.body.appendChild(a); a.click(); a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 2000);
+                showShareImageModal(url, 'shadow_share_' + todayKey() + '.png');
                 ui.toast('✅ 长图已生成');
             }, 'image/png');
         } catch(e) {
@@ -3787,6 +4033,39 @@ function buildShareImage(dates, label, showBarChart, weekExtra, tracks, totalSec
             ui.toast('❌ 生成失败: ' + (e.message || e));
         }
     }, 50);
+}
+
+// V81: 分享长图弹窗展示（带下载按钮），替代原直接下载
+function showShareImageModal(url, filename) {
+    const old = document.getElementById('shareImageModal');
+    if (old) old.remove();
+    const modal = document.createElement('div');
+    modal.id = 'shareImageModal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:7000;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:16px;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:16px;max-width:92vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.3);">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #E8EAED;flex-shrink:0;">' +
+                '<span style="font-weight:700;font-size:16px;color:#202124;">📊 分享长图</span>' +
+                '<button id="shareImgClose" style="border:none;background:#F1F3F4;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;color:#5F6368;line-height:1;">×</button>' +
+            '</div>' +
+            '<div style="overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;display:flex;justify-content:center;flex:1;min-height:0;">' +
+                '<img src="' + url + '" style="max-width:100%;height:auto;display:block;border-radius:8px;" alt="分享长图">' +
+            '</div>' +
+            '<div style="padding:12px 16px;border-top:1px solid #E8EAED;display:flex;gap:8px;flex-shrink:0;">' +
+                '<button id="shareImgDownload" style="flex:1;padding:12px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">📥 下载图片</button>' +
+                '<button id="shareImgCancel" style="padding:12px 20px;border:none;border-radius:10px;background:#F1F3F4;color:#5F6368;font-size:14px;font-weight:600;cursor:pointer;">关闭</button>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(modal);
+    const close = () => { modal.remove(); setTimeout(() => { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000); };
+    modal.querySelector('#shareImgClose').onclick = close;
+    modal.querySelector('#shareImgCancel').onclick = close;
+    modal.onclick = (e) => { if (e.target === modal) close(); };
+    modal.querySelector('#shareImgDownload').onclick = () => {
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+    };
 }
 
 // ---- 备份导出 / 导入（version 3, source 字段，兼容精听） ----
@@ -3995,6 +4274,40 @@ document.getElementById('bsFileInput').addEventListener('change', onImportFileCh
 // ============================================================
 //  初始化
 // ============================================================
+// iPhone「添加到主屏幕」图标：苹果不认 SVG，需 apple-touch-icon + PNG；
+// 满铺直角底色避免苹果自动裁圆角时出现黑角
+(function() {
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'>" +
+        "<defs><linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#0F3F24'/><stop offset='0.55' stop-color='#15803D'/><stop offset='1' stop-color='#16A34A'/></linearGradient></defs>" +
+        "<rect x='0' y='0' width='512' height='512' fill='url(#bg)'/>" +
+        "<path d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='#FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/>" +
+        "<path d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='#FFFFFF' stroke-width='22' stroke-linecap='round'/>" +
+        "<rect x='112' y='214' width='42' height='90' rx='21' fill='#FFFFFF'/>" +
+        "<rect x='358' y='214' width='42' height='90' rx='21' fill='#FFFFFF'/>" +
+        "<rect x='150' y='232' width='11' height='54' rx='5.5' fill='#BBF7D0'/>" +
+        "<rect x='351' y='232' width='11' height='54' rx='5.5' fill='#BBF7D0'/>" +
+        "<rect x='188' y='230' width='16' height='48' rx='8' fill='#FFFFFF' fill-opacity='0.78'/>" +
+        "<rect x='218' y='202' width='16' height='104' rx='8' fill='#FFFFFF' fill-opacity='0.92'/>" +
+        "<rect x='248' y='182' width='16' height='144' rx='8' fill='#BEF264'/>" +
+        "<rect x='278' y='208' width='16' height='92' rx='8' fill='#D9F99D'/>" +
+        "<rect x='308' y='232' width='16' height='44' rx='8' fill='#ECFCCB'/>" +
+        "<circle cx='396' cy='108' r='26' fill='#FFFFFF'/>" +
+        "<path d='M385 108 L393 116 L408 100' fill='none' stroke='#15803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>" +
+        "<text x='256' y='402' text-anchor='middle' font-family='PingFang SC,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='#FFFFFF'>EVAN跟读</text></svg>";
+    var img = new Image();
+    img.onload = function() {
+        try {
+            var c = document.createElement('canvas'); c.width = 180; c.height = 180;
+            c.getContext('2d').drawImage(img, 0, 0, 180, 180);
+            var link = document.createElement('link');
+            link.rel = 'apple-touch-icon'; link.setAttribute('sizes', '180x180');
+            link.href = c.toDataURL('image/png');
+            document.head.appendChild(link);
+        } catch(e) {}
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+})();
+
 ui.init();
 </script>
 </body>
