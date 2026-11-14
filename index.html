@@ -19,7 +19,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V83.1</title>
+<title>影子跟读 Pro V83.2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230F3F24'/%3E%3Cstop offset='0.55' stop-color='%2315803D'/%3E%3Cstop offset='1' stop-color='%2316A34A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='16' y='16' width='480' height='480' rx='112' fill='url(%23bg)'/%3E%3Cpath d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='%23FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/%3E%3Cpath d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='%23FFFFFF' stroke-width='22' stroke-linecap='round'/%3E%3Crect x='112' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='358' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='150' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='351' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='188' y='230' width='16' height='48' rx='8' fill='%23FFFFFF' fill-opacity='0.78'/%3E%3Crect x='218' y='202' width='16' height='104' rx='8' fill='%23FFFFFF' fill-opacity='0.92'/%3E%3Crect x='248' y='182' width='16' height='144' rx='8' fill='%23BEF264'/%3E%3Crect x='278' y='208' width='16' height='92' rx='8' fill='%23D9F99D'/%3E%3Crect x='308' y='232' width='16' height='44' rx='8' fill='%23ECFCCB'/%3E%3Ccircle cx='396' cy='108' r='26' fill='%23FFFFFF'/%3E%3Cpath d='M385 108 L393 116 L408 100' fill='none' stroke='%2315803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ctext x='256' y='402' text-anchor='middle' font-family='PingFang SC,Microsoft YaHei,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='%23FFFFFF'%3EEVAN跟读%3C/text%3E%3C/svg%3E">
 <style>
 :root {
@@ -366,13 +366,13 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V83.1</div>
+    <div class="nav-title">🎧 影子跟读 V83.2</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
     </div>
 </div>
-<audio id="main-audio" crossorigin="anonymous"></audio>
+<audio id="main-audio"></audio>
 <audio id="record-audio"></audio>
 
 <div class="view-container">
@@ -1022,23 +1022,14 @@ const cacheUI = {
             const p = await idbCache.get(id);
             if (!p || !p.audioBlob) { ui.toast('缓存不存在或损坏'); this.render(); return; }
             ui.toast('⏳ 正在从离线缓存加载...');
-            // 加载音频：先创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke，失败时能回滚）
-            state._audioObjectUrl = URL.createObjectURL(p.audioBlob);
+            // V83.2: 用 prepareAudioFromBlob 重建带明确 MIME 的内存 Blob（解决 iOS Safari 无法直接播 IDB Blob）
+            const { objectUrl: memUrl, audioBuffer: decoded } = await prepareAudioFromBlob(p.audioBlob, p.name || p.audioUrl || '');
+            state._audioObjectUrl = memUrl;
             const a = document.getElementById('main-audio');
             a.src = state._audioObjectUrl;
             a.dataset.name = p.name || '';
-            try { a.load(); } catch(e) {}
             await net.waitAudioReady(a);
-            // decode audioBuffer 供"重新断句"使用（AudioBuffer 无法存入 IndexedDB，需现场 decode）
-            try {
-                const buf = await p.audioBlob.arrayBuffer();
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                try {
-                    state.audioBuffer = await ctx.decodeAudioData(buf);
-                } finally {
-                    try { ctx.close(); } catch(e) {}
-                }
-            } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); state.audioBuffer = null; }
+            state.audioBuffer = decoded;
             // 加载字幕
             state.segments = Array.isArray(p.segments) ? p.segments : [];
             state.subFileNames = {1:'', 2:'', 3:''};
@@ -1323,9 +1314,23 @@ const net = {
             const finish = () => {
                 if (done) return; done = true;
                 audioEl.removeEventListener('loadedmetadata', finish);
+                audioEl.removeEventListener('canplay', finish);
+                audioEl.removeEventListener('error', onError);
                 resolve();
             };
+            // V83.2: 监听 error 事件，不再傻等 4 秒超时掩盖加载失败
+            const onError = () => {
+                if (done) return; done = true;
+                audioEl.removeEventListener('loadedmetadata', finish);
+                audioEl.removeEventListener('canplay', finish);
+                audioEl.removeEventListener('error', onError);
+                console.warn('[waitAudioReady] audio error event, code:', audioEl.error ? audioEl.error.code : 'unknown');
+                resolve(); // resolve 让上层继续，上层会通过 updateAudioStatus 检测到 error
+            };
+            // 先挂载监听，再 load
             audioEl.addEventListener('loadedmetadata', finish);
+            audioEl.addEventListener('canplay', finish);
+            audioEl.addEventListener('error', onError);
             try { audioEl.load(); } catch(e) {}
             setTimeout(finish, timeoutMs);
         });
@@ -1397,7 +1402,7 @@ const engine = {
         };
         const playP = a.play();
         if (playP && playP.then) {
-            playP.then(() => { registerWatch(); }).catch(e => { console.error(e); ui.toast('播放失败'); });
+            playP.then(() => { registerWatch(); }).catch(e => { console.error(e); ui.toast('播放失败: ' + ((e && e.name) ? e.name : '') + (a.error ? ' [code:' + a.error.code + ']' : '')); });
         } else {
             // 兼容不返回 Promise 的旧浏览器
             registerWatch();
@@ -1492,7 +1497,7 @@ const engine = {
             playP.then(() => {
                 // play 成功后才注册监控，确保 currentTime 已 seek 到 win.start
                 registerWatch();
-            }).catch(e => { console.error(e); ui.toast("播放失败"); });
+            }).catch(e => { console.error(e); ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); });
         } else {
             // 兼容不返回 Promise 的旧浏览器
             registerWatch();
@@ -1627,7 +1632,7 @@ const engine = {
             const a = document.getElementById('main-audio');
             a.currentTime = state.segments[start].start;
             applyPlaybackRate(a, state.playbackRate);
-            a.play().then(() => this.startTicker()).catch(e => { console.error(e); ui.toast("播放失败"); });
+            a.play().then(() => this.startTicker()).catch(e => { console.error(e); ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); });
         }
     },
     toggleFullPlay() {
@@ -1643,7 +1648,7 @@ const engine = {
                 this.mode = 'FULL_PLAY';
                 const btn = document.getElementById('btn-full-play'); btn.classList.add('active'); btn.innerText = "⏹ 停止";
                 this.startTicker();
-            }).catch(e => { console.error(e); ui.toast('播放失败'); });
+            }).catch(e => { console.error(e); ui.toast('播放失败: ' + ((e && e.name) ? e.name : '') + (a.error ? ' [code:' + a.error.code + ']' : '')); });
         }
     },
     check() {
@@ -1794,6 +1799,12 @@ const ui = {
     },
     updateAudioStatus() {
         const m = document.getElementById('audio-status-msg'), a = document.getElementById('main-audio');
+        // V83.2: 先检查 audio.error，不再误报"音频已就绪"
+        if (a.error) {
+            m.className = 'audio-status warn'; m.style.display = 'block';
+            m.innerText = '⚠️ 音频解码失败 (code=' + a.error.code + ')';
+            return;
+        }
         if (a.src && a.src !== location.href) {
             m.className = 'audio-status ok'; m.style.display = 'block'; m.innerText = "✅ 音频已就绪";
             setTimeout(() => m.style.display = 'none', 3000);
@@ -2242,23 +2253,14 @@ const app = {
                     }
                     if (choice === 'local') useSegments = backupSegments;
                 }
-                // 从缓存加载音频：先创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke）
-                state._audioObjectUrl = URL.createObjectURL(cached.audioBlob);
+                // V83.2: 用 prepareAudioFromBlob 重建带明确 MIME 的内存 Blob（解决 iOS Safari 无法直接播 IDB Blob）
+                const { objectUrl: cacheUrl, audioBuffer: cacheDecoded } = await prepareAudioFromBlob(cached.audioBlob, cached.name || cached.audioUrl || mp3);
+                state._audioObjectUrl = cacheUrl;
                 const a = document.getElementById('main-audio');
                 a.src = state._audioObjectUrl;
                 a.dataset.name = cached.name || projectName;
-                try { a.load(); } catch(e) {}
                 await net.waitAudioReady(a);
-                // decode audioBuffer 供"重新断句"使用
-                try {
-                    const buf = await cached.audioBlob.arrayBuffer();
-                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                    try {
-                        state.audioBuffer = await ctx.decodeAudioData(buf);
-                    } finally {
-                        try { ctx.close(); } catch(e) {}
-                    }
-                } catch(e) { console.warn('audioBuffer decode 失败（不影响播放，仅"重新断句"功能不可用）:', e); state.audioBuffer = null; }
+                state.audioBuffer = cacheDecoded;
                 state.segments = useSegments;
                 state.subFileNames = {1:'', 2:'', 3:''};
                 state.currIndex = 0;
@@ -2757,19 +2759,14 @@ const app = {
                     // 未命中缓存：回退网络下载
                     audioBlob = await net.fetchBlobSmart(mp3);
                 }
-                if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
-                state._audioObjectUrl = URL.createObjectURL(audioBlob);
+                // V83.2: 用 prepareAudioFromBlob 重建带明确 MIME 的内存 Blob（解决 iOS Safari 无法直接播 IDB Blob）
+                const { objectUrl: restoreUrl, audioBuffer: restoreDecoded } = await prepareAudioFromBlob(audioBlob, cachedName || mp3);
+                if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); }
+                state._audioObjectUrl = restoreUrl;
                 mainAudio.src = state._audioObjectUrl;
                 mainAudio.dataset.name = cachedName || idbCache.extractFilename(mp3) || '';
-                try { mainAudio.load(); } catch(e) {}
                 await net.waitAudioReady(mainAudio);
-                // V81: 异步 decode audioBuffer 供"重新断句"使用（失败置 null，不影响播放）
-                try {
-                    const buf = await audioBlob.arrayBuffer();
-                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                    try { state.audioBuffer = await ctx.decodeAudioData(buf); }
-                    finally { try { ctx.close(); } catch(e) {} }
-                } catch(e) { console.warn('restoreProgress audioBuffer decode 失败:', e); state.audioBuffer = null; }
+                state.audioBuffer = restoreDecoded;
                 // V81: 音频就绪后同步统计归属（_loadedAudioUrl）并重置会话计数
                 state._loadedAudioUrl = mp3;
                 state._loadedAudioName = ''; // V83.1: 清空本地文件名，防锁屏标题残留
@@ -2790,9 +2787,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 83.1, segments: state.segments, idx: state.currIndex, inputs: inputs };
+        const data = { version: 83.2, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v83.1.json'; document.body.appendChild(a); a.click(); a.remove();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v83.2.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     // V83: 一键全量备份（跨端）——打包 localStorage 轻量数据（不含音频 Blob）
@@ -3785,6 +3782,33 @@ document.addEventListener('keydown', e => {
 function safeParse(str, fallback) {
     if (str === null || str === undefined) return fallback;
     try { return JSON.parse(str); } catch(e) { return fallback; }
+}
+// V83.2: 根据文件名/URL 推断音频 MIME 类型（解决 IDB Blob type 丢失导致 iOS 拒播）
+function inferAudioMime(nameOrUrl, fallbackType) {
+    if (fallbackType && fallbackType.indexOf('audio/') === 0) return fallbackType;
+    var u = (nameOrUrl || '').toLowerCase();
+    if (u.indexOf('.mp3') > -1) return 'audio/mpeg';
+    if (u.indexOf('.m4a') > -1 || u.indexOf('.mp4') > -1) return 'audio/mp4';
+    if (u.indexOf('.wav') > -1) return 'audio/wav';
+    if (u.indexOf('.ogg') > -1 || u.indexOf('.opus') > -1) return 'audio/ogg';
+    if (u.indexOf('.aac') > -1) return 'audio/aac';
+    if (u.indexOf('.flac') > -1) return 'audio/flac';
+    return 'audio/mpeg'; // 兜底
+}
+// V83.2: 从 IndexedDB Blob 重建带明确 MIME 的内存 Blob（解决 iOS Safari AVPlayer 无法直接播 IDB 磁盘引用）
+async function prepareAudioFromBlob(blob, nameOrUrl) {
+    const buf = await blob.arrayBuffer();
+    // 必须在 decodeAudioData 之前用 buf 创建 Blob（decodeAudioData 会 detach buf）
+    const memBlob = new Blob([buf], { type: inferAudioMime(nameOrUrl, blob.type) });
+    const objectUrl = URL.createObjectURL(memBlob);
+    // 用 buf.slice(0) 副本 decode（不消耗原始 buf）
+    let audioBuffer = null;
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        try { audioBuffer = await ctx.decodeAudioData(buf.slice(0)); }
+        finally { try { ctx.close(); } catch(e) {} }
+    } catch(e) { console.warn('prepareAudioFromBlob decode 失败:', e); }
+    return { objectUrl, audioBuffer };
 }
 function safeSetItem(key, value) {
     try { localStorage.setItem(key, value); } catch(e) { console.warn('localStorage 写入失败:', key, e); }
