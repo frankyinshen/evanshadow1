@@ -15,11 +15,14 @@
 <!-- V79 | build:20261113 | 1) P1: applyReAnalyze 空结果保护 + mergeSeg 修正 currIndex；2) P2: _watchUntil 精确定时器(按倍速自我重排) + recorder.stopAll 丢弃录音不触发 playCmp + 区间循环输入校验 + AI 弯引号归一 + GitHub 链接转换修正；3) P3: restoreBackup 恢复 dataset.name + detectSilenceAsync 30s 超时兜底 + applyReAnalyze 按钮加 id + restoreProgress 文案用 clamp 值 + loadProject 校验 segments 数组并 clamp currIndex + 睡眠定时关 AI/wakeLock + wakeLock enabled/sentinel 分离；4) 新增统计功能：从「英语精听播放器」移植统计收集/UI/分享长图/备份导入导出（version:3 兼容，可与精听互通） -->
 <!-- V80 | build:20261113 | 9 处修复：1) 预习模式键盘快捷键分流（重点句阶段 ←/→/Space，逐句听阶段 ←/Space 重放、→ 不跳过）；2) 预习模式跟随 activeSub——主文本按 state.activeSub 取 text2/text3/text，_getSub2 改名 _getSub 返回除主字幕外其他非空字幕；3) 自动联动下一句 start 超过 end 时截断到 end-0.01 并 toast 提示；4) ui.init currIndex clamp 防 localStorage 越界；5) mergeSub 时间戳容错匹配（精确区间命中失败时按 0.5s 容差找最近）；6) serverBrowser fetch 加 no-store 防缓存陈旧目录；7) cacheUI.load 备份/恢复（备份 segments/currIndex/audioObjectUrl/audioSrc/audioBuffer/dataset.name，失败 restoreBackup，成功 commitAudioSwap 模式 revoke 旧 url）；8) exportProject/exportSRT 加 appendChild+remove（修复部分浏览器下载不触发）；9) loadFromUrl 统一 decode audioBuffer（无论有无字幕），有字幕时也能用「重新断句」；版本号统一到 V80 -->
 <!-- V82 | build:20261113 | 新增绿底「EVAN跟读」图标：电脑/安卓用 SVG data URL link icon，iPhone 用 apple-touch-icon 180x180 PNG（满铺直角底色防黑角，SVG 加 width/height 防 Safari Canvas 比例异常，sizes 用 setAttribute 兼容）；importSub k=0 补 previewedCount=0；5 处精准补丁（分享长图弹窗 z-index:7000 + blob 空值保护、importSub 清 doneIndices、doShareDay/doShareRange 传 weekExtra、从头预习 restart() 按钮、三处 play().catch 兜底、弯引号 Unicode 转义）；版本号统一到 V82.8 -->
-<!-- V83 | build:20261114 | 8 大新增功能（不破坏 play().then 时序/idbCache 降级/statsDB v3 兼容/importSub 重置逻辑）：1) Media Session API——锁屏控制（updateMediaSession 封装，apple-touch-icon PNG 复用作 artwork，setActionHandler 分流预习重点句/逐句听/练习视图）；2) 单句循环动态跟读留白——loopGapMode 4 档（fixed/1.0x/1.2x/1.5x）持久化 localStorage，_loopOneCycle 按 cur.end-cur.start 倍率计算停顿时长并 clamp 1000~20000ms；3) 速率拓展 0.85×/0.9× + 倍速记忆（localStorage 'shadow_v83_speed'）+ preservesPitch/webkitPreservesPitch 不变调；4) 本地导入 MP3 纳入统计（_loadedAudioUrl='local://'+f.name+'_'+f.size, _loadedAudioName=f.name, _commitStatsDelta 仅跳过空/blob:）+ 重点句文本导出按钮；5) 一键全量备份与恢复（打包 localStorage 轻量数据，type='shadow_full_backup'）；6) 全局错误兜底（error + unhandledrejection，忽略 AbortError/Script error，防抖 toast）；7) Service Worker 离线支持（仅同源 navigate 用网络优先断网回退缓存，不拦截第三方/媒体/Range）；版本号统一到 V83 -->
+<!-- V84 | build:20261115 | 预习模式 5 项增强 + 重点句连读 + 生词本 + 备份升级（不破坏 play().then 时序/idbCache 降级/statsDB v3 兼容/importSub 重置逻辑/prepareAudioFromBlob）：1) 句首/句尾微调——±0.1/±0.2/±0.5 按钮组 + 一键重置（原始时间记 seg._os/_oe 随工程持久化，句长≥0.3s/不出音频首尾/起点≥0，越界按钮置灰，试听/重置独立按钮）；2) 点字幕复制当前句主字幕（跟随字幕1/2/3）；3) 我会了=掌握→自动移出重点句（markKnow 里过滤 starredIndices+doneIndices 并持久化）；4) 预习界面：字幕区内容自适应+上限40vh（约缩小25%）、超长字幕沿用"自动缩小字号"(26px→16px，fitText 同款机制，缩不住再内部滚动)、主按钮加大至54px高防误点；5) 生词本——iOS/iPad 点词入本（span.pw 触摸分流）、电脑划词入本（selectionchange 浮条），跨工程全局存储 'shadow_v84_vocab'，记录单词/所在句/出处音频，去重(忽略大小写)，撤销浮条，管理面板(删除/清空确认/导出CSV UTF-8 BOM 四列)；6) 重点句连读——遍数1/2/3(默认1，'shadow_v84_focus_reps' 持久化)，遍间/句间600ms，逐句推进+当前句高亮+scrollIntoView 居中，engine.stopAll 联动中断连读链；7) 导出/清空重点句缩小为 focus-header 图标钮，腾位放连读设置行；8) 全量备份按钮改名「备份/恢复备份」，打包并入生词本+连读遍数；splitSeg/mergeSeg 清 _os/_oe 防旧原始值错位；版本号统一到 V84 -->
+<!-- V84.1 | build:20261115 | 4 处精修（其余保持不变，localStorage 键名不变与 V84 数据互通）：1) 小屏适配——#preview-listen-phase 加 overflow-y:auto+惯性滚动（小屏/横屏/iPad分屏底部按钮不再被裁掉且可滚动）；句子盒 min-height 150→110、微调钮 44→38、再听/上一句 48→42(padding 14→10) 紧凑一屏；2) _fitPreviewText 改用句子盒真实 clientHeight 算字号预算（盒子被压缩时字号跟着缩够小），文本内部滚动区 maxHeight 同步预算防 34vh 裁字；3) 重点句连读——连读进行中点列表删句先 _stopFocusRead（防下标前移跳句错乱）；_playSegmentTimed 增可选第3参 onError，连读句 play 被拒时自动终止连读（防"停止连读"按钮卡闪）；4) 微调/重置后同步编辑页对应行 start/end 输入框（_syncEditorTimeInputs）；生词本面板打开时 Escape 关闭、其余快捷键全部屏蔽；sw.js 缓存名升 shadow_v84_offline_v2 强制刷新；版本号统一到 V84.1 -->
+<!-- V84.2 | build:20261115 | 两轮外部审查修复 16 项（小补丁风格，不动架构与历史不变量）：批次一·数据安全：1) 备份导出前 flushStats 落盘+恢复后刷新内存 statsDB（防 reload 前 visibilitychange 用旧内存覆盖刚恢复的统计）；2) markStar 后排序（防回退补标乱序导致连读不按音频先后）；3) .toast z-index 999→9999（统计页/备份/生词本里的提示不再被盖住）；4) 预习切句先复位译文区再算字号（防上一句"译"开着导致本句字号无谓缩小）；5) 统计删除按钮改 DOM 绑定+导入键格式校验 YYYY-MM-DD/[A-Za-z0-9_-]（杜绝 hashKey 注入与 __proto__ 脏键）；6) AI 识别超时改中止 this.recognition 当前实例（防 r2 重试后旧闭包 abort 错对象、麦克风被占）；7) 生词本删词时修正撤销索引（删前面的词后 _lastAddIdx 随之前移）；8) 全量备份 version 83→84；9) 区间导出倒序选择时日期规范化（文件名与 range 元数据一致）。批次二·状态正确性：10) 连读自动跳过已打勾"练熟"的句子（用户确认：连读只练没熟的）；11) AI 退出统一 _restoreBlurState 恢复字幕模糊状态（补齐 'none' 分支漏恢复 userBlurState，三处退出路径共用）；12) 播放失败复位：playOnce/预习试听/单句循环/区间循环 4 处传 onError 或复位按钮（防卡 active/卡"正在播放"/卡"停止"）；13) 统计暂停结算过音量闸+volumechange 刷新基准（低音量期间不再按墙钟补记）；14) _syncCacheSegments await 后二次校验 SESSION（防切工程后旧缓存被新字幕污染）；15) 音频解码竞态守卫 _audioLoadSeq（本地导入/离线缓存加载/恢复进度 3 处，只有最后一次加载的解码可写 state.audioBuffer）；16) loadProject 字幕逐条标准化+旧音频隔离（清 src/_loadedAudioUrl/audioBuffer、revoke objectURL、使在途解码失效，防"新字幕配旧音频"和统计错挂）。sw.js 缓存名升 shadow_v84_offline_v3；版本号统一到 V84.2 -->
+<!-- V84.3 | build:20261115 | 第三轮外部审查修复（小补丁，不动引擎时序/架构）：回归修复：1) 4 处 play() catch 补 AbortError 过滤（playSegment/_playSegmentTimed/toggleRangeLoop/toggleFullPlay）——快速连点"我会了/循环/试听"时旧句 play promise 被新操作打断抛 AbortError，旧版会误报"播放失败"+复位新句按钮（_checkLoopBoundaries 两处已有同款过滤，此处补齐）；2) _scheduleOnFail 末句跳过完成路径改用 _restoreBlurState()（V84.2 漏改的第 4 处 AI 退出路径，'none' 分支仍会遗留强制模糊）。数据安全：3) 统计导入显式拒绝 __proto__/constructor/prototype 键 + hasOwnProperty 自有属性判断（KEY_RE 字符集拦不住这些键，statsDB[day][k] 会触达 Object.prototype 造成原型污染——仅影响被篡改过的备份文件）；4) pruneStatsDB 保留期 90→730 天（统计页写"累计"却每次悄悄删 90 天前记录，明年起累计值会缩水且不可恢复，两年数据量极小）。音频加载代数补齐（_audioLoadSeq）：5) cacheUI.load/restoreProgress/loadFromUrl 缓存命中分支的代数检查前移到任何 state 写入之前（原在 waitAudioReady 之后——旧任务晚归时会先覆盖新任务的 objectURL/src，restoreProgress 还会 revoke 掉新任务的 URL）；6) loadFromUrl 全程接入代数（入口递增+下载后/解码写回/objectURL 创建/字幕就绪 4 个检查点+cancel 与 catch 回滚前查号——旧任务失败不再覆盖新任务已提交的状态）；7) 本地导入与网络下载解码失败清空 audioBuffer 前查号（A 失败不再清掉 B 的解码结果）；8) loadFromUrl/本地导入入口先停旧播放链（aiMode.stop+engine.stopAll，沿用 loadProject 模式，防旧循环监听挂在新 src 上）。统计修正：9) volumechange 双向重置基准——恢复可听时原版不重置，timeupdate 会把低音量时段整段补记进"有效跟读时长"。sw.js v4：10) install 不再吞 addAll 失败（预缓存失败让安装失败、旧 SW 继续服务，防"新 SW 删旧缓存后断网打不开"）；11) activate 清理前缀 /^shadow_/→/^shadow_v\d+_offline_/（原正则会误删同域精听播放器等 shadow_ 前缀缓存）；12) 断网回退只在自身 CACHE_NAME 内匹配（原 caches.match 搜全部缓存）+带参 URL ignoreSearch+最终 503 文字兜底；13) 缓存写入 putTask 单次构造（消除 waitUntil 失效兜底分支对同一 clone 的二次 put）。不采纳：预注册延迟 Promise 重构（现行 waitUntil 写法在 respondWith 生命周期内合法）。sw.js 缓存名升 shadow_v84_offline_v4；版本号统一到 V84.3 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V83.2</title>
+<title>影子跟读 Pro V84.3</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230F3F24'/%3E%3Cstop offset='0.55' stop-color='%2315803D'/%3E%3Cstop offset='1' stop-color='%2316A34A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='16' y='16' width='480' height='480' rx='112' fill='url(%23bg)'/%3E%3Cpath d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='%23FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/%3E%3Cpath d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='%23FFFFFF' stroke-width='22' stroke-linecap='round'/%3E%3Crect x='112' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='358' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='150' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='351' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='188' y='230' width='16' height='48' rx='8' fill='%23FFFFFF' fill-opacity='0.78'/%3E%3Crect x='218' y='202' width='16' height='104' rx='8' fill='%23FFFFFF' fill-opacity='0.92'/%3E%3Crect x='248' y='182' width='16' height='144' rx='8' fill='%23BEF264'/%3E%3Crect x='278' y='208' width='16' height='92' rx='8' fill='%23D9F99D'/%3E%3Crect x='308' y='232' width='16' height='44' rx='8' fill='%23ECFCCB'/%3E%3Ccircle cx='396' cy='108' r='26' fill='%23FFFFFF'/%3E%3Cpath d='M385 108 L393 116 L408 100' fill='none' stroke='%2315803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ctext x='256' y='402' text-anchor='middle' font-family='PingFang SC,Microsoft YaHei,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='%23FFFFFF'%3EEVAN跟读%3C/text%3E%3C/svg%3E">
 <style>
 :root {
@@ -53,32 +56,69 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 /* 预习顶栏 */
 .preview-header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; margin-bottom: 10px; gap: 8px; }
-.preview-title { font-size: 15px; font-weight: 700; color: var(--preview); }
-.preview-progress { font-size: 13px; color: #5F6368; flex: 1; text-align: center; }
-.btn-exit-preview { border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.preview-title { font-size: 15px; font-weight: 700; color: var(--preview); flex-shrink: 0; }
+.preview-progress { font-size: 13px; color: #5F6368; flex: 1; text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-exit-preview { border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+/* V84: 生词本入口按钮（预习顶栏） */
+.btn-vocab-entry { position: relative; border: 1px solid var(--preview-border); background: var(--preview-light); color: var(--preview); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.vocab-entry-badge { display: none; position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+.vocab-entry-badge.show { display: inline-block; }
 
 /* 预习阶段：逐句听 */
-#preview-listen-phase { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.preview-sentence-box { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 20px; margin-bottom: 12px; min-height: 0; cursor: pointer; }
-.preview-sentence-num { font-size: 12px; font-weight: 700; color: var(--preview); background: var(--preview-border); padding: 2px 10px; border-radius: 10px; margin-bottom: 12px; }
-.preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 200px; }
-.preview-sentence-text2 { font-size: 16px; color: #555; text-align: center; margin-top: 8px; line-height: 1.5; }
-.preview-play-hint { font-size: 13px; color: #999; margin-top: 10px; }
-.preview-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex-shrink: 0; margin-bottom: 10px; }
-.btn-preview-know { background: #E6F4EA; color: #137333; border: 2px solid #34A853; border-radius: 14px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; transition: 0.15s; }
+/* V84.1: 加滚动兜底——小屏/横屏/iPad分屏高度不够时可上下滚动，底部按钮不再被裁掉 */
+#preview-listen-phase { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* V84: 字幕盒高度策略——伸展吃满剩余空间但封顶 40vh（原为无上限吃满，现整体缩小约 25%；短句时视觉饱满不留大片空白） */
+.preview-sentence-box { flex: 1 1 auto; max-height: 40vh; min-height: 110px; /* V84.1: 150→110 紧凑一屏 */ display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; overflow: hidden; }
+.pv-top-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0; }
+.preview-sentence-num { font-size: 12px; font-weight: 700; color: var(--preview); background: var(--preview-border); padding: 2px 10px; border-radius: 10px; }
+.pv-trans-btn { border: 1px solid var(--preview-border); background: #fff; color: var(--preview); border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.pv-trans-btn:active { background: var(--preview); color: #fff; }
+/* V84: 主文本——26px 起自动缩小到 16px（fitPreviewText，同练习页 fitText 机制），缩不住内部滚动 */
+.preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 34vh; margin: 10px 0 0 0; }
+.preview-sentence-text .pw { -webkit-user-select: none; user-select: none; border-radius: 4px; padding: 0 1px; }
+.preview-sentence-text .pw:active { background: var(--preview-light); }
+/* V84: 有鼠标的设备（电脑）恢复可划选——user-select:none 会挡住桌面划词入本；触摸设备(hover:none)保持禁选防长按干扰点词 */
+@media (hover: hover) and (pointer: fine) { .preview-sentence-text .pw { -webkit-user-select: text; user-select: text; } }
+.preview-sentence-text2 { font-size: 16px; color: #555; text-align: center; margin-top: 8px; line-height: 1.5; cursor: pointer; }
+.preview-sentence-text2:active { opacity: 0.6; }
+.preview-play-hint { font-size: 13px; color: #999; margin-top: 10px; flex-shrink: 0; }
+/* V84: 主操作按钮加大（≥54px，苹果最低触控标准 44px 起步）防误点 */
+.preview-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0; margin-bottom: 12px; }
+.btn-preview-know { background: #E6F4EA; color: #137333; border: 2px solid #34A853; border-radius: 16px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; transition: 0.15s; min-height: 54px; }
 .btn-preview-know:active { background: #34A853; color: #fff; }
-.btn-preview-star { background: var(--preview-light); color: var(--preview); border: 2px solid var(--preview-border); border-radius: 14px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; transition: 0.15s; }
+.btn-preview-star { background: var(--preview-light); color: var(--preview); border: 2px solid var(--preview-border); border-radius: 16px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; transition: 0.15s; min-height: 54px; }
 .btn-preview-star:active { background: var(--preview); color: #fff; }
-.preview-replay-row { display: flex; gap: 8px; flex-shrink: 0; }
-.btn-preview-replay { flex: 1; background: #E8F0FE; color: var(--primary); border: none; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.btn-preview-skip { flex: 1; background: #F1F3F4; color: #5F6368; border: none; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.preview-replay-row { display: flex; gap: 10px; flex-shrink: 0; margin-bottom: 4px; }
+.btn-preview-replay { flex: 1; background: #E8F0FE; color: var(--primary); border: none; border-radius: 12px; padding: 10px; font-size: 14px; font-weight: 700; cursor: pointer; min-height: 42px; } /* V84.1: 48→42 紧凑一屏 */
+.btn-preview-skip { flex: 1; background: #F1F3F4; color: #5F6368; border: none; border-radius: 12px; padding: 10px; font-size: 14px; font-weight: 700; cursor: pointer; min-height: 42px; } /* V84.1: 48→42 紧凑一屏 */
+/* V84: 句首/句尾微调 */
+.preview-tune { flex-shrink: 0; background: #FAFAFA; border: 1px solid #EEE; border-radius: 12px; padding: 10px 10px 8px; margin-bottom: 10px; }
+.pt-line { display: flex; align-items: center; gap: 4px; margin-bottom: 7px; }
+.pt-name { font-size: 12px; font-weight: 700; color: var(--preview); background: var(--preview-light); border: 1px solid var(--preview-border); border-radius: 8px; padding: 3px 8px; flex-shrink: 0; min-width: 34px; text-align: center; }
+.pt-btn { flex: 1; min-width: 0; min-height: 38px; /* V84.1: 44→38 紧凑一屏(按钮加 margin 隔断防误点) */ border: 1px solid #E0E0E0; background: #fff; border-radius: 10px; font-size: 13px; font-weight: 700; color: #444; cursor: pointer; padding: 0 2px; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.pt-btn:active { background: var(--preview-light); border-color: var(--preview-border); color: var(--preview); }
+.pt-btn:disabled { opacity: 0.25; cursor: default; }
+.pt-info-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pt-info { font-size: 12px; color: #888; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-ops { display: flex; gap: 6px; flex-shrink: 0; }
+.pt-mini { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; min-height: 36px; }
+.pt-mini:active { background: #F1F3F4; }
+.pt-mini.pt-reset { border-color: #ffb3b3; background: #fff0f0; color: #c5221f; }
+.pt-mini:disabled { opacity: 0.35; cursor: default; }
 
 /* 预习阶段：重点句练习 */
 #preview-focus-phase { display: none; flex-direction: column; flex: 1; min-height: 0; }
 #preview-focus-phase.active { display: flex; }
-.focus-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.focus-title { font-size: 15px; font-weight: 700; color: var(--preview); }
+.focus-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
+.focus-title { font-size: 15px; font-weight: 700; color: var(--preview); flex-shrink: 0; }
 .focus-count { font-size: 12px; color: #888; background: #f1f3f4; padding: 2px 8px; border-radius: 8px; }
+/* V84: 重点句工具小按钮（导出/清空从列表顶部大按钮缩小至此） */
+.focus-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.focus-tool-btn { width: 36px; height: 36px; border: 1px solid #DADCE0; background: #E8F0FE; color: var(--primary); border-radius: 10px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.focus-tool-btn:active { background: var(--primary); color: #fff; }
+.focus-tool-btn:disabled { opacity: 0.25; cursor: default; }
+.focus-tool-danger { background: #fff0f0; border-color: #ffb3b3; color: #c5221f; }
+.focus-tool-danger:active { background: #c5221f; color: #fff; }
 
 /* 重点句列表 */
 .focus-list { flex: 1; overflow-y: auto; min-height: 0; border: 1px solid #eee; border-radius: 12px; background: #fafafa; margin-bottom: 10px; }
@@ -103,6 +143,51 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .focus-control-area .control-grid { height: 152px; grid-template-rows: repeat(6, 1fr); }
 .focus-now-playing { background: #FFF3E0; border: 1px solid var(--preview-border); border-radius: 8px; padding: 6px 12px; font-size: 13px; color: var(--preview); font-weight: 600; text-align: center; display: none; }
 .focus-now-playing.show { display: block; }
+
+/* V84: 重点句连读行（连读按钮 + 遍数1/2/3） */
+.focus-reps-row { display: flex; align-items: center; gap: 8px; }
+.btn-focus-read { flex: 1; min-height: 48px; border: none; border-radius: 12px; background: var(--preview-light); border: 1.5px solid var(--preview-border); color: var(--preview); font-size: 15px; font-weight: 800; cursor: pointer; padding: 10px; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.btn-focus-read:active { background: var(--preview); color: #fff; }
+.btn-focus-read.active { background: var(--preview); color: #fff; border-color: var(--preview); animation: pulse 2s infinite; }
+.reps-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.reps-group .reps-label { font-size: 12px; font-weight: 700; color: #888; margin-right: 2px; }
+.btn-reps { min-width: 44px; min-height: 44px; border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 8px; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.btn-reps.active { background: var(--preview); border-color: var(--preview); color: #fff; }
+
+/* V84: 生词本面板 */
+#vocab-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 7500; align-items: center; justify-content: center; }
+#vocab-modal.show { display: flex; }
+.vocab-card { background: #fff; border-radius: 16px; width: 92%; max-width: 440px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.25); overflow: hidden; }
+.vocab-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; flex-shrink: 0; }
+.vocab-title { font-size: 16px; font-weight: 800; color: var(--text); }
+.vocab-title .vocab-count { font-size: 13px; color: #888; font-weight: 700; margin-left: 4px; }
+.vocab-close { border: none; background: #F1F3F4; color: #5F6368; width: 32px; height: 32px; border-radius: 50%; font-size: 15px; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.vocab-toolbar { display: flex; gap: 8px; padding: 0 16px 10px; flex-shrink: 0; }
+.vocab-tool { flex: 1; min-height: 42px; border: 1px solid #DADCE0; background: #E8F0FE; color: var(--primary); border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.vocab-tool:active { background: var(--primary); color: #fff; }
+.vocab-tool.vocab-tool-danger { background: #fff0f0; border-color: #ffb3b3; color: #c5221f; }
+.vocab-tool.vocab-tool-danger:active { background: #c5221f; color: #fff; }
+.vocab-list { flex: 1; overflow-y: auto; min-height: 60px; border-top: 1px solid #f0f0f0; padding: 4px 0; }
+.vocab-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #f5f5f5; }
+.vocab-item:last-child { border-bottom: none; }
+.vocab-item-main { flex: 1; min-width: 0; }
+.vocab-item-word { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1.4; word-break: break-word; }
+.vocab-item-sent { font-size: 12px; color: #666; margin-top: 3px; line-height: 1.45; word-break: break-word; }
+.vocab-item-src { display: inline-block; font-size: 11px; color: #999; margin-top: 4px; background: #F8F9FA; border-radius: 6px; padding: 1px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vocab-item-del { width: 32px; height: 32px; border: 1px solid #ffb3b3; background: #fff0f0; color: #c5221f; border-radius: 10px; font-size: 13px; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.vocab-empty { text-align: center; color: #aaa; font-size: 13px; padding: 36px 20px; line-height: 1.7; }
+.vocab-tip { flex-shrink: 0; font-size: 11px; color: #bbb; text-align: center; padding: 8px 12px; border-top: 1px solid #f5f5f5; }
+
+/* V84: 入词撤销浮条 / 桌面划词浮条 */
+#vocab-undo-bar { display: none; position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; background: #323232; color: #fff; border-radius: 24px; padding: 10px 8px 10px 18px; font-size: 14px; z-index: 7600; align-items: center; gap: 10px; max-width: 86%; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+#vocab-undo-bar.show { display: flex; }
+#vocab-undo-text { word-break: break-all; }
+.vocab-undo-btn { border: none; background: var(--green); color: #fff; border-radius: 16px; padding: 6px 14px; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+#pv-sel-add { display: none; position: fixed; left: 50%; transform: translateX(-50%); bottom: 120px; background: #fff; border: 1.5px solid var(--preview-border); border-radius: 24px; padding: 8px 8px 8px 18px; font-size: 14px; z-index: 7600; align-items: center; gap: 10px; max-width: 86%; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+#pv-sel-add.show { display: flex; }
+#pv-sel-text { color: var(--preview); font-weight: 700; word-break: break-all; }
+.pv-sel-btn { border: none; background: var(--preview); color: #fff; border-radius: 16px; padding: 6px 14px; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.pv-sel-x { border: none; background: #F1F3F4; color: #5F6368; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
 
 /* ============ 原有样式保留 ============ */
 .card { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(60,64,67,0.15); border: 1px solid #eee; }
@@ -259,7 +344,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .drawer-overlay.open { display: block; }
 .drawer-content { width: 80%; max-width: 300px; height: 100%; background: #fff; padding: 24px; position: absolute; left: 0; top: 0; transform: translateX(-100%); transition: 0.3s; z-index: 501; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
 .drawer-overlay.open .drawer-content { transform: translateX(0); }
-.toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #323232; color: white; padding: 12px 24px; border-radius: 24px; font-size: 14px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 999; text-align: center; width: max-content; max-width: 80%; }
+.toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #323232; color: white; padding: 12px 24px; border-radius: 24px; font-size: 14px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 9999; /* V84.1r2: 压过统计页5000/备份5501/区间导出5601/分享6001/生词本7500 */ text-align: center; width: max-content; max-width: 80%; }
 .toast.show { opacity: 1; bottom: 100px; }
 .restore-bar { background: #FFF3E0; color: #B06000; padding: 12px; text-align: center; font-size: 14px; display: none; cursor: pointer; border-bottom: 1px solid #FEEFC3; font-weight: 500; }
 #server-browser-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: none; justify-content: center; align-items: center; }
@@ -366,7 +451,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V83.2</div>
+    <div class="nav-title">🎧 影子跟读 V84.3</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -486,9 +571,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                         </div>
                         <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 循环单句时句末停顿时长：固定1.5s适合短句；按句长倍率模式停顿=句长×倍率（如 5s 句子选 1.2x 留白 6s 给你跟读），自动 clamp 1~20 秒。</div>
                     </div>
-                    <!-- V83: 全量备份与恢复（跨端） -->
-                    <button class="btn-file" onclick="app.exportFullBackup()">📦 全量备份(跨端)</button>
-                    <button class="btn-file" onclick="app.importFullBackup()">📥 恢复全量备份</button>
+                    <!-- V84: 全量备份与恢复（跨端，含生词本+重点句进度+连读设置） -->
+                    <button class="btn-file" onclick="app.exportFullBackup()">📦 备份</button>
+                    <button class="btn-file" onclick="app.importFullBackup()">📥 恢复备份</button>
                     <button class="btn-file" onclick="app.exportProject()">💾 备份工程</button>
                     <button class="btn-file" onclick="app.exportSRT(1)">↓ 导出字幕 1</button>
                     <button class="btn-file" style="margin-top:10px" onclick="ui.toggleDrawer()">关闭</button>
@@ -598,16 +683,49 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <div class="preview-header">
                 <div class="preview-title">📚 预习模式</div>
                 <div class="preview-progress" id="preview-progress-text"></div>
+                <button class="btn-vocab-entry" onclick="vocabBook.open()">📔 生词<span class="vocab-entry-badge" id="vocab-badge"></span></button>
                 <button class="btn-exit-preview" onclick="previewMode.tryExit()">✕ 退出</button>
             </div>
 
             <!-- 逐句听阶段 -->
             <div id="preview-listen-phase">
-                <div class="preview-sentence-box" onclick="previewMode.toggleTempSub2()">
-                    <div class="preview-sentence-num" id="preview-sentence-num">#1</div>
+                <div class="preview-sentence-box" id="preview-sentence-box" onclick="previewMode.onBoxTap(event)">
+                    <div class="pv-top-row">
+                        <div class="preview-sentence-num" id="preview-sentence-num">#1</div>
+                        <button id="preview-trans-btn" class="pv-trans-btn" style="display:none;" onclick="previewMode.toggleTempSub2(event)">译</button>
+                    </div>
                     <div class="preview-sentence-text" id="preview-sentence-text">(加载中)</div>
-                    <div class="preview-sentence-text2" id="preview-sentence-text2"></div>
+                    <div class="preview-sentence-text2" id="preview-sentence-text2" onclick="previewMode.toggleTempSub2(event)"></div>
                     <div class="preview-play-hint" id="preview-play-hint">▶ 正在播放...</div>
+                </div>
+
+                <!-- V84: 句首/句尾微调 -->
+                <div class="preview-tune" id="preview-tune">
+                    <div class="pt-line">
+                        <span class="pt-name">句首</span>
+                        <button class="pt-btn" onclick="previewMode.tune('start',-0.5)">−.5</button>
+                        <button class="pt-btn" onclick="previewMode.tune('start',-0.2)">−.2</button>
+                        <button class="pt-btn" onclick="previewMode.tune('start',-0.1)">−.1</button>
+                        <button class="pt-btn" onclick="previewMode.tune('start',0.1)">+.1</button>
+                        <button class="pt-btn" onclick="previewMode.tune('start',0.2)">+.2</button>
+                        <button class="pt-btn" onclick="previewMode.tune('start',0.5)">+.5</button>
+                    </div>
+                    <div class="pt-line">
+                        <span class="pt-name">句尾</span>
+                        <button class="pt-btn" onclick="previewMode.tune('end',-0.5)">−.5</button>
+                        <button class="pt-btn" onclick="previewMode.tune('end',-0.2)">−.2</button>
+                        <button class="pt-btn" onclick="previewMode.tune('end',-0.1)">−.1</button>
+                        <button class="pt-btn" onclick="previewMode.tune('end',0.1)">+.1</button>
+                        <button class="pt-btn" onclick="previewMode.tune('end',0.2)">+.2</button>
+                        <button class="pt-btn" onclick="previewMode.tune('end',0.5)">+.5</button>
+                    </div>
+                    <div class="pt-info-line">
+                        <span class="pt-info" id="pt-info">--</span>
+                        <span class="pt-ops">
+                            <button class="pt-mini" onclick="previewMode.tuneListen()">▶ 试听</button>
+                            <button class="pt-mini pt-reset" id="pt-reset" onclick="previewMode.tuneReset()">↺ 重置</button>
+                        </span>
+                    </div>
                 </div>
 
                 <div class="preview-action-row">
@@ -633,7 +751,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <div id="preview-focus-phase">
                 <div class="focus-header">
                     <div class="focus-title">⭐ 重点句练习</div>
-                    <div class="focus-count" id="focus-count-label">共 0 句</div>
+                    <div class="focus-tools">
+                        <button id="focus-tool-export" class="focus-tool-btn" title="导出重点句文本" onclick="previewMode.exportStarredText()">📋</button>
+                        <button id="focus-tool-clear" class="focus-tool-btn focus-tool-danger" title="清空全部重点句" onclick="previewMode.clearAllStarred()">🗑</button>
+                        <div class="focus-count" id="focus-count-label">共 0 句</div>
+                    </div>
                 </div>
 
                 <div class="focus-now-playing" id="focus-now-playing"></div>
@@ -643,6 +765,16 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <div class="focus-list" id="focus-list"></div>
 
                 <div class="focus-control-area">
+                    <!-- V84: 连读行（连读按钮 + 遍数1/2/3） -->
+                    <div class="focus-reps-row">
+                        <button class="btn-focus-read" id="btn-focus-read" onclick="previewMode.toggleFocusRead()">▶ 连读重点句</button>
+                        <div class="reps-group">
+                            <span class="reps-label">遍数</span>
+                            <button class="btn-reps" data-reps="1" onclick="previewMode.setFocusReps(1)">1遍</button>
+                            <button class="btn-reps" data-reps="2" onclick="previewMode.setFocusReps(2)">2遍</button>
+                            <button class="btn-reps" data-reps="3" onclick="previewMode.setFocusReps(3)">3遍</button>
+                        </div>
+                    </div>
                     <!-- 速率 -->
                     <div class="speed-bar" id="speed-bar-preview">
                         <span class="speed-label">速率:</span>
@@ -692,6 +824,35 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
         <button class="preview-done-btn preview-done-btn-practice" onclick="previewMode.closeDoneAndPractice()">🎧 直接去正式跟读</button>
         <button class="preview-done-btn preview-done-btn-close" onclick="previewMode.closeDoneModal()">稍后再说</button>
     </div>
+</div>
+
+<!-- V84: 生词本面板 -->
+<div id="vocab-modal" onclick="vocabBook.close()">
+    <div class="vocab-card" onclick="event.stopPropagation()">
+        <div class="vocab-header">
+            <div class="vocab-title">📔 生词本 <span class="vocab-count" id="vocab-count"></span></div>
+            <button class="vocab-close" onclick="vocabBook.close()">✕</button>
+        </div>
+        <div class="vocab-toolbar">
+            <button class="vocab-tool" onclick="vocabBook.exportCSV()">📥 导出CSV</button>
+            <button class="vocab-tool vocab-tool-danger" onclick="vocabBook.clearAll()">🗑 清空</button>
+        </div>
+        <div class="vocab-list" id="vocab-list"></div>
+        <div class="vocab-tip">💡 手机点字幕单词、电脑划选词组即可加入；出处=当时加载的音频</div>
+    </div>
+</div>
+
+<!-- V84: 入词撤销浮条 -->
+<div id="vocab-undo-bar">
+    <span id="vocab-undo-text"></span>
+    <button class="vocab-undo-btn" onclick="vocabBook.undoLast()">撤销</button>
+</div>
+
+<!-- V84: 桌面划词入本浮条 -->
+<div id="pv-sel-add">
+    <span id="pv-sel-text"></span>
+    <button class="pv-sel-btn" onclick="vocabBook.addFromSelection()">＋入生词本</button>
+    <button class="pv-sel-x" onclick="vocabBook.dismissSelBar()">✕</button>
 </div>
 
 <!-- SERVER BROWSER MODAL -->
@@ -786,6 +947,7 @@ const state = {
     _loadedAudioUrl: '', // V81: 当前已真正加载成功的音频 URL（本地导入为 ''，统计用此判断而非读输入框）
     _loadedAudioName: '', // V83: 本地导入 MP3 文件名（统计展示用，配合 _loadedAudioUrl='local://'+name+'_'+size）
     loopGapMode: 'fixed', // V83: 单句循环跟读留白模式——'fixed'(1.5s)/'1.0x'/'1.2x'/'1.5x'（按句长倍率动态留白）
+    _audioLoadSeq: 0, // V84.1r2: 音频加载代数——连续导入/加载时只有最后一次的解码结果才允许写 state.audioBuffer（防慢解码覆盖新音频）
     _iconPngUrl: '' // V83: apple-touch-icon 生成的 PNG data URL，供 Media Session artwork 复用
 };
 
@@ -990,6 +1152,7 @@ const cacheUI = {
         }
     },
     async load(id) {
+        const _seq = ++state._audioLoadSeq; // V84.1r2: 加载代数——并发加载时只认最后一次
         // 备份当前工程（含音频状态）：cancel / 加载失败时恢复（参考 loadFromUrl 的 restoreBackup 模式）
         const backupSegments = state.segments;
         const backupCurrIndex = state.currIndex;
@@ -1024,11 +1187,15 @@ const cacheUI = {
             ui.toast('⏳ 正在从离线缓存加载...');
             // V83.2: 用 prepareAudioFromBlob 重建带明确 MIME 的内存 Blob（解决 iOS Safari 无法直接播 IDB Blob）
             const { objectUrl: memUrl, audioBuffer: decoded } = await prepareAudioFromBlob(p.audioBlob, p.name || p.audioUrl || '');
+            // V84.3: 代数检查前移到任何 state 写入之前——旧任务晚归时只回收自己刚建的 URL，
+            // 不再覆盖新任务的 objectURL/src（原检查在 waitAudioReady 之后，新任务的音频源已被换掉）
+            if (state._audioLoadSeq !== _seq) { try { URL.revokeObjectURL(memUrl); } catch(e) {} return; }
             state._audioObjectUrl = memUrl;
             const a = document.getElementById('main-audio');
             a.src = state._audioObjectUrl;
             a.dataset.name = p.name || '';
             await net.waitAudioReady(a);
+            if (state._audioLoadSeq !== _seq) return; // V84.1r2 双保险：就绪等待期间又加载了别的音频——放弃本次
             state.audioBuffer = decoded;
             // 加载字幕
             state.segments = Array.isArray(p.segments) ? p.segments : [];
@@ -1060,6 +1227,8 @@ const cacheUI = {
             ui.toast('✅ 已从离线缓存加载（0 网络请求）');
             app.switchView('practice');
         } catch(e) {
+            // V84.3: 代数已过期（有更新的加载在途/已完成）时不回滚——旧任务的失败不该覆盖新任务已提交的状态
+            if (state._audioLoadSeq !== _seq) return;
             // 加载失败时恢复原工程（避免清空后失败导致数据永久丢失）
             if (backupSegments && backupSegments.length) {
                 restoreBackup();
@@ -1369,6 +1538,9 @@ const engine = {
     },
     stopAll(releaseMic = false) {
         this.mode = 'IDLE'; this.isWaiting = false;
+        // V84: 连读中断联动——任何 stopAll（点循环/播单句/切页/锁屏暂停等）都先终止重点句连读链，
+        // 防连读定时器残留继续播下一句/下一遍（quiet=true 只清 flag/定时器/按钮，不动音频，由本次 stopAll 统一清）
+        try { if (typeof previewMode !== 'undefined' && previewMode && previewMode._focusReadActive) previewMode._stopFocusRead(true); } catch(e) {}
         if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; }
         if (this.segTimer) { clearTimeout(this.segTimer); this.segTimer = null; }
         if (this._pendingPlayCleanup) { this._pendingPlayCleanup(); this._pendingPlayCleanup = null; }
@@ -1402,7 +1574,7 @@ const engine = {
         };
         const playP = a.play();
         if (playP && playP.then) {
-            playP.then(() => { registerWatch(); }).catch(e => { console.error(e); ui.toast('播放失败: ' + ((e && e.name) ? e.name : '') + (a.error ? ' [code:' + a.error.code + ']' : '')); });
+            playP.then(() => { registerWatch(); }).catch(e => { console.error(e); if (e && e.name === 'AbortError') return; ui.toast('播放失败: ' + ((e && e.name) ? e.name : '') + (a.error ? ' [code:' + a.error.code + ']' : '')); }); // V84.3: AbortError=被下一次操作打断（快速连点试听），非真失败
         } else {
             // 兼容不返回 Promise 的旧浏览器
             registerWatch();
@@ -1479,7 +1651,7 @@ const engine = {
         arm();
         return cleanup;
     },
-    _playSegmentTimed(win, onEnd) {
+    _playSegmentTimed(win, onEnd, onError) { // V84.1: 增可选 onError——play 被拒时回调（连读链兜底终止用）
         const a = document.getElementById('main-audio');
         if (this._pendingPlayCleanup) { this._pendingPlayCleanup(); this._pendingPlayCleanup = null; }
         a.currentTime = win.start;
@@ -1497,7 +1669,7 @@ const engine = {
             playP.then(() => {
                 // play 成功后才注册监控，确保 currentTime 已 seek 到 win.start
                 registerWatch();
-            }).catch(e => { console.error(e); ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); });
+            }).catch(e => { console.error(e); if (e && e.name === 'AbortError') return; if (typeof onError === 'function') { try { onError(e); } catch(e2) {} } ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); }); // V84.3: AbortError 过滤在 onError 之前——连读/试听链不会被"假失败"误终止
         } else {
             // 兼容不返回 Promise 的旧浏览器
             registerWatch();
@@ -1523,7 +1695,8 @@ const engine = {
                 a.currentTime = startSeg.start;
                 state.currIndex = startL; ui.updatePractice(startL);
                 const playP = a.play();
-                if (playP && playP.catch) playP.catch(e => console.error(e));
+                // V84.1r2: 循环回跳播放被拒时停区间循环（AbortError 是主动停止的副产品，不算失败）
+                if (playP && playP.catch) playP.catch(e => { console.error(e); if (e && e.name === 'AbortError') return; if (this.mode === 'LOOP_RANGE') { this.stopAll(); ui.toast('播放失败，已停止区间循环'); } });
                 return;
             }
             if (a.paused) return;
@@ -1535,7 +1708,8 @@ const engine = {
             if (a.ended || (a.duration > 0 && ct >= a.duration - 0.05)) {
                 a.currentTime = 0; state.currIndex = 0; ui.updatePractice(0);
                 const playP = a.play();
-                if (playP && playP.catch) playP.catch(e => console.error(e));
+                // V84.1r2: 回跳播放被拒时停全文播放（AbortError 是主动停止的副产品，不算失败）
+                if (playP && playP.catch) playP.catch(e => { console.error(e); if (e && e.name === 'AbortError') return; if (this.mode === 'FULL_PLAY') { this.stopAll(); ui.toast('播放失败，已停止全文播放'); } });
                 return;
             }
             if (a.paused) return;
@@ -1564,7 +1738,7 @@ const engine = {
             document.getElementById('main-audio').pause();
             this.mode = 'IDLE';
             ui.resetButtons();
-        });
+        }, () => { if (this.mode === 'PLAY_ONCE') { this.mode = 'IDLE'; ui.resetButtons(); } }); // V84.1r2: 播放被拒时复位按钮，防卡 active
     },
     toggleLoop() {
         if (aiMode.active && !aiMode.manualPracticeMode) aiMode.stop();
@@ -1608,7 +1782,7 @@ const engine = {
                 if (this.mode !== 'LOOP_ONE') return;
                 this._loopOneCycle();
             }, gapMs);
-        });
+        }, () => { if (this.mode === 'LOOP_ONE') this.stopAll(); }); // V84.1r2: 播放被拒时停循环，防按钮卡"循环中"
     },
     toggleRangeLoop() {
         if (aiMode.active) aiMode.stop();
@@ -1632,7 +1806,7 @@ const engine = {
             const a = document.getElementById('main-audio');
             a.currentTime = state.segments[start].start;
             applyPlaybackRate(a, state.playbackRate);
-            a.play().then(() => this.startTicker()).catch(e => { console.error(e); ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); });
+            a.play().then(() => this.startTicker()).catch(e => { console.error(e); if (e && e.name === 'AbortError') return; ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); if (this.mode === 'LOOP_RANGE') { this.mode = 'IDLE'; ui.resetButtons(); try { a.pause(); } catch(e2) {} } }); // V84.1r2: 复位按钮，防卡在停止态；V84.3: AbortError 过滤（连点循环时旧 play 被拒不算失败）
         }
     },
     toggleFullPlay() {
@@ -1648,7 +1822,7 @@ const engine = {
                 this.mode = 'FULL_PLAY';
                 const btn = document.getElementById('btn-full-play'); btn.classList.add('active'); btn.innerText = "⏹ 停止";
                 this.startTicker();
-            }).catch(e => { console.error(e); ui.toast('播放失败: ' + ((e && e.name) ? e.name : '') + (a.error ? ' [code:' + a.error.code + ']' : '')); });
+            }).catch(e => { console.error(e); if (e && e.name === 'AbortError') return; ui.toast('播放失败: ' + ((e && e.name) ? e.name : '') + (a.error ? ' [code:' + a.error.code + ']' : '')); }); // V84.3: AbortError 过滤
         }
     },
     check() {
@@ -1760,6 +1934,13 @@ const ui = {
         this.updatePermButtons();
         previewMode.loadFromStorage();
         previewMode.updateBadge();
+        // V84: 恢复连读遍数（localStorage 'shadow_v84_focus_reps'，默认 1）+ 生词本角标
+        try {
+            const savedReps = parseInt(localStorage.getItem('shadow_v84_focus_reps'));
+            if ([1, 2, 3].indexOf(savedReps) !== -1) previewMode._focusReps = savedReps;
+            previewMode._syncRepsBtns();
+        } catch(e) {}
+        try { vocabBook._updateBadge(); } catch(e) {}
         // V79: 启动统计 ticker（绑定到 main-audio 的 play/pause/seeked/timeupdate）
         startStatsTicker();
         // V83: 注册 Media Session action handler（锁屏控制）
@@ -2162,6 +2343,11 @@ const app = {
         const s2 = net.fixUrl(document.getElementById('url-srt-2').value.trim());
         const s3 = net.fixUrl(document.getElementById('url-srt-3').value.trim());
         if (!mp3) return ui.toast("请输入 MP3 链接");
+        // V84.3: 接入音频加载代数（此前 loadFromUrl 未参与 _audioLoadSeq，与离线缓存/本地导入并发时无先后保护）；
+        // 并先停旧播放链（AI/循环引擎），防加载期间旧循环监听挂在新 src 上（沿用 loadProject 模式）
+        const _seq = ++state._audioLoadSeq;
+        try { if (aiMode.active) aiMode.stop(); } catch(eStop) {}
+        try { engine.stopAll(); } catch(eStop2) {}
         // 备份当前工程（含音频状态）：cancel / 加载失败时恢复，避免字幕恢复但音频还是新的"字画错配"
         const backupSegments = state.segments;
         const backupCurrIndex = state.currIndex;
@@ -2247,19 +2433,22 @@ const app = {
                 if (localModified) {
                     const choice = await this._askSegmentChoice();
                     if (choice === 'cancel') {
-                        restoreBackup();
-                        ui.toast('已取消加载，原工程已恢复');
+                        // V84.3: 弹窗等待期间可能已有新加载接管——只在代数未变时回滚
+                        if (state._audioLoadSeq === _seq) { restoreBackup(); ui.toast('已取消加载，原工程已恢复'); }
                         return;
                     }
                     if (choice === 'local') useSegments = backupSegments;
                 }
                 // V83.2: 用 prepareAudioFromBlob 重建带明确 MIME 的内存 Blob（解决 iOS Safari 无法直接播 IDB Blob）
                 const { objectUrl: cacheUrl, audioBuffer: cacheDecoded } = await prepareAudioFromBlob(cached.audioBlob, cached.name || cached.audioUrl || mp3);
+                // V84.3: 代数检查前移——被更新加载取代时只回收自己刚建的 URL，不覆盖新任务的 src/state
+                if (state._audioLoadSeq !== _seq) { try { URL.revokeObjectURL(cacheUrl); } catch(e) {} return; }
                 state._audioObjectUrl = cacheUrl;
                 const a = document.getElementById('main-audio');
                 a.src = state._audioObjectUrl;
                 a.dataset.name = cached.name || projectName;
                 await net.waitAudioReady(a);
+                if (state._audioLoadSeq !== _seq) return; // V84.3: 就绪等待期间被取代——双保险
                 state.audioBuffer = cacheDecoded;
                 state.segments = useSegments;
                 state.subFileNames = {1:'', 2:'', 3:''};
@@ -2290,6 +2479,7 @@ const app = {
                 return;
             }
             // ============ 2) 未命中：走网络 ============
+            if (state._audioLoadSeq !== _seq) return; // V84.3: 缓存查询等待期间被新加载取代——放弃
             const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
             const effType = conn ? conn.effectiveType : '';
             if (effType === 'slow-2g' || effType === '2g') {
@@ -2300,17 +2490,20 @@ const app = {
             ui.toast("正在下载音频...");
             state.audioBuffer = null; // 清空旧 audioBuffer，防"重新断句"用旧音频数据
             const ab = await net.fetchBlobSmart(mp3);
+            if (state._audioLoadSeq !== _seq) return; // V84.3: 下载期间被新加载取代——放弃（blob 交给 GC）
             const audioBlob = ab;
             // 统一 decode audioBuffer（无论有无字幕），让"重新断句"可用
             try {
                 const buf = await ab.arrayBuffer();
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 try {
-                    state.audioBuffer = await ctx.decodeAudioData(buf);
+                    const _dec = await ctx.decodeAudioData(buf);
+                    if (state._audioLoadSeq === _seq) state.audioBuffer = _dec; // V84.3: 解码完先查代数再写
                 } finally {
                     try { ctx.close(); } catch(e) {}
                 }
-            } catch(e) { console.warn('audioBuffer decode 失败:', e); state.audioBuffer = null; }
+            } catch(e) { console.warn('audioBuffer decode 失败:', e); if (state._audioLoadSeq === _seq) state.audioBuffer = null; } // V84.3: 失败清空也查号，防清掉新加载的 buffer
+            if (state._audioLoadSeq !== _seq) return; // V84.3: 解码等待期间被取代——不建 objectURL 不碰 src
             // 创建新 objectURL，不 revoke 旧的（等成功后 commitAudioSwap 再 revoke）
             state._audioObjectUrl = URL.createObjectURL(ab);
             document.getElementById('main-audio').src = state._audioObjectUrl;
@@ -2323,6 +2516,7 @@ const app = {
             const t2 = results[1].status === 'fulfilled' ? results[1].value : null;
             const t3 = results[2].status === 'fulfilled' ? results[2].value : null;
             await audioReadyPromise;
+            if (state._audioLoadSeq !== _seq) return; // V84.3: 字幕下载/就绪等待期间被取代——不再写 segments/统计/回写缓存
             // 尝试用字幕解析；解析为空（HTML 错误页/格式错）时回退到智能断句
             let parsedFromSrt = false;
             if (t1||t2||t3) {
@@ -2349,10 +2543,12 @@ const app = {
                     throw new Error('音频编码不支持自动断句，请提供 SRT 字幕文件');
                 }
                 ui.toast(t1||t2||t3 ? "字幕解析为空，进行智能断句..." : "未提供字幕或下载失败，进行智能断句...");
-                state.segments = await detectSilenceAsync(
+                const _segs = await detectSilenceAsync(
                     state.audioBuffer,
                     parseFloat(document.getElementById('threshold-range').value)
                 );
+                if (state._audioLoadSeq !== _seq) return; // V84.3: 智能断句耗时较长——完成后再查代数，防旧断句覆盖新工程
+                state.segments = _segs;
                 if (!state.segments.length) state.segments = [{start:0,end:state.audioBuffer.duration,text:"(自动断句失败)"}];
             }
             const finalSegments = state.segments;
@@ -2409,12 +2605,17 @@ const app = {
             app.switchView('practice');
         } catch(e) {
             console.error(e);
-            // 加载失败时恢复原工程（避免清空后失败导致数据永久丢失）
-            if (backupSegments && backupSegments.length) {
-                restoreBackup();
-                ui.toast('加载失败，原工程已恢复');
+            // V84.3: 代数已过期（有更新的加载接管）时不回滚也不改按钮——旧任务的失败不该覆盖新任务已提交的状态
+            if (state._audioLoadSeq !== _seq) {
+                console.warn('loadFromUrl 已被更新的加载取代，跳过回滚');
+            } else {
+                // 加载失败时恢复原工程（避免清空后失败导致数据永久丢失）
+                if (backupSegments && backupSegments.length) {
+                    restoreBackup();
+                    ui.toast('加载失败，原工程已恢复');
+                }
+                ui.setLoadBtnText("加载失败:" + e.message);
             }
-            ui.setLoadBtnText("加载失败:" + e.message);
         }
         finally { btn.disabled=false; spin.style.display='none'; setTimeout(()=>ui.setLoadBtnText("default"),3000); }
     },
@@ -2587,6 +2788,8 @@ const app = {
             const old = state.segments[i], ns={start:t,end:old.end,text:""};
             if(old.text2!==undefined) ns.text2=""; if(old.text3!==undefined) ns.text3="";
             state.segments.splice(i+1,0,ns); state.segments[i].end = t;
+            // V84: 拆分后时间轴已变，清除预习微调记的原始时间（防"重置"恢复到很老的值）
+            try { delete state.segments[i]._os; delete state.segments[i]._oe; } catch(e) {}
             // 修正 currIndex：拆分点在当前句之前时，当前句索引 +1
             if (i < state.currIndex) state.currIndex++;
             // 拆分后第 i 句之后的所有句子索引 +1（原 i+1 变 i+2、原 i+2 变 i+3...）
@@ -2606,6 +2809,8 @@ const app = {
     mergeSeg(i) {
         if (i < state.segments.length-1) {
             state.segments[i].end = state.segments[i+1].end;
+            // V84: 合并后时间轴已变，清除预习微调记的原始时间（防"重置"恢复到很老的值）
+            try { delete state.segments[i]._os; delete state.segments[i]._oe; } catch(e) {}
             if (state.segments[i].text !== undefined) {
                 state.segments[i].text = (state.segments[i].text + " " + (state.segments[i+1].text||"")).trim();
             }
@@ -2719,6 +2924,9 @@ const app = {
         const projectId = idbCache.hashUrl(mp3);
         try {
             const cached = await idbCache.get(projectId);
+            // V84.1r2: 二次校验——await 期间用户可能已切工程（SESSION 变了），
+            // 此时 state.segments 属于新工程，不能写进旧工程的缓存
+            if (localStorage.getItem(CONST.SESSION) !== mp3) return;
             // 只更新 segments 字段，保留 audioBlob / srts 等
             if (cached && cached.audioBlob) {
                 cached.segments = state.segments;
@@ -2749,6 +2957,7 @@ const app = {
             ui.toast('⏳ 正在重新加载音频，请稍候...');
             // V81: 先查离线缓存，命中则用 cached.audioBlob 建 objectURL（不覆盖已恢复的 segments/currIndex），
             // 未命中再回退 net.fetchBlobSmart(mp3) 下载并 decode，避免每次恢复进度都重新联网下载
+            const _rpSeq = ++state._audioLoadSeq; // V84.1r2: 加载代数（防恢复进度与新加载并发时旧解码覆盖新音频 buffer）
             const projectId = idbCache.hashUrl(mp3);
             idbCache.get(projectId).then(async cached => {
                 let audioBlob = null, cachedName = '';
@@ -2761,11 +2970,15 @@ const app = {
                 }
                 // V83.2: 用 prepareAudioFromBlob 重建带明确 MIME 的内存 Blob（解决 iOS Safari 无法直接播 IDB Blob）
                 const { objectUrl: restoreUrl, audioBuffer: restoreDecoded } = await prepareAudioFromBlob(audioBlob, cachedName || mp3);
+                // V84.3: 代数检查前移到 revoke/写 state 之前——过期时只能回收自己刚建的 URL；
+                // 原顺序会先 revoke 掉新任务的 state._audioObjectUrl 再覆盖 src，把新加载彻底毁掉
+                if (state._audioLoadSeq !== _rpSeq) { try { URL.revokeObjectURL(restoreUrl); } catch(e) {} return; }
                 if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); }
                 state._audioObjectUrl = restoreUrl;
                 mainAudio.src = state._audioObjectUrl;
                 mainAudio.dataset.name = cachedName || idbCache.extractFilename(mp3) || '';
                 await net.waitAudioReady(mainAudio);
+                if (state._audioLoadSeq !== _rpSeq) return; // V84.1r2: 等待期间用户加载了别的音频——放弃（防旧 buffer 覆盖）
                 state.audioBuffer = restoreDecoded;
                 // V81: 音频就绪后同步统计归属（_loadedAudioUrl）并重置会话计数
                 state._loadedAudioUrl = mp3;
@@ -2787,22 +3000,25 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 83.2, segments: state.segments, idx: state.currIndex, inputs: inputs };
+        const data = { version: 84, segments: state.segments, idx: state.currIndex, inputs: inputs };
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v83.2.json'; document.body.appendChild(a); a.click(); a.remove();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v84.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     // V83: 一键全量备份（跨端）——打包 localStorage 轻量数据（不含音频 Blob）
     // 导出字段：STORAGE/INDEX/HIST/INPUTS/SESSION/PREVIEW/PADDING/AUTOSYNC/STATS/SPEED/LOOP_GAP
+    // V84: 新增生词本(shadow_v84_vocab)与连读遍数(shadow_v84_focus_reps)——恢复后新设备上原样出现
     exportFullBackup() {
         try {
+            try { flushStats(); } catch(e0) {} // V84.1r2: 备份前先落盘统计（统计攒30次才写盘，防备份缺最后一段）
             var keys = [
                 CONST.STORAGE, CONST.INDEX, CONST.HIST, CONST.INPUTS,
                 CONST.SESSION, CONST.PREVIEW, CONST.PADDING, CONST.AUTOSYNC,
                 CONST.STATS,
-                'shadow_v83_speed', 'shadow_v83_loop_gap'
+                'shadow_v83_speed', 'shadow_v83_loop_gap',
+                'shadow_v84_vocab', 'shadow_v84_focus_reps'
             ];
-            var data = { type: 'shadow_full_backup', version: 83, exportedAt: new Date().toISOString(), items: {} };
+            var data = { type: 'shadow_full_backup', version: 84, exportedAt: new Date().toISOString(), items: {} }; // V84.1r2: 版本号 83→84（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -2824,7 +3040,7 @@ const app = {
             a.href = url; a.download = filename;
             document.body.appendChild(a); a.click(); a.remove();
             setTimeout(function() { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000);
-            ui.toast('✅ 全量备份已导出（' + data.itemCount + ' 项）');
+            ui.toast('✅ 备份已导出（' + data.itemCount + ' 项）');
         } catch(e) {
             ui.toast('❌ 备份失败：' + (e.message || e));
         }
@@ -2850,12 +3066,15 @@ const app = {
                 if (!data.items || typeof data.items !== 'object') { ui.toast('❌ 备份内容缺失'); return; }
                 var cnt = Object.keys(data.items).length;
                 if (!cnt) { ui.toast('❌ 备份为空'); return; }
-                if (!confirm('确认恢复全量备份？\n这将覆盖当前的 localStorage 设置/进度/统计等轻量数据。\n（音频 Blob、IndexedDB 缓存不会被覆盖）\n\n备份包含 ' + cnt + ' 项，导出于 ' + (data.exportedAt || '未知时间'))) return;
+                if (!confirm('确认恢复备份？\n这将覆盖当前的 localStorage 设置/进度/统计/生词本等轻量数据。\n（音频 Blob、IndexedDB 缓存不会被覆盖）\n\n备份包含 ' + cnt + ' 项，导出于 ' + (data.exportedAt || '未知时间'))) return;
                 try {
                     Object.keys(data.items).forEach(function(k) {
                         try { localStorage.setItem(k, data.items[k]); } catch(e) { console.warn('恢复写入失败:', k, e); }
                     });
                 } catch(e) {}
+                // V84.1r2: 用刚写入的数据刷新内存 statsDB——reload 前 visibilitychange 的 flushStats() 会把
+                // 旧内存统计写回 localStorage 覆盖刚恢复的数据（新设备内存为空，会把统计直接清空）
+                try { statsDB = safeParse(localStorage.getItem(CONST.STATS), {}); } catch(e2) {}
                 ui.toast('✅ 已恢复，正在刷新...');
                 setTimeout(function() { try { location.reload(); } catch(e) {} }, 600);
             } catch(err) {
@@ -2898,7 +3117,30 @@ const app = {
             if (!d) { ui.toast('❌ 工程文件损坏或格式错误'); return; }
             // P3-5: segments 必须是数组（防格式错误导致后续 renderEditor 崩溃）
             if (!Array.isArray(d.segments)) { ui.toast('工程文件格式错误'); return; }
-            state.segments = d.segments || d;
+            // V84.1r2: 逐条标准化——start/end 强制为有限数字（防脏数据崩编辑页 s.start.toFixed），文本字段强制字符串
+            state.segments = d.segments.map(function(s) {
+                if (!s || typeof s !== 'object') return { start: 0, end: 0, text: '' };
+                var st = parseFloat(s.start), en = parseFloat(s.end);
+                if (!isFinite(st) || st < 0) st = 0;
+                if (!isFinite(en) || en < st) en = st;
+                var o = { start: st, end: en, text: (s.text == null) ? '' : String(s.text) };
+                if (s.text2 != null) o.text2 = String(s.text2);
+                if (s.text3 != null) o.text3 = String(s.text3);
+                if (isFinite(parseFloat(s._os))) o._os = parseFloat(s._os);
+                if (isFinite(parseFloat(s._oe))) o._oe = parseFloat(s._oe);
+                return o;
+            });
+            // V84.1r2: 隔离旧音频——导入工程只换字幕，旧音频不清会"新字幕配旧音频"、统计错记旧音频名下（沿用 V78 restoreBackup 清空模式）
+            try { engine.stopAll(); } catch(eStop) {}
+            state.audioBuffer = null;
+            state._loadedAudioUrl = '';
+            state._loadedAudioName = '';
+            state._audioLoadSeq++; // 使在途解码全部失效（防旧音频的解码结果写入新工程状态）
+            if (state._audioObjectUrl) { try { URL.revokeObjectURL(state._audioObjectUrl); } catch(eUrl) {} state._audioObjectUrl = null; }
+            var _pa = document.getElementById('main-audio');
+            try { _pa.pause(); } catch(ePause) {}
+            _pa.removeAttribute('src');
+            try { _pa.load(); } catch(eLoad) {}
             // P3-5: clamp currIndex 防越界
             state.currIndex = Math.min(Math.max(0, d.idx || 0), Math.max(0, state.segments.length - 1));
             if (d.inputs) {
@@ -3029,6 +3271,8 @@ const recorder = {
 // ============================================================
 const previewMode = {
     cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '', doneIndices: [],
+    // V84: 连读/生词/触摸分流状态
+    _focusReps: 1, _focusReadActive: false, _focusReadTimer: null, _lastTouchAt: 0,
     _getKey() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
         const mp3 = (inputs.mp3 || '').trim();
@@ -3093,7 +3337,9 @@ const previewMode = {
         this._showListenPhase(); this._gotoSentence(this.cursorIdx);
     },
     exit() {
-        engine.stopAll(); this.saveToStorage(); this.updateBadge();
+        engine.stopAll(); this._stopFocusRead(true); // V84: 退出预习先停连读（stopAll 已联动，双保险）
+        this.hideSelBar();
+        this.saveToStorage(); this.updateBadge();
         const pvw = document.getElementById('preview-view'); pvw.style.display = 'none'; pvw.classList.remove('active');
         const pv = document.getElementById('practice-view'); pv.style.display = 'flex'; pv.classList.add('active');
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.onclick.toString().includes('practice')));
@@ -3118,14 +3364,72 @@ const previewMode = {
         const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
         const text = seg[mainKey] || seg.text || '(无内容)'; const text2 = this._getSub(seg);
         document.getElementById('preview-sentence-num').innerText = '#' + (idx+1) + ' / ' + state.segments.length;
-        document.getElementById('preview-sentence-text').innerText = text;
+        // V84.1r2: 先复位译文区再算字号——若上一句开着「译」，旧译文高度会被算进预算导致本句字号无谓缩小
         const t2el = document.getElementById('preview-sentence-text2');
-        t2el.innerText = (text2 && text2 !== text) ? text2 : ''; t2el.style.display = 'none';
+        t2el.innerText = ''; t2el.style.display = 'none';
+        // V84: 主文本 span 化（英文词包 .pw，供移动端点词入生词本）+ 自动缩小字号
+        this._renderPreviewMainText(text);
+        t2el.innerText = (text2 && text2 !== text) ? text2 : '';
+        // V84: 「译」按钮——有第二字幕时显示（点击切换译文，保留原“点句切换翻译”能力）
+        const transBtn = document.getElementById('preview-trans-btn');
+        if (transBtn) transBtn.style.display = (text2 && text2 !== text) ? 'inline-block' : 'none';
         document.getElementById('preview-progress-text').innerText = '进度 ' + (idx+1) + '/' + state.segments.length + '  ⭐' + this.starredIndices.length;
         document.getElementById('preview-play-hint').innerText = '▶ 正在播放...';
+        this._updateTuneUI(); // V84: 刷新句首/句尾微调区
         this._playCurrentSentence(); this.saveToStorage();
         // V83: 同步 Media Session 元数据（锁屏控制）
         try { ui.updateMediaSession(idx); } catch(e) {}
+        // V84: 首次使用提示（点词/复制/划词）只弹一次
+        try {
+            if (!localStorage.getItem('shadow_v84_pv_hint')) {
+                localStorage.setItem('shadow_v84_pv_hint', '1');
+                ui.toast('💡 点单词入生词本，点空白处复制整句');
+            }
+        } catch(e) {}
+    },
+    // V84: 渲染预习主文本——英文词包 .pw span（textContent 防 XSS），非词部分裸文本
+    _renderPreviewMainText(text) {
+        const el = document.getElementById('preview-sentence-text');
+        if (!el) return;
+        el.innerHTML = '';
+        const str = String(text == null ? '' : text);
+        const re = /[A-Za-z0-9'\u2019]+/g; // 字母数字词（含弯撇号 don't
+        let last = 0, m;
+        while ((m = re.exec(str)) !== null) {
+            if (m.index > last) el.appendChild(document.createTextNode(str.slice(last, m.index)));
+            const sp = document.createElement('span');
+            sp.className = 'pw'; sp.dataset.word = m[0]; sp.textContent = m[0];
+            el.appendChild(sp);
+            last = m.index + m[0].length;
+        }
+        if (last < str.length) el.appendChild(document.createTextNode(str.slice(last)));
+        this._fitPreviewText();
+    },
+    // V84: 预习主文本自适应字号——26px 起自动缩小到 16px（同练习页 fitText 机制：超长字幕先缩字号，缩不住再内部滚动）
+    _fitPreviewText() {
+        try {
+            const textEl = document.getElementById('preview-sentence-text');
+            if (!textEl) return;
+            const t2El = document.getElementById('preview-sentence-text2');
+            const hintEl = document.getElementById('preview-play-hint');
+            const numEl = document.getElementById('preview-sentence-num');
+            if (!textEl.parentElement) return;
+            // 预算：字幕盒上限 40vh，扣除顶部行/译文/提示行/内边距
+            // V84.1: 优先取盒子真实 clientHeight（小屏/横屏/分屏时盒子被压到 <40vh，字号要跟着缩够小）
+            const maxBox = Math.max(110, window.innerHeight * 0.40);
+            const boxEl = document.getElementById('preview-sentence-box');
+            const actualBoxH = (boxEl && boxEl.clientHeight > 0) ? boxEl.clientHeight : maxBox;
+            const effBox = Math.min(actualBoxH, maxBox);
+            const topH = numEl && numEl.parentElement ? numEl.parentElement.offsetHeight : 0;
+            const hintH = hintEl ? hintEl.offsetHeight : 0;
+            const t2H = (t2El && t2El.style.display !== 'none' && t2El.innerText.trim()) ? t2El.offsetHeight : 0;
+            const budget = Math.max(64, effBox - topH - hintH - t2H - 36);
+            let size = 26;
+            textEl.style.fontSize = size + 'px';
+            while (textEl.scrollHeight > budget && size > 16) { size--; textEl.style.fontSize = size + 'px'; }
+            // V84.1: 内部滚动区同步压到预算内（CSS 的 34vh 在盒子被压缩时会超出盒高导致底部裁字）
+            try { textEl.style.maxHeight = Math.max(64, budget) + 'px'; } catch(err) {}
+        } catch(e) { /* 自适应失败不影响功能 */ }
     },
     _playCurrentSentence() {
         const seg = state.segments[this.cursorIdx];
@@ -3136,18 +3440,34 @@ const previewMode = {
         engine._playSegmentTimed(win, () => {
             if (engine.mode !== 'PREVIEW_PLAY') return;
             document.getElementById('main-audio').pause(); engine.mode = 'IDLE'; this._onPlayEnd();
+        }, () => { // V84.1r2: 播放被拒时复位状态，防 hint 卡在"正在播放"
+            if (engine.mode === 'PREVIEW_PLAY') engine.mode = 'IDLE';
+            const h = document.getElementById('preview-play-hint'); if (h) h.innerText = '❌ 播放失败，点「🔄 再听一次」重试';
         });
     },
     _onPlayEnd() { document.getElementById('preview-play-hint').innerText = '✅ 播放完毕，请做出选择'; },
     replayCurrentSentence() { this._playCurrentSentence(); },
-    toggleTempSub2() {
+    toggleTempSub2(e) {
+        // V84: 阻止冒泡到 box 的 onBoxTap（译文区点击=切换显示，不触发复制/入词）
+        try { if (e && e.stopPropagation) e.stopPropagation(); } catch(err) {}
         const t2El = document.getElementById('preview-sentence-text2');
         if (!t2El.innerText.trim()) return;
         t2El.style.display = t2El.style.display === 'none' ? 'block' : 'none';
+        this._fitPreviewText(); // 译文显隐影响可用高度，重新自适应字号
     },
-    markKnow() { this.previewedCount++; this._gotoSentence(this.cursorIdx + 1); },
+    markKnow() {
+        // V84: 我会了 = 掌握 → 该句自动移出重点句（互斥，防“既是重点句又已掌握”的矛盾状态）
+        const idx = this.cursorIdx;
+        if (this.starredIndices.includes(idx)) {
+            this.starredIndices = this.starredIndices.filter(i => i !== idx);
+            this.doneIndices = this.doneIndices.filter(d => d !== idx); // 防已练熟标记残留
+            this.saveToStorage(); this.updateBadge(); this._updateEarlyBtn();
+            ui.toast('✅ 已掌握，自动移出重点句');
+        }
+        this.previewedCount++; this._gotoSentence(this.cursorIdx + 1);
+    },
     markStar() {
-        if (!this.starredIndices.includes(this.cursorIdx)) { this.starredIndices.push(this.cursorIdx); }
+        if (!this.starredIndices.includes(this.cursorIdx)) { this.starredIndices.push(this.cursorIdx); this.starredIndices.sort((a, b) => a - b); } // V84.1r2: 排序——回退补标时 push 会乱序（如[5,3]），连读须按音频先后
         this.previewedCount++; ui.toast('⭐ 已加入重点句'); this._updateEarlyBtn(); this._gotoSentence(this.cursorIdx + 1);
     },
     prevSentence() { if (this.cursorIdx <= 0) { ui.toast('已经是第一句了'); return; } this._gotoSentence(this.cursorIdx - 1); },
@@ -3167,25 +3487,14 @@ const previewMode = {
         const list = document.getElementById('focus-list'); list.innerHTML = '';
         const label = document.getElementById('focus-count-label');
         label.innerText = '共 ' + this.starredIndices.length + ' 句';
-        if (this.starredIndices.length > 0) {
-            // V83: 导出重点句文本按钮（顶部）
-            const exportBtn = document.createElement('button');
-            exportBtn.innerText = '📋 导出重点句';
-            exportBtn.style.cssText = 'width:100%;padding:8px;border:1px solid #DADCE0;background:#E8F0FE;color:var(--primary);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;';
-            exportBtn.onclick = () => this.exportStarredText();
-            list.appendChild(exportBtn);
-
-            const clearBtn = document.createElement('button');
-            clearBtn.innerText = '🗑 清空全部重点句';
-            clearBtn.style.cssText = 'width:100%;padding:8px;border:1px solid #ffb3b3;background:#fff0f0;color:#c5221f;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;';
-            clearBtn.onclick = () => {
-                if (confirm('确认清空全部重点句？')) {
-                    this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0; this.doneIndices = [];
-                    this.saveToStorage(); this.updateBadge(); this._renderFocusList();
-                }
-            };
-            list.appendChild(clearBtn);
-        }
+        // V84: 导出/清空迁到 focus-header 右侧小按钮（腾出列表空间给连读设置）；空列表时隐藏
+        const expBtn = document.getElementById('focus-tool-export');
+        const clrBtn = document.getElementById('focus-tool-clear');
+        const hasStarred = this.starredIndices.length > 0;
+        if (expBtn) expBtn.style.display = hasStarred ? 'inline-flex' : 'none';
+        if (clrBtn) clrBtn.style.display = hasStarred ? 'inline-flex' : 'none';
+        // V84: 同步连读遍数按钮（进入重点句阶段时）
+        this._syncRepsBtns();
         this.starredIndices.forEach((segIdx, i) => {
             const seg = state.segments[segIdx]; if (!seg) return;
             const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
@@ -3213,7 +3522,10 @@ const previewMode = {
             }
             const delIcon = document.createElement('button'); delIcon.className = 'focus-item-play del-btn'; delIcon.innerText = '✕';
             delIcon.onclick = (e) => {
-                e.stopPropagation(); const removedSegIdx = this.starredIndices[i];
+                e.stopPropagation();
+                // V84.1: 连读中删句——先停连读链，防列表下标前移导致跳句/错乱
+                if (this._focusReadActive) this._stopFocusRead();
+                const removedSegIdx = this.starredIndices[i];
                 this.starredIndices.splice(i, 1);
                 // V81: 同步移除被删句的 doneIndices 记录（按 segIdx）
                 this.doneIndices = this.doneIndices.filter(d => d !== removedSegIdx);
@@ -3258,7 +3570,8 @@ const previewMode = {
     focusNext() { if (!this.starredIndices.length) return; this.focusCursor = (this.focusCursor + 1) % this.starredIndices.length; this._jumpToFocusSentence(this.starredIndices[this.focusCursor]); },
     focusPrev() { if (!this.starredIndices.length) return; this.focusCursor = (this.focusCursor - 1 + this.starredIndices.length) % this.starredIndices.length; this._jumpToFocusSentence(this.starredIndices[this.focusCursor]); },
     exitFocusToSwitcher() {
-        engine.stopAll(); this.saveToStorage(); this.updateBadge();
+        engine.stopAll(); this._stopFocusRead(true); // V84: 同上
+        this.saveToStorage(); this.updateBadge();
         const pvw = document.getElementById('preview-view'); pvw.style.display = 'none'; pvw.classList.remove('active');
         app.switchView('practice');
     },
@@ -3349,8 +3662,454 @@ const previewMode = {
                 ui.toast('❌ 导出失败：' + (e.message || e));
             }
         }
+    },
+    // ============================================================
+    //  V84: 句首/句尾微调（±0.1/±0.2/±0.5 + 重置）
+    //  原始时间记 seg._os/_oe 随 segments 持久化（工程/缓存/备份都会带上）
+    // ============================================================
+    tune(which, delta) {
+        const seg = state.segments[this.cursorIdx];
+        if (!seg) return;
+        const a = document.getElementById('main-audio');
+        const dur = (a && isFinite(a.duration) && a.duration > 0) ? a.duration : Infinity;
+        const MIN_LEN = 0.3; // 最短句长
+        let val;
+        if (which === 'start') {
+            val = (isFinite(seg.start) ? seg.start : 0) + delta;
+            if (val < 0) return ui.toast('句首不能小于 0');
+            if (!isFinite(val)) return ui.toast('时间无效');
+            if (val > seg.end - MIN_LEN) return ui.toast('句长不足 ' + MIN_LEN + 's（句首最晚 ' + (seg.end - MIN_LEN).toFixed(2) + 's）');
+        } else {
+            val = (isFinite(seg.end) ? seg.end : 0) + delta;
+            if (val < seg.start + MIN_LEN) return ui.toast('句长不足 ' + MIN_LEN + 's（句尾最早 ' + (seg.start + MIN_LEN).toFixed(2) + 's）');
+            if (!isFinite(val)) return ui.toast('时间无效');
+            if (isFinite(dur) && val > dur) return ui.toast('超出音频末尾（最长 ' + dur.toFixed(2) + 's）');
+        }
+        // 首次调整前记录原始时间（重置用）
+        if (seg._os === undefined) seg._os = seg.start;
+        if (seg._oe === undefined) seg._oe = seg.end;
+        if (which === 'start') seg.start = Math.round(val * 100) / 100;
+        else seg.end = Math.round(val * 100) / 100;
+        app.save(); // 写 STORAGE + 防抖回写离线缓存
+        this._syncEditorTimeInputs();
+        this._updateTuneUI();
+    },
+    // V84.1: 微调/重置后同步编辑页对应行输入框（编辑页不重渲染，防切回看到旧时间）
+    _syncEditorTimeInputs() {
+        try {
+            const idx = this.cursorIdx;
+            const seg = state.segments[idx]; if (!seg) return;
+            const si = document.getElementById('start-input-' + idx);
+            const ei = document.getElementById('end-input-' + idx);
+            if (si) si.value = (isFinite(seg.start) ? seg.start : 0).toFixed(2);
+            if (ei) ei.value = (isFinite(seg.end) ? seg.end : 0).toFixed(2);
+        } catch(err) { /* 编辑页未渲染时静默跳过，切换视图时自会按 state 重绘 */ }
+    },
+    tuneReset() {
+        const seg = state.segments[this.cursorIdx];
+        if (!seg) return;
+        if (seg._os === undefined && seg._oe === undefined) return ui.toast('本句没有调整过');
+        if (!confirm('恢复本句的原始时间？\n' + (seg._os !== undefined ? (seg._os.toFixed(2) + 's') : (seg.start.toFixed(2) + 's(未调)')) + ' ~ ' + (seg._oe !== undefined ? (seg._oe.toFixed(2) + 's') : (seg.end.toFixed(2) + 's(未调)')))) return;
+        if (seg._os !== undefined) seg.start = seg._os;
+        if (seg._oe !== undefined) seg.end = seg._oe;
+        delete seg._os; delete seg._oe;
+        app.save();
+        this._syncEditorTimeInputs();
+        this._updateTuneUI();
+        ui.toast('↺ 已恢复原始时间');
+    },
+    tuneListen() { this._playCurrentSentence(); }, // 试听=重播当前句（用新时间）
+    // V84: 刷新微调区（时间显示 + 按钮置灰）
+    _updateTuneUI() {
+        const seg = state.segments[this.cursorIdx];
+        const infoEl = document.getElementById('pt-info');
+        const resetBtn = document.getElementById('pt-reset');
+        if (!seg || !infoEl) return;
+        const s = isFinite(seg.start) ? seg.start : 0, e2 = isFinite(seg.end) ? seg.end : 0;
+        infoEl.innerText = '#' + (this.cursorIdx + 1) + '  ' + s.toFixed(2) + 's ~ ' + e2.toFixed(2) + 's  (' + Math.max(0, e2 - s).toFixed(2) + 's)';
+        if (resetBtn) resetBtn.disabled = (seg._os === undefined && seg._oe === undefined);
+        // 越界置灰
+        const a = document.getElementById('main-audio');
+        const dur = (a && isFinite(a.duration) && a.duration > 0) ? a.duration : Infinity;
+        const MIN_LEN = 0.3;
+        document.querySelectorAll('.pt-btn').forEach(btn => {
+            // onclick 形如 previewMode.tune('start',-0.5)——从 attribute 解析参数
+            const oc = btn.getAttribute('onclick') || '';
+            const mm = oc.match(/tune\('(start|end)',(-?[0-9.]+)\)/);
+            if (!mm) return;
+            const which = mm[1], d = parseFloat(mm[2]);
+            let ok;
+            if (which === 'start') {
+                const v = s + d;
+                ok = isFinite(v) && v >= 0 && v <= e2 - MIN_LEN;
+            } else {
+                const v = e2 + d;
+                ok = isFinite(v) && v >= s + MIN_LEN && (!isFinite(dur) || v <= dur);
+            }
+            btn.disabled = !ok;
+        });
+    },
+    // ============================================================
+    //  V84: 点词入生词本 / 复制整句 / 桌面划词
+    // ============================================================
+    onBoxTap(e) {
+        // 1) 桌面划选存在时优先等浮条按钮（点击本身不再触发复制）
+        if (this._mainTextSelection()) return;
+        // 2) 触摸设备点在英文词上 → 入生词本（_lastTouchAt 由全局 touchstart 监听更新）
+        const t = e ? e.target : null;
+        if (t && t.classList && t.classList.contains('pw') && (Date.now() - this._lastTouchAt) < 800) {
+            this.markWord(t.dataset.word || t.textContent || '');
+            return;
+        }
+        // 3) 其余点击（空白/标点/桌面鼠标点词）→ 复制当前句主字幕
+        this._copyMainText();
+    },
+    // 取主文本内的有效划选（桌面用；≤60字符视为单词/词组）
+    _mainTextSelection() {
+        try {
+            const el = document.getElementById('preview-sentence-text');
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed) return '';
+            const node = sel.anchorNode;
+            const holder = node ? (node.nodeType === 3 ? node.parentElement : node) : null;
+            if (!el || !holder || !el.contains(holder)) return '';
+            const txt = String(sel).replace(/\s+/g, ' ').trim();
+            return (txt && txt.length <= 60) ? txt : '';
+        } catch(e) { return ''; }
+    },
+    // V84: 桌面 selectionchange → 显示/隐藏划词浮条
+    checkSelBar() {
+        const inListen = document.getElementById('preview-view').classList.contains('active') &&
+            !document.getElementById('preview-focus-phase').classList.contains('active');
+        const bar = document.getElementById('pv-sel-add');
+        if (!bar) return;
+        if (!inListen) { bar.classList.remove('show'); return; }
+        const txt = this._mainTextSelection();
+        if (!txt) { bar.classList.remove('show'); return; }
+        document.getElementById('pv-sel-text').innerText = '“' + (txt.length > 24 ? txt.substring(0, 24) + '…' : txt) + '”';
+        bar.classList.add('show');
+    },
+    hideSelBar() {
+        const bar = document.getElementById('pv-sel-add');
+        if (bar) bar.classList.remove('show');
+    },
+    // V84: 入生词本（词 + 所在句 + 出处）
+    markWord(word) {
+        word = String(word || '').trim();
+        if (!word) return;
+        if (word.length > 60) return ui.toast('太长，不适合做生词');
+        const seg = state.segments[this.cursorIdx];
+        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+        const sentence = seg ? ((seg[mainKey] || seg.text || '') + '') : '';
+        vocabBook.add(word, sentence, currentSourceName());
+    },
+    // V84: 复制当前句主字幕（跟随字幕1/2/3）
+    _copyMainText() {
+        const seg = state.segments[this.cursorIdx];
+        if (!seg) return;
+        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+        const text = ((seg[mainKey] || seg.text || '') + '').trim();
+        if (!text) return ui.toast('本句无字幕可复制');
+        copyTextToClipboard(text, '✅ 已复制本句字幕');
+    },
+    // ============================================================
+    //  V84: 重点句连读（遍数1/2/3，遍间/句间600ms，逐句推进+高亮+滚动）
+    // ============================================================
+    setFocusReps(n) {
+        if ([1, 2, 3].indexOf(n) === -1) return;
+        this._focusReps = n;
+        try { localStorage.setItem('shadow_v84_focus_reps', String(n)); } catch(e) {}
+        this._syncRepsBtns();
+        ui.toast(this._focusReadActive ? ('连读遍数：' + n + '（下一句生效）') : ('连读遍数：' + n + ' 遍'));
+    },
+    _syncRepsBtns() {
+        document.querySelectorAll('.btn-reps').forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.reps) === this._focusReps);
+        });
+    },
+    toggleFocusRead() {
+        if (this._focusReadActive) { this._stopFocusRead(); ui.toast('已停止连读'); return; }
+        if (!this.starredIndices.length) return ui.toast('还没有重点句');
+        if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
+        engine.stopAll(); // 起点清场（含连读联动，此时未激活，无碍）
+        this._focusReadActive = true;
+        if (this.focusCursor >= this.starredIndices.length) this.focusCursor = 0; // 从当前句开始；越界回 0
+        this._setFocusReadBtn(true);
+        this._readNextStarred();
+    },
+    _setFocusReadBtn(on) {
+        const b = document.getElementById('btn-focus-read');
+        if (!b) return;
+        b.classList.toggle('active', on);
+        b.innerText = on ? '⏹ 停止连读' : '▶ 连读重点句';
+    },
+    _readNextStarred() {
+        if (!this._focusReadActive) return;
+        if (this.focusCursor >= this.starredIndices.length) {
+            this._stopFocusRead(true);
+            ui.toast('🎉 重点句连读完成');
+            return;
+        }
+        const segIdx = this.starredIndices[this.focusCursor];
+        if (segIdx === undefined || !state.segments[segIdx]) { this.focusCursor++; return this._readNextStarred(); }
+        // V84.1r2: 已打勾「练熟」的句子连读时自动跳过——连读只练没熟的（全部练熟则直接完成）
+        if (this.doneIndices.includes(segIdx)) { this.focusCursor++; return this._readNextStarred(); }
+        state.currIndex = segIdx;
+        // 高亮 + 滚动到可见（center：当前句居中，列表长时自动跟随）
+        document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', i === this.focusCursor); });
+        const curItem = document.getElementById('focus-item-' + this.focusCursor);
+        if (curItem) { try { curItem.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e) {} }
+        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+        const text = (state.segments[segIdx][mainKey] || state.segments[segIdx].text || '') + '';
+        const nowEl = document.getElementById('focus-now-playing');
+        if (nowEl) {
+            nowEl.innerText = '▶ 第 ' + (segIdx + 1) + ' 句（' + this._focusReps + '遍）：' + (text.length > 40 ? text.substring(0, 40) + '...' : text);
+            nowEl.classList.add('show');
+        }
+        try { ui.updateMediaSession(segIdx); } catch(e) {}
+        this._readOneSegRepeat(segIdx, this._focusReps, () => {
+            if (!this._focusReadActive) return;
+            this.focusCursor++;
+            this._focusReadTimer = setTimeout(() => this._readNextStarred(), 600); // 句间停顿
+        });
+    },
+    _readOneSegRepeat(segIdx, repsLeft, onDone) {
+        if (!this._focusReadActive) return;
+        const win = engine.getPaddedWindow(segIdx);
+        engine._playSegmentTimed(win, () => {
+            if (!this._focusReadActive) return;
+            try { document.getElementById('main-audio').pause(); } catch(e) {}
+            const next = repsLeft - 1;
+            if (next > 0) {
+                this._focusReadTimer = setTimeout(() => this._readOneSegRepeat(segIdx, next, onDone), 600); // 遍间停顿
+            } else {
+                onDone();
+            }
+        }, () => this._stopFocusRead(true)); // V84.1: 播放失败兜底——终止连读，防 onEnd 不回调、按钮卡在"停止连读"闪烁
+    },
+    // quiet=true：只清 flag/定时器/按钮态（供 engine.stopAll 联动调用，音频由 stopAll 统一清）
+    _stopFocusRead(quiet) {
+        if (!this._focusReadActive && !this._focusReadTimer) return;
+        this._focusReadActive = false;
+        if (this._focusReadTimer) { clearTimeout(this._focusReadTimer); this._focusReadTimer = null; }
+        this._setFocusReadBtn(false);
+        if (!quiet) { try { engine.stopAll(); } catch(e) {} }
+    },
+    // V84: 清空全部重点句（从列表顶部大按钮迁到 header 小按钮）
+    clearAllStarred() {
+        if (!this.starredIndices.length) return ui.toast('没有重点句可清空');
+        if (!confirm('确认清空全部重点句？')) return;
+        this._stopFocusRead(true);
+        this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0; this.doneIndices = [];
+        this.saveToStorage(); this.updateBadge(); this._renderFocusList();
+        ui.toast('已清空全部重点句');
     }
 };
+
+// ============================================================
+//  V84: 生词本 — 跨工程全局（localStorage 'shadow_v84_vocab'）
+//  记录：{ w:单词, s:所在句子, src:出处音频 } ；去重忽略大小写
+// ============================================================
+const vocabBook = {
+    KEY: 'shadow_v84_vocab',
+    _list: null,
+    _lastAddIdx: null,
+    _undoTimer: null,
+    list() {
+        if (!this._list) {
+            const arr = safeParse(localStorage.getItem(this.KEY), []);
+            this._list = Array.isArray(arr) ? arr : [];
+        }
+        return this._list;
+    },
+    _persist() {
+        try { safeSetItem(this.KEY, JSON.stringify(this._list)); } catch(e) { console.warn('生词本保存失败:', e); }
+        this._updateBadge();
+    },
+    // 添加生词：返回 {ok, reason}
+    add(word, sentence, src) {
+        word = String(word || '').trim();
+        if (!word) return { ok: false, reason: '空' };
+        if (word.length > 60) return { ok: false, reason: '太长' };
+        const list = this.list();
+        const dup = list.some(v => (v.w || '').toLowerCase() === word.toLowerCase());
+        if (dup) { ui.toast('「' + (word.length > 16 ? word.substring(0, 16) + '…' : word) + '」已在生词本'); return { ok: false, reason: '重复' }; }
+        list.push({ w: word, s: String(sentence || '').trim(), src: String(src || '').trim(), t: Date.now() });
+        this._lastAddIdx = list.length - 1;
+        this._persist();
+        this._showUndo(word);
+        ui.toast('📔 已加入生词本：' + (word.length > 16 ? word.substring(0, 16) + '…' : word));
+        if (document.getElementById('vocab-modal').classList.contains('show')) this.render(); // 面板开着时实时刷新
+        return { ok: true };
+    },
+    _showUndo(word) {
+        const bar = document.getElementById('vocab-undo-bar');
+        if (!bar) return;
+        document.getElementById('vocab-undo-text').innerText = '已加入「' + (word.length > 16 ? word.substring(0, 16) + '…' : word) + '」';
+        bar.classList.add('show');
+        if (this._undoTimer) clearTimeout(this._undoTimer);
+        this._undoTimer = setTimeout(() => { bar.classList.remove('show'); this._lastAddIdx = null; }, 4000);
+    },
+    undoLast() {
+        const list = this.list();
+        if (this._lastAddIdx === null || this._lastAddIdx < 0 || this._lastAddIdx >= list.length) {
+            ui.toast('已无可撤销的项');
+            return;
+        }
+        const removed = list.splice(this._lastAddIdx, 1)[0];
+        this._lastAddIdx = null;
+        this._persist();
+        if (document.getElementById('vocab-modal').classList.contains('show')) this.render();
+        document.getElementById('vocab-undo-bar').classList.remove('show');
+        if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
+        ui.toast('↺ 已撤销：' + ((removed && removed.w) || ''));
+    },
+    remove(i) {
+        const list = this.list();
+        if (i < 0 || i >= list.length) return;
+        list.splice(i, 1);
+        if (this._lastAddIdx === i) this._lastAddIdx = null; // 撤销目标被删，作废
+        else if (this._lastAddIdx !== null && i < this._lastAddIdx) this._lastAddIdx--; // V84.1r2: 删的是撤销目标之前的词，撤销索引随之前移
+        this._persist(); this.render();
+    },
+    clearAll() {
+        if (!this.list().length) return ui.toast('生词本已经是空的');
+        if (!confirm('确认清空生词本（' + this.list().length + ' 个词）？此操作不可恢复。')) return;
+        this._list = []; this._lastAddIdx = null;
+        this._persist(); this.render();
+        ui.toast('已清空生词本');
+    },
+    // 入口按钮/面板计数
+    _updateBadge() {
+        const n = this.list().length;
+        const badge = document.getElementById('vocab-badge');
+        const cntEl = document.getElementById('vocab-count');
+        if (badge) {
+            if (n > 0) { badge.innerText = n > 99 ? '99+' : String(n); badge.classList.add('show'); }
+            else badge.classList.remove('show');
+        }
+        if (cntEl) cntEl.innerText = n > 0 ? ('· ' + n + ' 词') : '';
+    },
+    open() { document.getElementById('vocab-modal').classList.add('show'); this.render(); },
+    close() { document.getElementById('vocab-modal').classList.remove('show'); },
+    render() {
+        const listEl = document.getElementById('vocab-list');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        const list = this.list();
+        this._updateBadge();
+        if (!list.length) {
+            const empty = document.createElement('div');
+            empty.className = 'vocab-empty';
+            empty.innerText = '还没有生词\n手机：预习时点字幕里的单词\n电脑：划选词组后点浮条按钮';
+            listEl.appendChild(empty);
+            return;
+        }
+        list.forEach((v, i) => {
+            const item = document.createElement('div'); item.className = 'vocab-item';
+            const main = document.createElement('div'); main.className = 'vocab-item-main';
+            const wEl = document.createElement('div'); wEl.className = 'vocab-item-word'; wEl.textContent = v.w || '';
+            main.appendChild(wEl);
+            if (v.s) { const sEl = document.createElement('div'); sEl.className = 'vocab-item-sent'; sEl.textContent = v.s; main.appendChild(sEl); }
+            if (v.src) { const srcEl = document.createElement('div'); srcEl.className = 'vocab-item-src'; srcEl.textContent = '🎧 ' + v.src; main.appendChild(srcEl); }
+            const del = document.createElement('button'); del.className = 'vocab-item-del'; del.innerText = '✕';
+            del.addEventListener('click', () => this.remove(i));
+            item.appendChild(main); item.appendChild(del);
+            listEl.appendChild(item);
+        });
+    },
+    // CSV 导出：UTF-8 BOM（Excel 直开不乱码），四列：序号/单词/所在句子/出处（RFC 4180 转义）
+    exportCSV() {
+        const list = this.list();
+        if (!list.length) return ui.toast('生词本是空的，没有可导出');
+        function cell(s) {
+            s = String(s == null ? '' : s);
+            if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+            return s;
+        }
+        const rows = [['序号', '单词', '所在句子', '出处']];
+        list.forEach((v, i) => rows.push([i + 1, v.w || '', v.s || '', v.src || '']));
+        const content = '\uFEFF' + rows.map(r => r.map(cell).join(',')).join('\r\n');
+        try {
+            const d = new Date();
+            const dateStr = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+            const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = '生词本_' + dateStr + '.csv';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000);
+            ui.toast('✅ 已导出 CSV（' + list.length + ' 词）');
+        } catch(e) {
+            ui.toast('❌ 导出失败：' + (e.message || e));
+        }
+    },
+    // 桌面划词浮条
+    addFromSelection() {
+        const txt = previewMode._mainTextSelection();
+        this.dismissSelBar();
+        try { window.getSelection().removeAllRanges(); } catch(e) {}
+        if (!txt) return ui.toast('没有选中的词');
+        previewMode.markWord(txt);
+    },
+    dismissSelBar() {
+        const bar = document.getElementById('pv-sel-add');
+        if (bar) bar.classList.remove('show');
+    }
+};
+
+// ============================================================
+//  V84: 工具函数 — 出处名 / 剪贴板
+// ============================================================
+// 当前音频出处名（生词本“出处”字段用）：本地导入文件名 > dataset.name > _loadedAudioUrl 提取 > INPUTS.mp3 提取
+function currentSourceName() {
+    try {
+        if (state._loadedAudioName) return state._loadedAudioName;
+        const a = document.getElementById('main-audio');
+        if (a && a.dataset && a.dataset.name) return a.dataset.name;
+        const u = state._loadedAudioUrl || '';
+        if (u.indexOf('local://') === 0) {
+            const body = u.substring('local://'.length);
+            const lu = body.lastIndexOf('_');
+            const nm = lu > 0 ? body.substring(0, lu) : body;
+            if (nm) return nm;
+        } else if (u.indexOf('http') === 0 || u.indexOf('//') === 0) {
+            const nm = idbCache.extractFilename(u);
+            if (nm) return nm;
+        }
+        const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
+        const mp3 = (inputs.mp3 || '').trim();
+        if (mp3 && mp3.indexOf('blob:') !== 0) {
+            const nm2 = idbCache.extractFilename(mp3);
+            if (nm2) return nm2;
+            return mp3;
+        }
+    } catch(e) {}
+    return '未知音频';
+}
+// 复制文本：clipboard API 优先，execCommand 降级
+function copyTextToClipboard(text, okMsg) {
+    const fallback = function() {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            const ok = document.execCommand('copy');
+            ta.remove();
+            if (ok) ui.toast(okMsg || '已复制');
+            else ui.toast('复制失败，请长按手动复制');
+        } catch(e) { ui.toast('复制失败，请长按手动复制'); }
+    };
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() { ui.toast(okMsg || '已复制'); }).catch(fallback);
+            return;
+        }
+    } catch(e) {}
+    fallback();
+}
 
 // ============================================================
 //  AI MODE
@@ -3379,8 +4138,18 @@ const aiMode = {
         this._runStartIdx = state.currIndex;
         document.getElementById('ai-mode-bar').classList.add('ai-running'); document.getElementById('ai-mode-bar').classList.remove('ai-manual');
         document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('🚀 启动中', '');
-        this._prevPermBlurMode = state.permBlurMode; state.permBlurMode = 'hide'; state.userBlurState = true; ui.updatePermButtons(); ui.updatePractice(state.currIndex);
+        this._prevPermBlurMode = state.permBlurMode; this._prevUserBlurState = state.userBlurState; // V84.1r2: 两个都存——'none' 模式退出时也须恢复用户原显示状态
+        state.permBlurMode = 'hide'; state.userBlurState = true; ui.updatePermButtons(); ui.updatePractice(state.currIndex);
         setTimeout(() => this.runCycle(), 400);
+    },
+    // V84.1r2: 统一恢复字幕模糊状态——三处退出路径（stop/复习完成/正常完成）共用；
+    // 此前 'none' 分支漏恢复 userBlurState，AI 强制的模糊状态会遗留到普通练习
+    _restoreBlurState() {
+        state.permBlurMode = this._prevPermBlurMode;
+        if (state.permBlurMode === 'show') state.userBlurState = false;
+        else if (state.permBlurMode === 'hide') state.userBlurState = true;
+        else state.userBlurState = (typeof this._prevUserBlurState === 'boolean') ? this._prevUserBlurState : state.userBlurState;
+        ui.updatePermButtons(); ui.updatePractice(state.currIndex);
     },
     stop() {
         this.active = false; this.manualPracticeMode = false; this.reviewMode = false;
@@ -3393,10 +4162,7 @@ const aiMode = {
         engine.stopAll(); this._setBtn('idle');
         document.getElementById('ai-mode-bar').classList.remove('ai-running', 'ai-manual');
         document.getElementById('btn-ai-resume').style.display = 'none'; document.getElementById('text-container').classList.remove('ai-manual'); this.setStatus('待机', '');
-        state.permBlurMode = this._prevPermBlurMode;
-        if (state.permBlurMode === 'show') state.userBlurState = false;
-        else if (state.permBlurMode === 'hide') state.userBlurState = true;
-        ui.updatePermButtons(); ui.updatePractice(state.currIndex);
+        this._restoreBlurState();
     },
     runCycle() {
         if (!this.active) return;
@@ -3405,8 +4171,8 @@ const aiMode = {
             this.reviewMode = false;
             this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
             this.setStatus('复习完成', 'success'); this.playBeep('complete');
-            state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
-            ui.updatePermButtons(); ui.updatePractice(state.currIndex); setTimeout(() => this.showRoundComplete(true), 800); return;
+            this._restoreBlurState();
+            setTimeout(() => this.showRoundComplete(true), 800); return;
         }
         const idx = this.reviewMode ? this.reviewQueue[0] : state.currIndex; state.currIndex = idx; state.userBlurState = true; ui.updatePractice(idx); this.setStatus('▶ 播放中', '');
         const seg = state.segments[idx]; if (!seg) { this.stop(); return; }
@@ -3499,7 +4265,8 @@ const aiMode = {
             }
             settle(() => { this.setStatus('🔇 无输入', 'fail'); this._scheduleOnFail(); });
         };
-        this._listenTimeout = setTimeout(() => settle(() => { try { r.abort(); } catch(e) {} this.setStatus('⏱ 超时(' + (dynamicTimeout/1000).toFixed(0) + 's)', 'fail'); this._scheduleOnFail(); }), dynamicTimeout);
+        // V84.1r2: 超时中止 this.recognition（当前实例）——onend 重试换 r2 后闭包里的 r 已是死引用，abort 旧 r 会让 r2 占着麦克风进下一轮
+        this._listenTimeout = setTimeout(() => settle(() => { try { if (this.recognition) this.recognition.abort(); } catch(e) {} this.setStatus('⏱ 超时(' + (dynamicTimeout/1000).toFixed(0) + 's)', 'fail'); this._scheduleOnFail(); }), dynamicTimeout);
         try { r.start(); } catch(e) { settle(() => { this.setStatus('❌ 启动失败', 'fail'); this._scheduleOnFail(); }); }
     },
     evaluate(simPct, transcript) {
@@ -3513,8 +4280,8 @@ const aiMode = {
                 else {
                     this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual');
                     this.setStatus('🎊 完成！', 'success'); this.playBeep('complete');
-                    state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
-                    ui.updatePermButtons(); ui.updatePractice(state.currIndex); setTimeout(() => this.showRoundComplete(), 1000);
+                    this._restoreBlurState();
+                    setTimeout(() => this.showRoundComplete(), 1000);
                 }
             }, 800);
         } else {
@@ -3551,8 +4318,7 @@ const aiMode = {
                     if (state.currIndex < state.segments.length - 1) { state.currIndex++; this.runCycle(); }
                     else {
                         this.active = false; this._setBtn('idle'); document.getElementById('ai-mode-bar').classList.remove('ai-running','ai-manual'); this.setStatus('完成', 'success');
-                        state.permBlurMode = this._prevPermBlurMode; if (state.permBlurMode === 'show') state.userBlurState = false;
-                        ui.updatePermButtons(); ui.updatePractice(state.currIndex); setTimeout(() => this.showRoundComplete(), 800);
+                        this._restoreBlurState(); setTimeout(() => this.showRoundComplete(), 800); // V84.3: 改用统一恢复（V84.2 漏改的第 4 处退出路径，原代码 'none' 分支会遗留强制模糊）
                     }
                 }, 1500);
             }
@@ -3651,6 +4417,9 @@ document.getElementById('project-file').addEventListener('change', e => app.load
 document.getElementById('audio-file').addEventListener('change', e => {
     const f = e.target.files[0];
     if (f) {
+        // V84.3: 换音频前先停旧播放链（AI/循环引擎/连读），防旧监听定时器挂在新 src 上（沿用 loadProject 模式）
+        try { if (aiMode.active) aiMode.stop(); } catch(eStop) {}
+        try { engine.stopAll(); } catch(eStop2) {}
         if (state._audioObjectUrl) { URL.revokeObjectURL(state._audioObjectUrl); state._audioObjectUrl = null; }
         state._audioObjectUrl = URL.createObjectURL(f);
         state.audioBuffer = null; // 清空旧 audioBuffer，防"重新断句"用旧音频数据
@@ -3677,16 +4446,19 @@ document.getElementById('audio-file').addEventListener('change', e => {
         // V83: 同步 Media Session（锁屏控制元数据更新）
         try { ui.updateMediaSession(state.currIndex); } catch(e) {}
         // V81: 本地导入也异步 decode audioBuffer，让"重新断句"可用（与 loadFromUrl 一致）
+        // V84.1r2: 解码竞态守卫——连续导入 A、B 时若 A 解码慢，旧结果会覆盖 B；只有最后一次导入允许写回
+        const _localSeq = ++state._audioLoadSeq;
         (async () => {
             try {
                 const buf = await f.arrayBuffer();
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 try {
-                    state.audioBuffer = await ctx.decodeAudioData(buf);
+                    const _dec = await ctx.decodeAudioData(buf);
+                    if (state._audioLoadSeq === _localSeq) state.audioBuffer = _dec;
                 } finally {
                     try { ctx.close(); } catch(e) {}
                 }
-            } catch(e) { console.warn('本地导入 audioBuffer decode 失败（不影响播放，仅"重新断句"不可用）:', e); state.audioBuffer = null; }
+            } catch(e) { console.warn('本地导入 audioBuffer decode 失败（不影响播放，仅"重新断句"不可用）:', e); if (state._audioLoadSeq === _localSeq) state.audioBuffer = null; } // V84.3: 失败清空也查号——A 失败不再清掉 B 的解码结果
         })();
     }
 });
@@ -3749,6 +4521,12 @@ document.addEventListener('visibilitychange', () => {
 })();
 
 document.addEventListener('keydown', e => {
+    // V84.1: 生词本面板打开时——Escape 关闭，其余按键一律不响应（防看着生词本按空格误播音频）
+    const _vm = document.getElementById('vocab-modal');
+    if (_vm && _vm.classList.contains('show')) {
+        if (e.code === 'Escape') { e.preventDefault(); try { vocabBook.close(); } catch(err) {} }
+        return;
+    }
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     // 修改：增加对预习模式的判断，使快捷键在预习模式下也可用
     const inPractice = document.getElementById('practice-view').classList.contains('active') || 
@@ -3963,8 +4741,9 @@ function flushStats() {
 }
 
 function pruneStatsDB() {
-    // 删掉 90 天前的数据（避免无限增长）
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
+    // V84.3: 保留 2 年（原 90 天）——统计页写着"累计跟读总时长"却每次打开悄悄删 90 天前记录，
+    // 明年起累计值会缩水且删了找不回；单条记录极小，两年数据量可忽略不计
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 730);
     const cutKey = cutoff.getFullYear() + '-' + String(cutoff.getMonth()+1).padStart(2,'0') + '-' + String(cutoff.getDate()).padStart(2,'0');
     let changed = false;
     for (const day in statsDB) {
@@ -4007,7 +4786,10 @@ function startStatsTicker() {
         } catch(e) {}
     });
     a.addEventListener('pause', () => {
-        commit(true);   // 暂停时按墙钟差提交（避免丢秒）
+        // V84.1r2: 暂停结算也要过音量闸——低音量/静音期间 timeupdate 不提交也不刷基准，
+        // 无条件 commit 会把整段无声时间按墙钟差补记（上限10s）；不可闻时只刷新基准
+        if (isAudible(a)) commit(true);
+        else { _lastAudioTime = a.currentTime; _lastWallClock = _wallMs(); }
         // V83: Media Session 播放状态
         try {
             if ('mediaSession' in navigator && navigator.mediaSession) {
@@ -4017,6 +4799,13 @@ function startStatsTicker() {
     });
     a.addEventListener('seeked', () => {
         // seek 后重置基准，避免把"跳过的时间"也算成播放
+        _lastAudioTime = a.currentTime;
+        _lastWallClock = _wallMs();
+    });
+    a.addEventListener('volumechange', () => {
+        // V84.3: 双向重置基准——变不可闻：低音量期间不计（原逻辑）；
+        // 恢复可闻：同样重置——否则 timeupdate 按旧 _lastAudioTime 差值把整个低音量时段补记进有效时长
+        // （可闻范围内调音量也重置，最多丢弃一个 timeupdate 间隔 ~250ms，无害）
         _lastAudioTime = a.currentTime;
         _lastWallClock = _wallMs();
     });
@@ -4164,7 +4953,8 @@ function renderStats() {
             html += '<div class="st-track-row">' +
                 '<span class="st-track-name" title="' + ui.escapeHTML(t.url) + '">' + ui.escapeHTML(t.name) + '</span>' +
                 '<span class="st-track-time">' + fmtHM(t.sec) + (t.count ? ' · ' + t.count + '次' : '') + '</span>' +
-                '<button class="st-track-del" onclick="deleteStatRecord(\'' + today + '\',\'' + t.hashKey + '\')" aria-label="删除">×</button>' +
+                // V84.1r2: 改 data 属性 + DOM 绑定——原内联 onclick 拼接 hashKey，构造的统计备份可注入脚本
+                '<button class="st-track-del" data-day="' + ui.escapeHTML(today) + '" data-hk="' + ui.escapeHTML(t.hashKey) + '" aria-label="删除">×</button>' +
             '</div>';
         });
     }
@@ -4178,6 +4968,10 @@ function renderStats() {
     html += '<div class="st-note">仅统计原音播放时长（音量≥40%）<br>每次会话累计 ≥30 秒计为一次练习</div>';
 
     body.innerHTML = html;
+    // V84.1r2: 删除按钮 DOM 绑定（替代内联 onclick，杜绝 hashKey 注入）
+    body.querySelectorAll('.st-track-del').forEach(btn => {
+        btn.addEventListener('click', () => deleteStatRecord(btn.dataset.day, btn.dataset.hk));
+    });
 
     // 防抖绘制柱状图
     if (_drawChartTimer) clearTimeout(_drawChartTimer);
@@ -4631,17 +5425,27 @@ function confirmImportData(data) {
     const incomingSource = data.source || (data.payload && data.payload.source) || 'unknown';
     const incomingDB = data.statsDB;
     let addedDays = 0, merged = 0;
+    // V84.1r2: 键校验——日期须为 YYYY-MM-DD，记录键须为 urlHash 生成的 [A-Za-z0-9_-] 格式；
+    // 拒绝 __proto__/constructor 等特殊键与任意注入键，防脏数据/注入进 statsDB
+    const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const KEY_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
     Object.keys(incomingDB).forEach(day => {
+        if (!DAY_RE.test(day)) return;
         const dayData = incomingDB[day];
         if (!dayData || typeof dayData !== 'object') return;
         if (!statsDB[day]) { statsDB[day] = {}; addedDays++; }
         Object.keys(dayData).forEach(k => {
+            if (!KEY_RE.test(k)) return;
+            // V84.3: KEY_RE 字符集本身允许 __proto__/constructor——显式拒绝（正则拦不住），
+            // 否则 statsDB[day][k] 触达原型链造成原型污染（仅被篡改的备份文件才会触发）
+            if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
             const rec = dayData[k];
-            if (!rec || typeof rec.sec !== 'number') return;
+            if (!rec || typeof rec !== 'object' || typeof rec.sec !== 'number' || !isFinite(rec.sec) || rec.sec < 0) return;
             // 给每条记录补 source 字段（version 2 没有）
             if (!rec.source) rec.source = incomingSource;
-            if (!statsDB[day][k]) {
+            // V84.3: 自有属性判断（hasOwnProperty）——与显式拒绝双保险，完全不走原型链
+            if (!Object.prototype.hasOwnProperty.call(statsDB[day], k)) {
                 statsDB[day][k] = { name: rec.name || '未知', url: rec.url || '', sec: rec.sec, count: rec.count || 0, source: rec.source };
                 merged++;
             } else {
@@ -4727,9 +5531,11 @@ function loadFilesForDateRange() {
 }
 
 function doPartialExport() {
-    const s = _peRange.start, e = _peRange.end;
-    if (!s || !e) return ui.toast('请先查询');
-    const d0 = new Date(s + 'T00:00:00'), d1 = new Date(e + 'T00:00:00');
+    const s0 = _peRange.start, e0 = _peRange.end;
+    if (!s0 || !e0) return ui.toast('请先查询');
+    const d0 = new Date(s0 + 'T00:00:00'), d1 = new Date(e0 + 'T00:00:00');
+    // V84.1r2: 倒序选择时按时间先后规范化——文件名与 range 元数据不再显示倒序区间
+    const s = d0.getTime() <= d1.getTime() ? s0 : e0, e = d0.getTime() <= d1.getTime() ? e0 : s0;
     const dates = [];
     const cur = new Date(Math.min(d0.getTime(), d1.getTime()));
     const end = new Date(Math.max(d0.getTime(), d1.getTime()));
@@ -4760,6 +5566,31 @@ document.getElementById('bsFileInput').addEventListener('change', onImportFileCh
 // V83.1: 独立的全量备份文件输入（不再复用 bsFileInput，防 dataset 串台）
 document.getElementById('fullBackupInput').addEventListener('change', function(e) {
     app._processFullBackupFile(e.target.files[0]);
+});
+
+// ============================================================
+//  V84: 生词/划词/自适应字号 全局事件
+// ============================================================
+// 触摸时间戳：区分“手机点词入本”与“桌面鼠标点词=复制整句”
+document.addEventListener('touchstart', function() {
+    try { previewMode._lastTouchAt = Date.now(); } catch(e) {}
+}, { passive: true });
+// 桌面划选 → 浮条（限预习逐句听阶段的主文本）
+document.addEventListener('selectionchange', function() {
+    setTimeout(function() {
+        try { previewMode.checkSelBar(); } catch(e) {}
+    }, 30);
+});
+// 转屏/窗口变化 → 重算预习字幕自适应字号
+var _pvResizeTimer = null;
+window.addEventListener('resize', function() {
+    if (_pvResizeTimer) clearTimeout(_pvResizeTimer);
+    _pvResizeTimer = setTimeout(function() {
+        try {
+            const pvw = document.getElementById('preview-view');
+            if (pvw && pvw.classList.contains('active')) previewMode._fitPreviewText();
+        } catch(e) {}
+    }, 150);
 });
 
 // ============================================================
