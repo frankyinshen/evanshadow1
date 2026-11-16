@@ -27,10 +27,11 @@
 <!-- V90 | build:20261116 | 1 项实战 Bug + 3 项审查修复 + 2 项小改：Bug:1) 从重点句页「📚 继续预习剩余句子」进逐句听时，句首/句尾微调滚轮是空的没法调——_buildTuneWheels 原只在 previewMode.start() 里调用，而 continueListen→_gotoSentence→_updateTuneUI 这条路径不经过 start()（页面被 iOS 回收重载后再进预习几乎必走这条路径）；现 _updateTuneUI 首行幂等补建，任何路径进入逐句听滚轮都有选项。修复:2) 桌面端选完滚轮后焦点滞留在 select 上——按 ←/→ 想切句会被 select 吃掉、悄悄改掉句首/句尾/速率（change 随即生效）；非 iOS 设备 change 处理完即 blur（放 tuneWheel 开头，边界校验失败的 return 路径也失焦），iOS 不 blur（滚轮滚动中每过一档都触发 change，blur 会把正开着的 picker 关掉）；微调×4/速率×3/遍数/留白滚轮全部处理。3) 连读自然播完后 focusCursor 停在句子总数 n，「下一重点」(n+1)%n=1 直接跳到第 2 个重点句、跳过第 1 个——播完复位 0。4) 微调滚轮触发的离线缓存回写延后 15 秒——iOS 滚轮每经过一档就触发一次 change，1.5s 防抖在连续微调下停手仍把整条缓存（含音频 Blob）读出再写回一遍；_scheduleCacheSync 参数化（save() 默认 1500ms 不变），tuneWheel/tuneReset 传 15000 把连续转动合并成一次回写；切后台时 visibilitychange 清定时器立即同步，延后不丢数据（结构级方案 segments 拆独立 store 仍暂缓）。小改:5) 滚轮选项 0~2.0s 扩到 0~3.0s——老工程增量按钮时代多次累计的偏移可超 2.0s，滚轮显示空白要转一下才恢复；"3.0"与"2.0"同为三字符不影响一行布局。6) 句首组/句尾组各包一层 .pt-group（inline-flex）——360px 窄屏 flex-wrap 换行时整组掉到第二行，不再"句尾 提前 轮"掉一半。说明:7) V89 第 6 条（loadFromUrl 的 saveInput 后移）只堵了 loadFromUrl 自身这条路径——输入框 onchange/智能粘贴/历史记录/服务器目录选文件在下载开始前已把新 URL 写进 INPUTS，"旧字幕+新 URL"窗口在最常见路径仍存在（后果轻：恢复条不显示、重点句按钮按新 URL 的数据需重进）；根治要拆分"输入草稿"与"当前工程标识"两个存储，改动面大暂缓。sw.js 缓存名升 shadow_v90_offline_v10；exportProject/全量备份 version 90；版本号统一到 V90 -->
 <!-- V91 | build:20261116 | 生词本导出升级 + 连读光标收尾修复 + 2 项审查小修：生词本:1) 新增「📥 Excel」导出（.xlsx）——用户要的"句子列宽一点+页面横向"在 CSV 里根本带不进去（CSV 是纯文本，列宽/纸张方向全由打开它的软件自定），内置零依赖最小 xlsx 生成器（store-only ZIP + 手写 CRC32，约 210 行）：句子列（第 3 列）加宽到 62 字符自动换行、表头冻结加粗蓝底、细边框顶对齐、打印横向 A4 一页宽；已用 openpyxl 与 LibreOffice 双验证可正常打开。CSV 按钮保留（适合导入 Anki 等背词软件），工具栏三按钮加 nowrap 防小屏折行。2) 导出文件名不再只有日期——生词本跨音频全局共用，全部生词出自同一音频时用音频名（生词本_lesson01_20261116，与"一个音频一个本子"的直觉一致），混合多音频时用词数（生词本_35词_20261116，不冒用某一个音频名）；去扩展名+清非法字符+截40字符。连读:3) 修复连读自然播完后的光标错位（外部审查发现，模拟验证确认）——V90 复位 focusCursor=0 在数学上没解决问题：(0+1)%n 仍是 1，屏幕高亮停在最后一句、「下一重点」却跳到第 2 个重点句（第 1 个被跳过）、「上一重点」(0-1+n)%n=n-1 把最后一句再播一遍（像没反应）。现播完时 focusCursor 停在最后实际播过的那句（新增 _lastPlayedFocusIdx，与屏幕高亮一致；尾巴有已练熟句被跳过时也不借位），四个操作全部对得上：「下一重点」绕回第 1 个、「上一重点」倒数第 2 个、点列表重播任意句、再点「▶ 连读」从头开始（新增 _focusFinished 标记，手动导航后自动清除、从当前句续播）。4) ⏹ 停止时若正处句间留白，focusCursor 已指向"下一句"而屏幕还停在刚播完那句——拉回最后播过的那句与屏幕一致。5) _jumpToFocusSentence 按目标句反查 focusCursor——连读中点列表/上一句/下一句时 stopAll 联动停连读，光标不再停在留白期的"下一句"上（这很可能就是上一轮"总播第一句不下去"瞬态 Bug的同类根因：光标与画面脱节）。小修:6) tuneWheel 越界校验失败不再先写 _os/_oe——原"先记录后校验"在误拨被拦时（时间没动）也把原始时间写进 seg，「↺ 重置」按钮被误点亮、确认框误报"调整过"；改为校验通过准备写入时才记录。7) 练习页顶部句子跳转框 #jump-select 补非 iOS blur——V90 给预习/重点句/速率所有滚轮加了失焦唯独漏了它，选完句号按空格/左右键会被选框吃掉。sw.js 缓存名升 shadow_v91_offline_v11；exportProject/全量备份 version 91；版本号统一到 V91 -->
 <!-- V92 | build:20261116 | iOS 27 选词链路硬化：用户实测 iPhone/iPad 升 iOS 27 后"点词/长按划词入生词本"失效。先证伪应用回归：V86（解锁长按划选）→V91 该链路相关代码/HTML/CSS 逐版 diff 零改动（.pw 的 user-select、全局 selectionchange/touchstart 监听、onBoxTap/浮条逻辑、#pv-sel-add 标记全部一致；V91 改动只有导出/连读光标/微调校验序，均不触及选词）。外因定位：WebKit 322561——iOS 27 重做点击/手势管线（two-phase clicks），触发原生选词的手势其 touchend 被扣留（下一次触摸前才补发）、click 有时整个不发、拖选柄期间事件流中断；iOS 26 不受影响。Apple 已在 27.1（2026-10-23，修点击 bug）/27.2（2026-10-26）陆续修复。应用层造不出系统选柄，但对事件流的依赖可全部加固：1) 浮条「＋入生词本」改三路触发——ontouchend 直达（click 被吞时顶上）、onclick 保留（桌面/正常路径）、touchstart 起 700ms 安全定时器（touchend 与 click 都被扣留时兜底）；_selGo 时间戳去重 1.2s（多路到达只执行一次），tend 落点位移>15px 视为滑离不执行，tcancel 只清定时器；2) _barTouching 卡死自愈——iOS 27 扣留 touchend 时 _barTouch(false) 永不到达，V88 的"按住浮条不收"保护变成死锁（浮条不再随选区刷新/隐藏）；现按住超 1.2s 视为流被扣留，标志作废，checkSelBar 恢复响应；3) 点词入本 touchend 分流——字幕盒 ontouchend 直达 markWord（click 被吞时顶上）：有划选时让路浮条、位移>15px 判为滚动/拖选不触发、非 .pw 目标自然过滤；onBoxTap 点词分支与 touchend 分流经 _tapWordFire 同词 1.2s 去重（两路都到只加一次）；长按若 iOS 27 连选区都吞不出，无移动的长按兜底成"加入所按的那个词"（整段短语划选要等 Apple 修复系统手势）；4) ✕ 关闭键补 touchend（click 被吞也能关，位移>15px 忽略，dismiss 幂等）；全局 touchstart 顺带记录触点坐标供各处位移判定。iOS 26 及以下/桌面/安卓行为不变（仅多一层去重）。sw.js 缓存名升 shadow_v92_offline_v12（无逻辑改动，仅强制刷新缓存）；exportProject/全量备份 version 92；版本号统一到 V92 -->
+<!-- V93 | build:20261116 | 修复"息屏后循环单句/连读到留白就断链"：现象——iPhone/iPad 息屏（锁屏）状态下，重点句练习的循环单句与连读播完当前句进入留白后不再继续，链条冻死在第一个留白（磨耳朵/区间循环息屏正常，因为媒体连续在播）。根因诊断（与 V74.1 同源问题的未覆盖面）：留白是 a.pause() 后的纯 setTimeout——iOS Safari 在页面无媒体播放时冻结整个进程（挂起而非节流），setTimeout 永不触发。V74.1 修的是"播放中"时段（timeupdate/ended 事件在媒体播放时照常触发 + _watchUntil 精确定时器自我重排），静默留白期从未被覆盖；V83 引入自定义留白（0.2~20s）、V85 连读句间/遍间隔从固定 600ms 改为跟随留白设置后，静默窗口成为必经环节，Bug 显性化。修法（应用层可造的最强方案）：留白期间用专用 <audio> 循环播放一段"听不见的"保活音，维持媒体会话让进程不冻结——2s/8kHz/16bit 单声道 WAV，440Hz 正弦振幅 3/32768（约 -81dBFS，低于任何扬声器与环境噪声底，做跟读练习时听不见；元素处于 播放中/非静音/音量1 状态，iOS 进程豁免按元素状态判定而非内容分析）。三处留白点全部接入：_loopOneCycle 句末留白、_readOneSegRepeat 遍间留白、_readNextStarred 句间留白——kaStart 与 a.pause() 在同一 JS 任务内完成交接，无静默空窗；链条播下一句期间保活音保持播放（避免 100ms 级交接空窗），到链条结束才停。保活音停止点：stopAll（点停止/切页/切工程/锁屏自动暂停触发）与 _stopFocusRead（自然完成/onError 路径不经过 stopAll，独立调用）。配套：1) 新增「🔋 息屏续航」设置开关（默认开，'shadow_v93_keep_alive'，紧挨「🌙 锁屏自动暂停」）——关闭回到旧行为（息屏冻结、亮屏恢复时被冻结的定时器补发、链条从断点续上；这也是保活失败时的降级行为，链条不会死）；与「锁屏自动暂停」同时开启时以锁屏暂停优先（息屏即 stopAll，保活随之停，轮不到它）。2) 首次触摸/点击一次性解锁保活音元素（touchend/click 各挂 once）——iOS 程序化 play 需先经用户手势，解锁后 kaStart 可在 ended/timeupdate 回调里直接 play；play 被拒时静默放弃，退回降级行为。3) 全量备份 keys 并入 shadow_v93_keep_alive。说明：wakeLock（💡 常亮）防的是屏幕自动熄灭，按下电源键/系统超时锁屏仍会挂起进程，本修复才是"息屏后也继续"的应用层手段——息屏期间页面 JS 只有在媒体播放时才被允许运行，静默保活音正是利用这一点；AI 模式/录音跟读涉及麦克风（息屏即断）不在本修复范围。sw.js 缓存名升 shadow_v93_offline_v13（强制刷新缓存）；exportProject/全量备份 version 93；版本号统一到 V93 -->
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V92</title>
+<title>影子跟读 Pro V93</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230F3F24'/%3E%3Cstop offset='0.55' stop-color='%2315803D'/%3E%3Cstop offset='1' stop-color='%2316A34A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='16' y='16' width='480' height='480' rx='112' fill='url(%23bg)'/%3E%3Cpath d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='%23FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/%3E%3Cpath d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='%23FFFFFF' stroke-width='22' stroke-linecap='round'/%3E%3Crect x='112' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='358' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='150' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='351' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='188' y='230' width='16' height='48' rx='8' fill='%23FFFFFF' fill-opacity='0.78'/%3E%3Crect x='218' y='202' width='16' height='104' rx='8' fill='%23FFFFFF' fill-opacity='0.92'/%3E%3Crect x='248' y='182' width='16' height='144' rx='8' fill='%23BEF264'/%3E%3Crect x='278' y='208' width='16' height='92' rx='8' fill='%23D9F99D'/%3E%3Crect x='308' y='232' width='16' height='44' rx='8' fill='%23ECFCCB'/%3E%3Ccircle cx='396' cy='108' r='26' fill='%23FFFFFF'/%3E%3Cpath d='M385 108 L393 116 L408 100' fill='none' stroke='%2315803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ctext x='256' y='402' text-anchor='middle' font-family='PingFang SC,Microsoft YaHei,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='%23FFFFFF'%3EEVAN跟读%3C/text%3E%3C/svg%3E">
 <style>
 :root {
@@ -486,7 +487,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V92</div>
+    <div class="nav-title">🎧 影子跟读 V93</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -618,6 +619,14 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                             <button id="btn-lock-pause" class="btn-lock-pause" onclick="ui.toggleLockPause()">关</button>
                         </div>
                         <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 开启后息屏/切后台立即暂停（区间循环/磨耳朵/单句循环），回来点「循环」会从暂停的那句继续；挂机磨耳朵听请保持关闭。</div>
+                    </div>
+                    <!-- V93: 息屏续航开关（默认开——修复"息屏后循环单句/连读到留白就断链"） -->
+                    <div style="background:#F8F9FA;border:1px solid #eee;border-radius:10px;padding:12px;margin-top:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                            <div style="font-size:13px;font-weight:700;color:#444;">🔋 息屏续航</div>
+                            <button id="btn-keep-alive" class="btn-lock-pause" onclick="ui.toggleKeepAlive()">开</button>
+                        </div>
+                        <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 开启后息屏/锁屏期间留白照常推进，循环单句/连读不断链：留白时段播放一段听不见的保活音（约-81dB，低于环境噪声底）维持运行；与「锁屏自动暂停」同时开启时以锁屏暂停优先（息屏即停，保活用不上）；wakeLock 只防屏幕自动熄灭，按下电源键仍需本开关。个别系统若仍冻结，亮屏后会从断点自动续上。</div>
                     </div>
                     <!-- V84: 全量备份与恢复（跨端，含生词本+重点句进度+连读设置） -->
                     <button class="btn-file" onclick="app.exportFullBackup()">📦 备份</button>
@@ -1697,6 +1706,7 @@ const engine = {
         const a = document.getElementById('main-audio'), r = document.getElementById('record-audio');
         try { a.pause(); } catch(e) {}
         try { r.pause(); } catch(e) {}
+        this.kaStop(); // V93: 停保活音（链条结束：点停止/切页/切工程/锁屏自动暂停触发）
         a.loop = false;
         if (this.reqId) { cancelAnimationFrame(this.reqId); this.reqId = null; }
         // 清理 timeupdate 监听
@@ -1870,6 +1880,63 @@ const engine = {
             if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); app.saveIndex(); } // V85: 推进即持久化（两种循环共用此行）
         }
     },
+    // ===== V93: 息屏保活（keep-alive）=====
+    // 现象：息屏/锁屏后，循环单句与重点句连读到第一个留白就断链不再循环（磨耳朵/区间循环息屏正常——媒体连续在播）。
+    // 根因：留白是 a.pause() 后的纯 setTimeout——iOS 在页面无媒体播放时冻结进程（挂起而非节流），定时器永不触发。
+    //       V74.1 修的是"播放中"时段（媒体在播时 timeupdate/ended 照常触发 + _watchUntil 精确定时器），
+    //       静默留白期从未被覆盖；V83 自定义留白、V85 连读句间/遍间隔跟随留白后，静默窗口成为必经环节，Bug 显性化。
+    // 修法：留白期间用专用 <audio> 循环播放"听不见的"保活音维持媒体会话，进程不冻结 → setTimeout 照常触发。
+    //       2s/8kHz/16bit 单声道 WAV，440Hz 正弦振幅 3/32768（≈-81dBFS，低于任何扬声器与环境噪声底，听不见；
+    //       元素处于 播放中/非静音/音量1 状态——iOS 进程豁免按元素状态判定，不分析内容）。详见 V93 日志。
+    _kaEl: null, _kaUnlocked: false, _kaFailed: false,
+    kaEnabled() {
+        try { return localStorage.getItem('shadow_v93_keep_alive') !== '0'; } catch(e) { return true; } // 默认开
+    },
+    _kaEnsure() {
+        if (this._kaEl) return this._kaEl;
+        if (this._kaFailed) return null;
+        try {
+            const sr = 8000, n = 16000; // 2 秒
+            const buf = new ArrayBuffer(44 + n * 2);
+            const dv = new DataView(buf);
+            const ws = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+            ws(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE');
+            ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+            dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+            ws(36, 'data'); dv.setUint32(40, n * 2, true);
+            for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.round(3 * Math.sin(2 * Math.PI * 440 * i / sr)), true);
+            const el = document.createElement('audio');
+            el.loop = true; el.setAttribute('playsinline', ''); el.preload = 'auto';
+            el.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+            el.addEventListener('error', () => { this._kaFailed = true; this._kaEl = null; });
+            this._kaEl = el;
+        } catch(e) { this._kaFailed = true; this._kaEl = null; }
+        return this._kaEl;
+    },
+    // 一次性手势解锁：首次 touchend/click 时 play+立即 pause——iOS 程序化 play 需先经用户手势，
+    // 解锁后 kaStart 可在 ended/timeupdate 回调里直接 play（标准 iOS 音频解锁模式，同 audioCtx 手势预热思路）
+    kaUnlock() {
+        if (this._kaUnlocked || this._kaFailed) return;
+        const el = this._kaEnsure();
+        if (!el) return;
+        const p = el.play();
+        if (p && p.then) p.then(() => { try { el.pause(); } catch(e) {} this._kaUnlocked = true; }).catch(() => {});
+        else { try { el.pause(); } catch(e) {} this._kaUnlocked = true; }
+    },
+    // 留白开始时调用（与 a.pause() 同一 JS 任务内完成交接，无静默空窗）；
+    // 链条继续播下一句期间保持播放（听不见），到链条结束（stopAll/_stopFocusRead）才停
+    kaStart() {
+        if (!this.kaEnabled() || this._kaFailed) return;
+        const el = this._kaEnsure();
+        if (!el || !el.paused) return;
+        const p = el.play();
+        if (p && p.catch) p.catch(() => {}); // 边缘被拒：静默放弃，链条退回"亮屏恢复续播"降级行为
+    },
+    kaStop() {
+        const el = this._kaEl;
+        if (el && !el.paused) { try { el.pause(); } catch(e) {} }
+    },
+
     startWait(cb) {
         this.isWaiting = true;
         document.getElementById('main-audio').pause();
@@ -1916,6 +1983,7 @@ const engine = {
             document.getElementById('main-audio').pause();
             // V85: 留白计算统一到 calcLoopGapMs（单句循环/重点句连读共用；固定秒数可自定义 0.2~20s，最短从 1s 放宽到 0.2s）
             var gapMs = calcLoopGapMs(state.segments[state.currIndex]);
+            this.kaStart(); // V93: 留白期间保活——防息屏冻结断链（engine._kaEnsure 处有完整注释）
             this.waitTimer = setTimeout(() => {
                 if (this.mode !== 'LOOP_ONE') return;
                 this._loopOneCycle();
@@ -2051,6 +2119,7 @@ const ui = {
         } catch(e) {}
         this._syncGapWheels();
         this._syncLockPauseBtn();
+        this._syncKeepAliveBtn(); // V93: 息屏续航开关同步（默认开）
 
         const p = new URLSearchParams(location.search);
         if (p.get('mp3')) {
@@ -2466,6 +2535,22 @@ const ui = {
         var on = false;
         try { on = localStorage.getItem('shadow_v85_lock_pause') === '1'; } catch(e) {}
         var b = document.getElementById('btn-lock-pause');
+        if (b) { b.innerText = on ? '开' : '关'; b.classList.toggle('on', on); }
+    },
+    // V93: 息屏续航开关（默认开）——息屏/锁屏期间留白照常推进，循环单句/连读不断链
+    toggleKeepAlive() {
+        var on;
+        try { on = localStorage.getItem('shadow_v93_keep_alive') !== '0'; } catch(e) { on = true; }
+        on = !on;
+        try { localStorage.setItem('shadow_v93_keep_alive', on ? '1' : '0'); } catch(e) {}
+        if (!on) { try { engine.kaStop(); } catch(e) {} } // 关闭即停，不留残音
+        this._syncKeepAliveBtn();
+        ui.toast(on ? '🔋 息屏续航：开（留白期间保活，息屏不断链）' : '息屏续航：关（息屏后留白冻结，亮屏自动续上）');
+    },
+    _syncKeepAliveBtn() {
+        var on = true; // 默认开（与 !== '0' 同义）
+        try { on = localStorage.getItem('shadow_v93_keep_alive') !== '0'; } catch(e) {}
+        var b = document.getElementById('btn-keep-alive');
         if (b) { b.innerText = on ? '开' : '关'; b.classList.toggle('on', on); }
     }
 };
@@ -3237,15 +3322,16 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 92, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V92: 91→92（导出文件名同步，防看着乱）
+        const data = { version: 93, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V93: 92→93（导出文件名同步，防看着乱）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v92.json'; document.body.appendChild(a); a.click(); a.remove();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v93.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     // V83: 一键全量备份（跨端）——打包 localStorage 轻量数据（不含音频 Blob）
-    // 导出字段：STORAGE/INDEX/HIST/INPUTS/SESSION/PREVIEW/PADDING/AUTOSYNC/STATS/SPEED/LOOP_GAP/LOOP_GAP_SEC/LOCK_PAUSE
+    // 导出字段：STORAGE/INDEX/HIST/INPUTS/SESSION/PREVIEW/PADDING/AUTOSYNC/STATS/SPEED/LOOP_GAP/LOOP_GAP_SEC/LOCK_PAUSE/KEEP_ALIVE
     // V84: 新增生词本(shadow_v84_vocab)与连读遍数(shadow_v84_focus_reps)——恢复后新设备上原样出现
     // V85: 新增留白秒数(shadow_v85_loop_gap_sec)与锁屏自动暂停(shadow_v85_lock_pause)
+    // V93: 新增息屏续航(shadow_v93_keep_alive)
     exportFullBackup() {
         try {
             try { flushStats(); } catch(e0) {} // V84.1r2: 备份前先落盘统计（统计攒30次才写盘，防备份缺最后一段）
@@ -3255,9 +3341,10 @@ const app = {
                 CONST.STATS,
                 'shadow_v83_speed', 'shadow_v83_loop_gap',
                 'shadow_v84_vocab', 'shadow_v84_focus_reps',
-                'shadow_v85_loop_gap_sec', 'shadow_v85_lock_pause'
+                'shadow_v85_loop_gap_sec', 'shadow_v85_lock_pause',
+                'shadow_v93_keep_alive'
             ];
-            var data = { type: 'shadow_full_backup', version: 92, exportedAt: new Date().toISOString(), items: {} }; // V92: 版本号 91→92（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 93, exportedAt: new Date().toISOString(), items: {} }; // V93: 版本号 92→93（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -4279,6 +4366,7 @@ const previewMode = {
                 if (state.segments[idx] && !this.doneIndices.includes(idx)) { hasMore = true; break; }
             }
             if (!hasMore) return this._readNextStarred();
+            engine.kaStart(); // V93: 句间留白保活——防息屏冻结断链
             this._focusReadTimer = setTimeout(() => this._readNextStarred(), calcLoopGapMs(state.segments[segIdx])); // V85: 句间停顿跟随留白设置（原固定600ms）
         });
     },
@@ -4290,6 +4378,7 @@ const previewMode = {
             try { document.getElementById('main-audio').pause(); } catch(e) {}
             const next = repsLeft - 1;
             if (next > 0) {
+                engine.kaStart(); // V93: 遍间留白保活——防息屏冻结断链
                 this._focusReadTimer = setTimeout(() => this._readOneSegRepeat(segIdx, next, onDone), calcLoopGapMs(state.segments[segIdx])); // V85: 遍间停顿跟随留白设置（原固定600ms）
             } else {
                 onDone();
@@ -4302,6 +4391,7 @@ const previewMode = {
         this._focusReadActive = false;
         if (this._focusReadTimer) { clearTimeout(this._focusReadTimer); this._focusReadTimer = null; }
         this._setFocusReadBtn(false);
+        engine.kaStop(); // V93: 自然完成/onError 路径不经过 stopAll，这里独立停保活音
         // V86: 复位连读占用的模式——自然完成/onError 终止路径没有 stopAll 参与，mode 会残留 'FOCUS_READ'
         // （残留会让锁屏"播放"键走恢复播放而非 playOnce、锁屏暂停开关空触发一次 stopAll）；
         // stopAll 路径先把 mode 复位 IDLE 再联动到此处，条件不成立不冲突
@@ -6309,6 +6399,10 @@ document.addEventListener('touchstart', function(e) {
         }
     } catch(e) {}
 }, { passive: true });
+// V93: 首次触摸/点击一次性解锁保活音元素（iOS 程序化 play 需先经用户手势；解锁后
+// kaStart 可在 ended/timeupdate 回调里直接 play——见 engine._kaEnsure 注释）
+document.addEventListener('touchend', function() { try { engine.kaUnlock(); } catch(e) {} }, { once: true, passive: true });
+document.addEventListener('click', function() { try { engine.kaUnlock(); } catch(e) {} }, { once: true });
 // 桌面划选 → 浮条（限预习逐句听阶段的主文本）
 document.addEventListener('selectionchange', function() {
     setTimeout(function() {
