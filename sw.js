@@ -1,13 +1,13 @@
-// 影子跟读 Pro V92 Service Worker
+// 影子跟读 Pro V93 Service Worker
 // 离线支持：仅对同源 navigate 请求用「网络优先 + 3 秒超时回退缓存」策略
 // V88: 原「网络优先，断网才回退」在弱网下 fetch 一直挂着、页面迟迟打不开——而整个应用本可离线用；
 // 现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
 // V89: install 预缓存 './' 改用 cache:'reload' 绕过 HTTP 缓存——托管端若给页面设了 max-age，
 // 原写法会把旧版本 HTML 存进新缓存；现在 3 秒就回退缓存，旧页面被打开的概率比以前高，必须存新的
 // V90: 无逻辑改动，仅随主文件升版本强制刷新缓存
-// V92: 随 V92（iOS 27 选词链路硬化）升缓存名强制刷新；无逻辑改动
+// V93: 随 V93（息屏保活修复循环单句/连读断链）升缓存名强制刷新；无逻辑改动
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v92_offline_v12';
+var CACHE_NAME = 'shadow_v93_offline_v13';
 
 self.addEventListener('install', function(event) {
     event.waitUntil(
