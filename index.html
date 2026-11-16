@@ -25,10 +25,11 @@
 <!-- V88 | build:20261116 | 重点句设置行/跟读入口行 UI 重排 + 5 项外部审查修复：UI:1) 重点句练习设置行——遍数滚轮加 4遍/5遍（大小不变），新增「朗读速度」「留白」文字标签（原来光秃秃的 1.0×/固定1.5s 用户不知道是什么），连读/遍数/速率/留白/秒数/↺ 全部一行（375px 收紧：速率轮 50→42、留白轮 68→58、秒数框 38→32、s 后缀并入留白轮文案、行 gap 4→2px、标签 10px，总宽 ~340px）；2) 跟读入口行——红数字角标去掉，改为「⭐ N 个重点句」按钮（数量写全、有重点句就显示，不再要求先完成预习，点击进重点句练习），速率滚轮前加「速率」标签。修复:3) 切句不再回写整条离线缓存——loadItem 改 saveIndex()（原 save() 每次切句都把含几十MB音频 Blob 的缓存记录读出再写回，手机发热耗电），_syncCacheSegments 字幕没变直接跳过；4) 浮条抗慢点按——手指按在浮条上时(_barTouching) selectionchange 不收浮条（180ms 延迟窗口对按压超 200ms 的点按不够，浮条先消失 click 就不触发），抬手后留 600ms 再按选区重新判断；5) sw.js 弱网 3 秒回退缓存（原网络优先在弱网下一直转圈，应用本可离线打开），缓存名升 shadow_v88_offline_v8；6) loadFromUrl 开头只清界面不落盘（原会把空字幕写进 localStorage，下载期间页面被回收后旧工程字幕丢失），renderEditor 加 noSave 参数；7) 小项——toast 连弹不再被前一个计时器提前关掉、markWord 去首尾引号('hello' 不再连引号入本且能查重)、idbCache.put 成功后请求 navigator.storage.persist（降低 Safari 清 IndexedDB 概率）、连读在重点句全部练熟时提示"都已练熟"而非假"完成"、exportProject/全量备份 version 88；8) enterFocusPhase 补停 AI 模式、_gotoSentence 切句立即收浮条。版本号统一到 V88 -->
 <!-- V89 | build:20261116 | 预习模式 UI 重排 + 8 项外部审查修复：UI:1) 句首/句尾微调改滚轮（原 ±.1/.2/.5 六按钮×两行 → 一行：「句首 提前 轮 延后 轮 句尾 提前 轮 延后 轮」，滚轮值=相对原始时间(_os/_oe)的绝对偏移 0~2.0s、0.1 步进——转动即应用且幂等：iOS 原生 picker 每经过一档都触发 change，增量式会连环累计，绝对定位不会；提前/延后两轮互斥自动归零；越界 toast 拦下并按实际偏移刷回（_tuneFail）；老工程 ±0.1/0.2/0.5 偏移全在 0.1 档位内；pt-name 标签缩小+滚轮 38px，375px 屏一行约 310px<329px 内容宽，小屏 flex-wrap 保底）；2) 预习模式增速率滚轮（speed-sel-preview，setSpeed/init 的同步数组扩为三处——预习时也能调速度，不必退回跟读界面）；3) 「从头预习」不再独占一行，缩小与新增「🎧 返回正式跟读」（previewMode.exit 直接退出不弹窗）平分一行。修复：4) dismissSelBar 同步清选区+触摸状态（V88 引入：手机点浮条 ✕ 后容器的 ontouchend 启动 _barTouch 的 600ms 定时器，原实现只藏浮条不清 window.getSelection，0.6 秒后 checkSelBar 发现蓝色选区还在把浮条又弹回来），hideSelBar 同步清 _barTouchTimer/_barTouching；5) 连读起点绕回（V88 的 anyLeft 只判"有没有未练熟句"，但查找从 focusCursor 往后——光标后全熟而前面还有未熟句时一句不播还误报"都已练熟"；现从光标往后找第一个未熟的，找不到绕回开头再找，两圈都没有才提示全熟，原"越界回 0"行随之删除）；6) loadFromUrl 开头的 saveInput() 移到下载成功后（V88 只改了 STORAGE 不写，但 INPUTS 仍会把新 URL 先落盘——下载期间页面被 iOS 回收重载会得到"旧字幕+新 URL"：SESSION 对不上恢复条不显示、预习进度按新 URL key 错配；输入框 onchange 本就存过，缓存命中分支原有 saveInput 不动）；7) fetchCommon 单次尝试 15 秒超时（弱网下原直连 fetch 一直挂着：既不报错也永远走不到代理分支，按钮卡在"尝试直连下载..."；超时只限等响应头、fetch resolve 即 clearTimeout，大音频正文下载不受限；无 AbortController 的老设备自动退化为无超时不报错）；8) sw.js install 预缓存 './' 改 new Request('./',{cache:'reload'}) 绕过 HTTP 缓存（托管端给页面设 max-age 时原 add('./') 会把旧版 HTML 存进新缓存，弱网 3 秒回退后旧页面被打开的概率比以前高；构造失败退回普通 add），缓存名升 shadow_v89_offline_v9；9) navigator.storage.persist() 只请求一次(_persistAsked)+返回值 .catch 静默（Firefox 对 persist 弹授权框，每次 put 都调会反复打扰；部分桌面浏览器/隐私策略下 reject 会触发全局 unhandledrejection 弹窗误报）；10) 留白轮"1.0x句长"→"1.0x句"（重点句设置行余量仅 ~7px，防 ↺ 被挤到第二行；设置页按钮文案不动）。不采纳（暂缓）：segments 拆单独 object store（需升 IDB 版本属结构改动，V88 已解决"切句不写库"的大头，微调句首尾 1.5s 防抖回写一次可接受，等手机发热的真实反馈再动）；AudioBuffer 惰性解码（音频都在几分钟内）。版本号统一到 V89 -->
 <!-- V90 | build:20261116 | 1 项实战 Bug + 3 项审查修复 + 2 项小改：Bug:1) 从重点句页「📚 继续预习剩余句子」进逐句听时，句首/句尾微调滚轮是空的没法调——_buildTuneWheels 原只在 previewMode.start() 里调用，而 continueListen→_gotoSentence→_updateTuneUI 这条路径不经过 start()（页面被 iOS 回收重载后再进预习几乎必走这条路径）；现 _updateTuneUI 首行幂等补建，任何路径进入逐句听滚轮都有选项。修复:2) 桌面端选完滚轮后焦点滞留在 select 上——按 ←/→ 想切句会被 select 吃掉、悄悄改掉句首/句尾/速率（change 随即生效）；非 iOS 设备 change 处理完即 blur（放 tuneWheel 开头，边界校验失败的 return 路径也失焦），iOS 不 blur（滚轮滚动中每过一档都触发 change，blur 会把正开着的 picker 关掉）；微调×4/速率×3/遍数/留白滚轮全部处理。3) 连读自然播完后 focusCursor 停在句子总数 n，「下一重点」(n+1)%n=1 直接跳到第 2 个重点句、跳过第 1 个——播完复位 0。4) 微调滚轮触发的离线缓存回写延后 15 秒——iOS 滚轮每经过一档就触发一次 change，1.5s 防抖在连续微调下停手仍把整条缓存（含音频 Blob）读出再写回一遍；_scheduleCacheSync 参数化（save() 默认 1500ms 不变），tuneWheel/tuneReset 传 15000 把连续转动合并成一次回写；切后台时 visibilitychange 清定时器立即同步，延后不丢数据（结构级方案 segments 拆独立 store 仍暂缓）。小改:5) 滚轮选项 0~2.0s 扩到 0~3.0s——老工程增量按钮时代多次累计的偏移可超 2.0s，滚轮显示空白要转一下才恢复；"3.0"与"2.0"同为三字符不影响一行布局。6) 句首组/句尾组各包一层 .pt-group（inline-flex）——360px 窄屏 flex-wrap 换行时整组掉到第二行，不再"句尾 提前 轮"掉一半。说明:7) V89 第 6 条（loadFromUrl 的 saveInput 后移）只堵了 loadFromUrl 自身这条路径——输入框 onchange/智能粘贴/历史记录/服务器目录选文件在下载开始前已把新 URL 写进 INPUTS，"旧字幕+新 URL"窗口在最常见路径仍存在（后果轻：恢复条不显示、重点句按钮按新 URL 的数据需重进）；根治要拆分"输入草稿"与"当前工程标识"两个存储，改动面大暂缓。sw.js 缓存名升 shadow_v90_offline_v10；exportProject/全量备份 version 90；版本号统一到 V90 -->
+<!-- V91 | build:20261116 | 生词本导出升级 + 连读光标收尾修复 + 2 项审查小修：生词本:1) 新增「📥 Excel」导出（.xlsx）——用户要的"句子列宽一点+页面横向"在 CSV 里根本带不进去（CSV 是纯文本，列宽/纸张方向全由打开它的软件自定），内置零依赖最小 xlsx 生成器（store-only ZIP + 手写 CRC32，约 210 行）：句子列（第 3 列）加宽到 62 字符自动换行、表头冻结加粗蓝底、细边框顶对齐、打印横向 A4 一页宽；已用 openpyxl 与 LibreOffice 双验证可正常打开。CSV 按钮保留（适合导入 Anki 等背词软件），工具栏三按钮加 nowrap 防小屏折行。2) 导出文件名不再只有日期——生词本跨音频全局共用，全部生词出自同一音频时用音频名（生词本_lesson01_20261116，与"一个音频一个本子"的直觉一致），混合多音频时用词数（生词本_35词_20261116，不冒用某一个音频名）；去扩展名+清非法字符+截40字符。连读:3) 修复连读自然播完后的光标错位（外部审查发现，模拟验证确认）——V90 复位 focusCursor=0 在数学上没解决问题：(0+1)%n 仍是 1，屏幕高亮停在最后一句、「下一重点」却跳到第 2 个重点句（第 1 个被跳过）、「上一重点」(0-1+n)%n=n-1 把最后一句再播一遍（像没反应）。现播完时 focusCursor 停在最后实际播过的那句（新增 _lastPlayedFocusIdx，与屏幕高亮一致；尾巴有已练熟句被跳过时也不借位），四个操作全部对得上：「下一重点」绕回第 1 个、「上一重点」倒数第 2 个、点列表重播任意句、再点「▶ 连读」从头开始（新增 _focusFinished 标记，手动导航后自动清除、从当前句续播）。4) ⏹ 停止时若正处句间留白，focusCursor 已指向"下一句"而屏幕还停在刚播完那句——拉回最后播过的那句与屏幕一致。5) _jumpToFocusSentence 按目标句反查 focusCursor——连读中点列表/上一句/下一句时 stopAll 联动停连读，光标不再停在留白期的"下一句"上（这很可能就是上一轮"总播第一句不下去"瞬态 Bug的同类根因：光标与画面脱节）。小修:6) tuneWheel 越界校验失败不再先写 _os/_oe——原"先记录后校验"在误拨被拦时（时间没动）也把原始时间写进 seg，「↺ 重置」按钮被误点亮、确认框误报"调整过"；改为校验通过准备写入时才记录。7) 练习页顶部句子跳转框 #jump-select 补非 iOS blur——V90 给预习/重点句/速率所有滚轮加了失焦唯独漏了它，选完句号按空格/左右键会被选框吃掉。sw.js 缓存名升 shadow_v91_offline_v11；exportProject/全量备份 version 91；版本号统一到 V91 -->
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V90</title>
+<title>影子跟读 Pro V91</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230F3F24'/%3E%3Cstop offset='0.55' stop-color='%2315803D'/%3E%3Cstop offset='1' stop-color='%2316A34A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='16' y='16' width='480' height='480' rx='112' fill='url(%23bg)'/%3E%3Cpath d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='%23FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/%3E%3Cpath d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='%23FFFFFF' stroke-width='22' stroke-linecap='round'/%3E%3Crect x='112' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='358' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='150' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='351' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='188' y='230' width='16' height='48' rx='8' fill='%23FFFFFF' fill-opacity='0.78'/%3E%3Crect x='218' y='202' width='16' height='104' rx='8' fill='%23FFFFFF' fill-opacity='0.92'/%3E%3Crect x='248' y='182' width='16' height='144' rx='8' fill='%23BEF264'/%3E%3Crect x='278' y='208' width='16' height='92' rx='8' fill='%23D9F99D'/%3E%3Crect x='308' y='232' width='16' height='44' rx='8' fill='%23ECFCCB'/%3E%3Ccircle cx='396' cy='108' r='26' fill='%23FFFFFF'/%3E%3Cpath d='M385 108 L393 116 L408 100' fill='none' stroke='%2315803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ctext x='256' y='402' text-anchor='middle' font-family='PingFang SC,Microsoft YaHei,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='%23FFFFFF'%3EEVAN跟读%3C/text%3E%3C/svg%3E">
 <style>
 :root {
@@ -197,7 +198,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .vocab-title .vocab-count { font-size: 13px; color: #888; font-weight: 700; margin-left: 4px; }
 .vocab-close { border: none; background: #F1F3F4; color: #5F6368; width: 32px; height: 32px; border-radius: 50%; font-size: 15px; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
 .vocab-toolbar { display: flex; gap: 8px; padding: 0 16px 10px; flex-shrink: 0; }
-.vocab-tool { flex: 1; min-height: 42px; border: 1px solid #DADCE0; background: #E8F0FE; color: var(--primary); border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.vocab-tool { flex: 1; min-height: 42px; border: 1px solid #DADCE0; background: #E8F0FE; color: var(--primary); border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; -webkit-appearance: none; appearance: none; font-family: inherit; white-space: nowrap; } /* V91: nowrap——工具栏三个按钮（Excel/CSV/清空）小屏不折行 */
 .vocab-tool:active { background: var(--primary); color: #fff; }
 .vocab-tool.vocab-tool-danger { background: #fff0f0; border-color: #ffb3b3; color: #c5221f; }
 .vocab-tool.vocab-tool-danger:active { background: #c5221f; color: #fff; }
@@ -484,7 +485,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V90</div>
+    <div class="nav-title">🎧 影子跟读 V91</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -635,7 +636,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     </div>
                 </div>
                 <div class="jump-select-wrapper">
-                    <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value)"><option>1</option></select>
+                    <select id="jump-select" class="jump-select" onchange="app.jumpTo(this.value); if(!_isIOSDevice()) this.blur()"><option>1</option></select> <!-- V91: 补非 iOS blur，选完句号按空格/左右键不再被选框吃掉 -->
                 </div>
                 <div class="header-right-group">
                     <button style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;" onclick="openStats()" aria-label="跟读统计">📊</button>
@@ -905,11 +906,12 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <button class="vocab-close" onclick="vocabBook.close()">✕</button>
         </div>
         <div class="vocab-toolbar">
-            <button class="vocab-tool" onclick="vocabBook.exportCSV()">📥 导出CSV</button>
+            <button class="vocab-tool" onclick="vocabBook.exportExcel()" title="导出 Excel 表格（.xlsx）：句子列加宽自动换行、打印横向一页宽、表头冻结">📥 Excel</button>
+            <button class="vocab-tool" onclick="vocabBook.exportCSV()" title="导出 CSV（UTF-8 BOM，Excel 可直开；适合导入 Anki 等背词软件）">📄 CSV</button>
             <button class="vocab-tool vocab-tool-danger" onclick="vocabBook.clearAll()">🗑 清空</button>
         </div>
         <div class="vocab-list" id="vocab-list"></div>
-        <div class="vocab-tip">💡 手机点单词直接加入、长按字幕划选可加短语；电脑划选词组；出处=当时加载的音频</div>
+        <div class="vocab-tip">💡 点词/划选入本（手机长按划短语）；生词本跨音频共用，每条记着出处音频</div>
     </div>
 </div>
 
@@ -3232,9 +3234,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 90, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V90: 89→90（导出文件名同步，防看着乱）
+        const data = { version: 91, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V91: 90→91（导出文件名同步，防看着乱）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v90.json'; document.body.appendChild(a); a.click(); a.remove();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v91.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     // V83: 一键全量备份（跨端）——打包 localStorage 轻量数据（不含音频 Blob）
@@ -3252,7 +3254,7 @@ const app = {
                 'shadow_v84_vocab', 'shadow_v84_focus_reps',
                 'shadow_v85_loop_gap_sec', 'shadow_v85_lock_pause'
             ];
-            var data = { type: 'shadow_full_backup', version: 90, exportedAt: new Date().toISOString(), items: {} }; // V90: 版本号 89→90（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 91, exportedAt: new Date().toISOString(), items: {} }; // V91: 版本号 90→91（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -3504,7 +3506,7 @@ const recorder = {
 //  PREVIEW MODE — 预习模式
 // ============================================================
 const previewMode = {
-    cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '', doneIndices: [],
+    cursorIdx: 0, starredIndices: [], previewedCount: 0, focusCursor: 0, previewDone: false, _autoAdvance: false, _audioKey: '', doneIndices: [], _lastPlayedFocusIdx: null, _focusFinished: false, // V91: 连读状态追踪——最后实际播过的句/刚播完一轮
     // V84: 连读/生词/触摸分流状态
     _focusReps: 1, _focusReadActive: false, _focusReadTimer: null, _lastTouchAt: 0,
     _focusPlayed: 0, // V88: 本轮连读实际播过的句子数（0 句直达收尾时提示"都已练熟"而非假"完成"）
@@ -3549,7 +3551,7 @@ const previewMode = {
         } catch(e) {}
     },
     clearForNewAudio(mp3Url) {
-        this.starredIndices = []; this.previewedCount = 0; this.previewDone = false; this.cursorIdx = 0; this.focusCursor = 0; this.doneIndices = []; this._audioKey = mp3Url; this.updateBadge();
+        this.starredIndices = []; this.previewedCount = 0; this.previewDone = false; this.cursorIdx = 0; this.focusCursor = 0; this.doneIndices = []; this._audioKey = mp3Url; this._lastPlayedFocusIdx = null; this._focusFinished = false; this.updateBadge();
     },
     _getSub(seg) {
         if (!seg) return '';
@@ -3808,6 +3810,12 @@ const previewMode = {
     },
     _jumpToFocusSentence(segIdx) {
         engine.stopAll(); state.currIndex = segIdx;
+        // V91: 按目标句反查 focusCursor（列表点击/上一句/下一句在此统一）——若 stopAll 联动停了
+        // 连读，光标也不会停在留白期的"下一句"上；手动导航同时清掉"刚播完一轮"标记
+        // （此后点「▶ 连读」从当前句续播，而非从头重播）
+        const fc = this.starredIndices.indexOf(segIdx);
+        if (fc >= 0) this.focusCursor = fc;
+        this._focusFinished = false;
         document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', this.starredIndices[i] === segIdx); });
         const curItem = document.getElementById('focus-item-' + this.focusCursor);
         if (curItem) curItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -3952,10 +3960,10 @@ const previewMode = {
         const seg = state.segments[this.cursorIdx];
         if (!seg) { this._updateTuneUI(); return; }
         const v = Math.round((parseFloat(sel.value) || 0) * 10) / 10;
-        // 首次调整前记录原始时间（重置用）；值等于当前时间，校验失败留着也无害
-        if (which === 'start' && seg._os === undefined) seg._os = seg.start;
-        if (which === 'end' && seg._oe === undefined) seg._oe = seg.end;
-        const base = (which === 'start') ? seg._os : seg._oe;
+        // 首次调整前记录原始时间（重置用）。V91: 记录移到边界校验之后——原来先写后校验，
+        // 校验被拦（时间没改动）时 _os/_oe 已写进 seg，「↺ 重置」按钮被误点亮、
+        // tuneReset 确认框也误报"调整过"；先算基准、通过校验准备写入时才记录
+        const base = (which === 'start') ? (seg._os !== undefined ? seg._os : seg.start) : (seg._oe !== undefined ? seg._oe : seg.end);
         if (!isFinite(base)) { this._updateTuneUI(); return; }
         const target = Math.round((base - dir * v) * 100) / 100;
         // 边界校验（同原 tune()）——失败 toast 并按实际状态刷回滚轮
@@ -3969,6 +3977,9 @@ const previewMode = {
             if (target < seg.start + MIN_LEN) return this._tuneFail('句长不足 ' + MIN_LEN + 's（句尾最早 ' + (seg.start + MIN_LEN).toFixed(2) + 's）');
             if (isFinite(dur) && target > dur) return this._tuneFail('超出音频末尾（最长 ' + dur.toFixed(2) + 's）');
         }
+        // V91: 校验通过、准备真正写入时间时才记录原始时间（从上方移下来）
+        if (which === 'start' && seg._os === undefined) seg._os = base;
+        if (which === 'end' && seg._oe === undefined) seg._oe = base;
         const changed = (which === 'start') ? Math.abs(seg.start - target) > 0.001 : Math.abs(seg.end - target) > 0.001;
         if (which === 'start') seg.start = target; else seg.end = target;
         app.save(); // 写 STORAGE + 防抖回写离线缓存
@@ -4146,17 +4157,26 @@ const previewMode = {
         ui.toast('↺ 已恢复默认：遍数1 · 速率1.0× · 留白固定1.5s');
     },
     toggleFocusRead() {
-        if (this._focusReadActive) { this._stopFocusRead(); ui.toast('已停止连读'); return; }
+        if (this._focusReadActive) {
+            this._stopFocusRead();
+            // V91: 句间留白中停止时 focusCursor 已指向"下一句"而屏幕高亮还停在刚播完那句——
+            // 拉回最后实际播过的那句与屏幕一致（播放中停止两者本就相等，无变化）
+            if (this._lastPlayedFocusIdx != null) this.focusCursor = Math.min(this._lastPlayedFocusIdx, this.starredIndices.length - 1);
+            ui.toast('已停止连读'); return;
+        }
         if (!this.starredIndices.length) return ui.toast('还没有重点句');
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         // V89: 连读起点绕回——原 anyLeft 只判断"有没有未练熟的"，但查找从 focusCursor 往后，
-        // 光标后全熟而前面还有未熟句时会一句不播还误报"都已练熟"。现在从光标往后找第一个未熟的，
+        // 光标后全熟而前面还有未熟句时会一句不播还误报"都已练熟"。现在从起点往后找第一个未熟的，
         // 找不到绕回开头再找，两圈都没有才是真的全熟
         const n = this.starredIndices.length;
+        // V91: 刚播完一轮时从头开始——focusCursor 停在最后播过的那句，直接往后找会只重播最后一句
+        const startFrom = this._focusFinished ? 0 : this.focusCursor;
+        this._focusFinished = false;
         const pending = i => { const s = this.starredIndices[i]; return state.segments[s] && !this.doneIndices.includes(s); };
         let from = -1;
-        for (let i = this.focusCursor; i < n; i++) if (pending(i)) { from = i; break; }
-        if (from < 0) for (let i = 0; i < this.focusCursor && i < n; i++) if (pending(i)) { from = i; break; } // 绕回开头找
+        for (let i = startFrom; i < n; i++) if (pending(i)) { from = i; break; }
+        if (from < 0) for (let i = 0; i < startFrom && i < n; i++) if (pending(i)) { from = i; break; } // 绕回开头找
         if (from < 0) return ui.toast('⭐ 重点句都已练熟（连读只练未打勾的），想再练可先取消打勾');
         this.focusCursor = from; // 直接定位到第一个未练熟句（原"越界回 0"逻辑已覆盖不了绕回场景）
         engine.stopAll(); // 起点清场（含连读联动，此时未激活，无碍）
@@ -4180,7 +4200,14 @@ const previewMode = {
         if (!this._focusReadActive) return;
         if (this.focusCursor >= this.starredIndices.length) {
             this._stopFocusRead(true);
-            this.focusCursor = 0; // V90: 播完回到开头——原停在 n，「下一重点」(n+1)%n=1 会跳过第 1 个重点句
+            // V91: 光标停在最后实际播过的那句（与屏幕高亮一致）。V90 曾复位 0——数学上没解决问题：
+            // (0+1)%n 仍是 1，屏幕显示最后一句、「下一重点」却跳到第 2 个重点句（第 1 个被跳过）、
+            // 「上一重点」算出 n-1 把最后一句再播一遍（看起来像没反应）。停在最后播过的那句后：
+            // 「下一重点」(n-1+1)%n=0 恰好绕回第 1 个、「上一重点」是倒数第 2 个，与画面完全对得上
+            this.focusCursor = (this._lastPlayedFocusIdx != null)
+                ? Math.min(this._lastPlayedFocusIdx, this.starredIndices.length - 1)
+                : Math.max(0, this.starredIndices.length - 1);
+            this._focusFinished = true; // 再点「▶ 连读」从头开始（不标记的话会从最后一句续播、只播它一句）
             // V88: 一句都没播就到头=重点句全被打勾练熟——不再假报"连读完成"
             ui.toast(this._focusPlayed > 0 ? '🎉 重点句连读完成' : '⭐ 重点句都已练熟，本次未播任何句子');
             return;
@@ -4191,6 +4218,7 @@ const previewMode = {
         if (this.doneIndices.includes(segIdx)) { this.focusCursor++; return this._readNextStarred(); }
         state.currIndex = segIdx;
         this._focusPlayed++; // V88: 实际开始播一句才计数
+        this._lastPlayedFocusIdx = this.focusCursor; // V91: 记住最后实际播过的那句（播完收尾时 focusCursor 停在这，与屏幕高亮一致）
         // 高亮 + 滚动到可见（center：当前句居中，列表长时自动跟随）
         document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', i === this.focusCursor); });
         const curItem = document.getElementById('focus-item-' + this.focusCursor);
@@ -4247,11 +4275,223 @@ const previewMode = {
         if (!this.starredIndices.length) return ui.toast('没有重点句可清空');
         if (!confirm('确认清空全部重点句？')) return;
         this._stopFocusRead(true);
-        this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0; this.doneIndices = [];
+        this.starredIndices = []; this.focusCursor = 0; this.previewDone = false; this.cursorIdx = 0; this.doneIndices = []; this._lastPlayedFocusIdx = null; this._focusFinished = false;
         this.saveToStorage(); this.updateBadge(); this._renderFocusList();
         ui.toast('已清空全部重点句');
     }
 };
+
+// ============================================================
+//  V91: 最小 xlsx 生成器（零依赖，store-only ZIP）——供生词本导出 Excel 用。
+//  CSV 是纯文本，列宽/打印方向/冻结表头这些格式带不进文件（全由打开它的软件自定）；
+//  xlsx 才能指定：句子列加宽+自动换行、打印横向一页宽、表头冻结加粗。
+//  实现：xlsx = 一个 ZIP 包（6 个 XML 部件），字符串用 inlineStr 免 sharedStrings，
+//  ZIP 用不压缩 store 模式 + 手写 CRC32（约 80 行，省掉引入第三方库）
+// ============================================================
+function _makeCRC32Table() {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+    }
+    return t;
+}
+const _CRC_TABLE = _makeCRC32Table();
+function _crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = _CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function _xmlEsc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+// 1→A、27→AA
+function _xlsxColName(n) {
+    let s = '';
+    while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - 1 - m) / 26; }
+    return s;
+}
+// UTF-8 编码（老浏览器无 TextEncoder 时手动编码兜底）
+const _utf8Encode = (typeof TextEncoder !== 'undefined')
+    ? function(s) { return new TextEncoder().encode(s); }
+    : function(s) {
+        const out = [];
+        for (let i = 0; i < s.length; i++) {
+            let c = s.codePointAt(i);
+            if (c > 0xFFFF) i++;
+            if (c < 0x80) out.push(c);
+            else if (c < 0x800) out.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+            else if (c < 0x10000) out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+            else out.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+        }
+        return new Uint8Array(out);
+    };
+// rows: 二维数组（第一行=表头，加粗蓝底白字居中）；opts: { sheetName, colWidths[], landscape }
+function buildXlsx(rows, opts) {
+    opts = opts || {};
+    const NC = (rows[0] || []).length;
+    const colWidths = opts.colWidths || [];
+    const enc = _utf8Encode;
+    const files = [];
+    const addFile = function(name, str) { files.push({ name: name, data: enc(str) }); };
+
+    addFile('[Content_Types].xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        '</Types>');
+
+    addFile('_rels/.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>');
+
+    addFile('xl/workbook.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<sheets><sheet name="' + _xmlEsc(opts.sheetName || 'Sheet1') + '" sheetId="1" r:id="rId1"/></sheets>' +
+        '</workbook>');
+
+    addFile('xl/_rels/workbook.xml.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+        '</Relationships>');
+
+    // 样式：xf1=表头（加粗白字蓝底细边框居中）、xf2=正文（细边框+自动换行+顶对齐）
+    addFile('xl/styles.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<fonts count="2">' +
+        '<font><sz val="11"/><name val="Calibri"/></font>' +
+        '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+        '</fonts>' +
+        '<fills count="3">' +
+        '<fill><patternFill patternType="none"/></fill>' +
+        '<fill><patternFill patternType="gray125"/></fill>' +
+        '<fill><patternFill patternType="solid"><fgColor rgb="FF4F6DF5"/><bgColor indexed="64"/></patternFill></fill>' +
+        '</fills>' +
+        '<borders count="2">' +
+        '<border><left/><right/><top/><bottom/><diagonal/></border>' +
+        '<border>' +
+        '<left style="thin"><color rgb="FFD9D9D9"/></left>' +
+        '<right style="thin"><color rgb="FFD9D9D9"/></right>' +
+        '<top style="thin"><color rgb="FFD9D9D9"/></top>' +
+        '<bottom style="thin"><color rgb="FFD9D9D9"/></bottom>' +
+        '<diagonal/>' +
+        '</border>' +
+        '</borders>' +
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+        '<cellXfs count="3">' +
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '</cellXfs>' +
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+        '</styleSheet>');
+
+    // 工作表：冻结首行 + 列宽 + 横向打印一页宽（sheetPr/pageSetUpPr 配合 pageSetup fitToWidth）
+    let sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+        '<cols>';
+    for (let c = 1; c <= NC; c++) {
+        sheet += '<col min="' + c + '" max="' + c + '" width="' + (colWidths[c - 1] || 12) + '" customWidth="1"/>';
+    }
+    sheet += '</cols><sheetData>';
+    rows.forEach(function(row, ri) {
+        sheet += '<row r="' + (ri + 1) + '">';
+        row.forEach(function(cell, ci) {
+            const ref = _xlsxColName(ci + 1) + (ri + 1);
+            const style = ri === 0 ? ' s="1"' : ' s="2"';
+            if (typeof cell === 'number' && isFinite(cell)) {
+                sheet += '<c r="' + ref + '"' + style + '><v>' + cell + '</v></c>';
+            } else {
+                sheet += '<c r="' + ref + '"' + style + ' t="inlineStr"><is><t xml:space="preserve">' + _xmlEsc(cell) + '</t></is></c>';
+            }
+        });
+        sheet += '</row>';
+    });
+    sheet += '</sheetData>' +
+        '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
+        '<pageSetup paperSize="9" orientation="' + (opts.landscape === false ? 'portrait' : 'landscape') + '" fitToWidth="1" fitToHeight="0"/>' +
+        '</worksheet>';
+    addFile('xl/worksheets/sheet1.xml', sheet);
+
+    // ---- 打包 store-only ZIP（本地文件头 + 中央目录 + EOCD）----
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+    const now = new Date();
+    const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+    const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+
+    files.forEach(function(f) {
+        const nameBytes = enc(f.name);
+        const crc = _crc32(f.data);
+        const lh = new DataView(new ArrayBuffer(30));
+        lh.setUint32(0, 0x04034b50, true);   // 本地文件头签名
+        lh.setUint16(4, 20, true);           // 版本
+        lh.setUint16(6, 0x0800, true);       // flags: UTF-8 文件名
+        lh.setUint16(8, 0, true);            // method: store（不压缩）
+        lh.setUint16(10, dosTime, true);
+        lh.setUint16(12, dosDate, true);
+        lh.setUint32(14, crc, true);
+        lh.setUint32(18, f.data.length, true);
+        lh.setUint32(22, f.data.length, true);
+        lh.setUint16(26, nameBytes.length, true);
+        lh.setUint16(28, 0, true);           // extra 长度
+        chunks.push(new Uint8Array(lh.buffer), nameBytes, f.data);
+
+        const ch = new DataView(new ArrayBuffer(46));
+        ch.setUint32(0, 0x02014b50, true);   // 中央目录头签名
+        ch.setUint16(4, 20, true);
+        ch.setUint16(6, 20, true);
+        ch.setUint16(8, 0x0800, true);
+        ch.setUint16(10, 0, true);
+        ch.setUint16(12, dosTime, true);
+        ch.setUint16(14, dosDate, true);
+        ch.setUint32(16, crc, true);
+        ch.setUint32(20, f.data.length, true);
+        ch.setUint32(24, f.data.length, true);
+        ch.setUint16(28, nameBytes.length, true);
+        ch.setUint16(30, 0, true);           // extra
+        ch.setUint16(32, 0, true);           // comment
+        ch.setUint16(34, 0, true);           // 盘号
+        ch.setUint16(36, 0, true);           // 内部属性
+        ch.setUint32(38, 0, true);           // 外部属性
+        ch.setUint32(42, offset, true);      // 本地文件头偏移
+        central.push(new Uint8Array(ch.buffer), nameBytes);
+
+        offset += 30 + nameBytes.length + f.data.length;
+    });
+
+    const centralSize = central.reduce(function(s, c) { return s + c.length; }, 0);
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(8, files.length, true);
+    eocd.setUint16(10, files.length, true);
+    eocd.setUint32(12, centralSize, true);
+    eocd.setUint32(16, offset, true);
+    chunks.push.apply(chunks, central);
+    chunks.push(new Uint8Array(eocd.buffer));
+
+    const total = chunks.reduce(function(s, c) { return s + c.length; }, 0);
+    const outB = new Uint8Array(total);
+    let p = 0;
+    chunks.forEach(function(c) { outB.set(c, p); p += c.length; });
+    return outB;
+}
 
 // ============================================================
 //  V84: 生词本 — 跨工程全局（localStorage 'shadow_v84_vocab'）
@@ -4365,7 +4605,52 @@ const vocabBook = {
             listEl.appendChild(item);
         });
     },
+    // V91: 导出文件名——生词本跨音频全局共用：全部生词出自同一个音频时用音频名
+    // （生词本_lesson01_20261116，与"一个音频一个本子"的直觉一致），混合多个音频时用词数
+    // （生词本_35词_20261116，不冒用某一个音频名）。原文件名只有日期，连导两次分不清谁是谁
+    _exportBaseName() {
+        const d = new Date();
+        const dateStr = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+        const list = this.list();
+        const srcs = [];
+        list.forEach(function(v) { const s = (v.src || '').trim(); if (s && srcs.indexOf(s) < 0) srcs.push(s); });
+        let base;
+        if (srcs.length === 1) {
+            // 去扩展名 + 清文件名非法字符 + 超长截断
+            const nm = srcs[0].replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[\\\/:*?"<>|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+            base = '生词本_' + (nm ? nm.substring(0, 40) : '音频');
+        } else {
+            base = '生词本_' + list.length + '词';
+        }
+        return base + '_' + dateStr;
+    },
+    _download(bytes, mime, filename, okMsg) {
+        const blob = new Blob([bytes], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function() { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000);
+        ui.toast(okMsg);
+    },
+    // V91: Excel 导出（.xlsx）——句子列（第 3 列）加宽到 62 字符自动换行、打印横向一页宽、
+    // 表头冻结加粗蓝底。CSV 是纯文本，这些格式带不进去（列宽/纸张方向由打开它的软件自定），
+    // 想要"第三列宽一点 + 横向打印"必须用 xlsx
+    exportExcel() {
+        const list = this.list();
+        if (!list.length) return ui.toast('生词本是空的，没有可导出');
+        try {
+            const rows = [['序号', '单词', '所在句子', '出处']];
+            list.forEach(function(v, i) { rows.push([i + 1, v.w || '', v.s || '', v.src || '']); });
+            const bytes = buildXlsx(rows, { sheetName: '生词本', colWidths: [6, 20, 62, 26], landscape: true });
+            this._download(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                this._exportBaseName() + '.xlsx', '✅ 已导出 Excel（' + list.length + ' 词，句子列加宽/打印横向）');
+        } catch(e) {
+            ui.toast('❌ 导出失败：' + (e.message || e));
+        }
+    },
     // CSV 导出：UTF-8 BOM（Excel 直开不乱码），四列：序号/单词/所在句子/出处（RFC 4180 转义）
+    // 适合导入 Anki/Quizlet 等背词软件；文件名 V91 起同 Excel 导出（见 _exportBaseName）
     exportCSV() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
@@ -4375,18 +4660,11 @@ const vocabBook = {
             return s;
         }
         const rows = [['序号', '单词', '所在句子', '出处']];
-        list.forEach((v, i) => rows.push([i + 1, v.w || '', v.s || '', v.src || '']));
-        const content = '\uFEFF' + rows.map(r => r.map(cell).join(',')).join('\r\n');
+        list.forEach(function(v, i) { rows.push([i + 1, v.w || '', v.s || '', v.src || '']); });
+        const content = '\uFEFF' + rows.map(function(r) { return r.map(cell).join(','); }).join('\r\n');
         try {
-            const d = new Date();
-            const dateStr = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-            const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = '生词本_' + dateStr + '.csv';
-            document.body.appendChild(a); a.click(); a.remove();
-            setTimeout(() => { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000);
-            ui.toast('✅ 已导出 CSV（' + list.length + ' 词）');
+            this._download([content], 'text/csv;charset=utf-8', this._exportBaseName() + '.csv',
+                '✅ 已导出 CSV（' + list.length + ' 词）');
         } catch(e) {
             ui.toast('❌ 导出失败：' + (e.message || e));
         }
