@@ -1,7 +1,7 @@
-// 影子跟读 Pro V84.3 Service Worker
+// 影子跟读 Pro V85 Service Worker
 // 离线支持：仅对同源 navigate 请求用「网络优先 + 断网回退缓存」策略
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v84_offline_v4';
+var CACHE_NAME = 'shadow_v85_offline_v5';
 var PRECACHE_URLS = ['./'];
 
 self.addEventListener('install', function(event) {
