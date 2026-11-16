@@ -1,7 +1,9 @@
-// 影子跟读 Pro V87 Service Worker
-// 离线支持：仅对同源 navigate 请求用「网络优先 + 断网回退缓存」策略
+// 影子跟读 Pro V88 Service Worker
+// 离线支持：仅对同源 navigate 请求用「网络优先 + 3 秒超时回退缓存」策略
+// V88: 原「网络优先，断网才回退」在弱网下 fetch 一直挂着、页面迟迟打不开——而整个应用本可离线用；
+// 现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v87_offline_v7';
+var CACHE_NAME = 'shadow_v88_offline_v8';
 
 self.addEventListener('install', function(event) {
     event.waitUntil(
@@ -72,38 +74,43 @@ self.addEventListener('fetch', function(event) {
     var rangeHeader = req.headers && req.headers.get ? req.headers.get('range') : null;
     if (rangeHeader) return;
 
-    // 仅对 navigate（页面跳转/主文档）请求用网络优先 + 断网回退缓存策略
+    // 仅对 navigate（页面跳转/主文档）请求：网络优先 + 3 秒超时回退缓存 + 断网回退缓存
     if (req.mode === 'navigate' || dest === 'document') {
+        var putTask = Promise.resolve();
+        var fromCache = function() {
+            // V84.3: 回退只在自身 CACHE_NAME 内查找（原 caches.match 会搜同源全部缓存，
+            // 可能命中其他应用的页面）；带 ?mp3= 参数的 URL 用 ignoreSearch 兜底
+            return caches.open(CACHE_NAME).then(function(cache) {
+                return cache.match(req, { ignoreSearch: true }).then(function(c) {
+                    return c || cache.match('./', { ignoreSearch: true });
+                });
+            });
+        };
+        var network = fetch(req, { cache: 'no-cache' }).then(function(resp) {
+            // 网络成功——克隆响应缓存一份（同源才会进缓存）
+            if (resp && resp.ok) {
+                var clone = resp.clone();
+                // V84.3: putTask 只构造一次——同一 Response body 只能消费一次，
+                // 无论超时与否缓存写入都只发生一次
+                putTask = caches.open(CACHE_NAME).then(function(cache) {
+                    return cache.put(req, clone);
+                }).catch(function() {});
+            }
+            return resp;
+        });
+        // V88: 同步登记——即使 3 秒后先用了缓存，网络回来的新页面仍会写入缓存；
+        // 网络失败也吞掉（回退逻辑由 race 的 catch 处理）
+        try { event.waitUntil(network.then(function() { return putTask; }, function() {})); } catch(e) {}
+        var timeout = new Promise(function(resolve) {
+            setTimeout(function() { fromCache().then(resolve, function() { resolve(null); }); }, 3000);
+        });
         event.respondWith(
-            fetch(req, { cache: 'no-cache' }).then(function(resp) {
-                // 网络成功——克隆响应缓存一份（同源才会进缓存）
-                if (resp && resp.ok) {
-                    var clone = resp.clone();
-                    // V84.3: putTask 只构造一次——同一 Response body 只能消费一次，
-                    // 原写法 waitUntil 失效的兜底分支会对同一 clone 发起第二次 put；
-                    // 现在无论 waitUntil 是否成功登记，缓存写入都只发生一次
-                    var putTask = caches.open(CACHE_NAME).then(function(cache) {
-                        return cache.put(req, clone);
-                    }).catch(function() {});
-                    try {
-                        // V84.1: 缓存写入纳入 event.waitUntil——SW 在写完前不会被终止（防偶发丢缓存），
-                        // 同时不阻塞响应返回（网络优先策略下导航不被缓存写盘拖慢）
-                        event.waitUntil(putTask);
-                    } catch(e) {
-                        // event 已失效：putTask 已在执行，无需重复写入
-                    }
-                }
-                return resp;
-            }).catch(function() {
-                // V84.3: 断网回退只在自身 CACHE_NAME 内查找（原 caches.match 会搜同源全部缓存，
-                // 可能命中其他应用的页面）；带 ?mp3= 参数的 URL 用 ignoreSearch 兜底；
-                // 最终兜底返回 503 文字提示而非浏览器错误页
-                return caches.open(CACHE_NAME).then(function(cache) {
-                    return cache.match(req, { ignoreSearch: true }).then(function(cached) {
-                        return cached || cache.match('./', { ignoreSearch: true });
-                    });
-                }).then(function(cached) {
-                    return cached || new Response('离线且尚无缓存：请联网打开一次本页面',
+            // 网络赢：正常返回；3 秒先到：有缓存先用缓存（r 非空），没缓存（r 为 null）继续等网络
+            Promise.race([network, timeout]).then(function(r) { return r || network; })
+            .catch(function() {
+                // 断网且缓存也没有：返回 503 文字提示而非浏览器错误页
+                return fromCache().then(function(c) {
+                    return c || new Response('离线且尚无缓存：请联网打开一次本页面',
                         { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
                 });
             })
