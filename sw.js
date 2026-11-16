@@ -1,9 +1,11 @@
-// 影子跟读 Pro V88 Service Worker
+// 影子跟读 Pro V89 Service Worker
 // 离线支持：仅对同源 navigate 请求用「网络优先 + 3 秒超时回退缓存」策略
 // V88: 原「网络优先，断网才回退」在弱网下 fetch 一直挂着、页面迟迟打不开——而整个应用本可离线用；
 // 现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
+// V89: install 预缓存 './' 改用 cache:'reload' 绕过 HTTP 缓存——托管端若给页面设了 max-age，
+// 原写法会把旧版本 HTML 存进新缓存；现在 3 秒就回退缓存，旧页面被打开的概率比以前高，必须存新的
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v88_offline_v8';
+var CACHE_NAME = 'shadow_v89_offline_v9';
 
 self.addEventListener('install', function(event) {
     event.waitUntil(
@@ -32,8 +34,13 @@ self.addEventListener('install', function(event) {
             });
         }).then(function(fresh) {
             // 预缓存 './'：目录有默认首页则缓存之；404（独立文件名部署）静默跳过——
-            // 页面在用户在线打开时由 fetch 事件动态缓存，上面的旧缓存迁移已兜底
-            return fresh.add('./').catch(function() {});
+            // 页面在用户在线打开时由 fetch 事件动态缓存，上面的旧缓存迁移已兜底。
+            // V89: 用 cache:'reload' 绕过 HTTP 缓存强制取最新页面（原 add('./') 在托管端
+            // 设了 max-age 时会把旧版 HTML 存进新缓存；现在 3 秒就回退缓存，存旧的更易被打开）；
+            // Request 构造在不支持的古老浏览器抛错时退回普通 add（再失败仍静默）
+            var homeReq = './';
+            try { homeReq = new Request('./', { cache: 'reload' }); } catch(e) {}
+            return fresh.add(homeReq).catch(function() {});
         }).then(function() {
             return self.skipWaiting();
         })
