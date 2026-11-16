@@ -22,7 +22,8 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>影子跟读 Pro V84.3</title>
+<!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
+<title>影子跟读 Pro V85</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230F3F24'/%3E%3Cstop offset='0.55' stop-color='%2315803D'/%3E%3Cstop offset='1' stop-color='%2316A34A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='16' y='16' width='480' height='480' rx='112' fill='url(%23bg)'/%3E%3Cpath d='M120 228 A136 136 0 0 1 392 228' fill='none' stroke='%23FFFFFF' stroke-opacity='0.22' stroke-width='18' stroke-linecap='round'/%3E%3Cpath d='M140 232 A116 116 0 0 1 372 232' fill='none' stroke='%23FFFFFF' stroke-width='22' stroke-linecap='round'/%3E%3Crect x='112' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='358' y='214' width='42' height='90' rx='21' fill='%23FFFFFF'/%3E%3Crect x='150' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='351' y='232' width='11' height='54' rx='5.5' fill='%23BBF7D0'/%3E%3Crect x='188' y='230' width='16' height='48' rx='8' fill='%23FFFFFF' fill-opacity='0.78'/%3E%3Crect x='218' y='202' width='16' height='104' rx='8' fill='%23FFFFFF' fill-opacity='0.92'/%3E%3Crect x='248' y='182' width='16' height='144' rx='8' fill='%23BEF264'/%3E%3Crect x='278' y='208' width='16' height='92' rx='8' fill='%23D9F99D'/%3E%3Crect x='308' y='232' width='16' height='44' rx='8' fill='%23ECFCCB'/%3E%3Ccircle cx='396' cy='108' r='26' fill='%23FFFFFF'/%3E%3Cpath d='M385 108 L393 116 L408 100' fill='none' stroke='%2315803D' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ctext x='256' y='402' text-anchor='middle' font-family='PingFang SC,Microsoft YaHei,sans-serif' font-size='46' font-weight='800' letter-spacing='2' fill='%23FFFFFF'%3EEVAN跟读%3C/text%3E%3C/svg%3E">
 <style>
 :root {
@@ -145,14 +146,24 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .focus-now-playing.show { display: block; }
 
 /* V84: 重点句连读行（连读按钮 + 遍数1/2/3） */
-.focus-reps-row { display: flex; align-items: center; gap: 8px; }
-.btn-focus-read { flex: 1; min-height: 48px; border: none; border-radius: 12px; background: var(--preview-light); border: 1.5px solid var(--preview-border); color: var(--preview); font-size: 15px; font-weight: 800; cursor: pointer; padding: 10px; -webkit-appearance: none; appearance: none; font-family: inherit; }
+/* V85: 连读行改版——连读按钮宽度约减 30%（不再 flex:1 占满），遍数/速率改滚轮，加留白行与重置钮 */
+.focus-reps-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.btn-focus-read { flex: 1 1 118px; min-height: 46px; border: none; border-radius: 12px; background: var(--preview-light); border: 1.5px solid var(--preview-border); color: var(--preview); font-size: 14px; font-weight: 800; cursor: pointer; padding: 10px 6px; -webkit-appearance: none; appearance: none; font-family: inherit; }
 .btn-focus-read:active { background: var(--preview); color: #fff; }
 .btn-focus-read.active { background: var(--preview); color: #fff; border-color: var(--preview); animation: pulse 2s infinite; }
-.reps-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.reps-group .reps-label { font-size: 12px; font-weight: 700; color: #888; margin-right: 2px; }
-.btn-reps { min-width: 44px; min-height: 44px; border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 8px; -webkit-appearance: none; appearance: none; font-family: inherit; }
-.btn-reps.active { background: var(--preview); border-color: var(--preview); color: #fff; }
+.focus-wheel-label { font-size: 11px; font-weight: 700; color: #888; flex-shrink: 0; }
+.focus-wheel { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 10px; font-size: 13px; font-weight: 700; padding: 7px 4px; min-width: 52px; text-align: center; cursor: pointer; -webkit-appearance: none; appearance: none; font-family: inherit; flex-shrink: 0; }
+.focus-reset-btn { width: 38px; min-height: 38px; border: 1px solid #E0E0E0; background: #fff; color: #666; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.focus-reset-btn:active { background: #F1F3F4; }
+.focus-gap-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.focus-gap-input { width: 54px; padding: 7px 4px; border: 1px solid #E0E0E0; border-radius: 10px; font-size: 13px; font-weight: 700; text-align: center; font-family: inherit; }
+.focus-gap-input:disabled { background: #F5F5F5; color: #bbb; }
+.focus-gap-unit { font-size: 12px; color: #888; font-weight: 700; }
+/* V85: 速率滚轮（iOS 弹原生 picker/桌面下拉）替代 6 按钮速率条 */
+.speed-wheel { margin-left: auto; border: 1px solid var(--border); background: #fff; color: #5F6368; border-radius: 8px; padding: 5px 6px; font-size: 13px; font-weight: 700; cursor: pointer; -webkit-appearance: none; appearance: none; font-family: inherit; flex-shrink: 0; min-width: 64px; text-align: center; }
+/* V85: 锁屏自动暂停开关 */
+.btn-lock-pause { border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 14px; padding: 4px 14px; font-size: 12px; font-weight: 700; cursor: pointer; min-width: 44px; font-family: inherit; -webkit-appearance: none; appearance: none; }
+.btn-lock-pause.on { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 /* V84: 生词本面板 */
 #vocab-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 7500; align-items: center; justify-content: center; }
@@ -451,7 +462,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     🔖 发现上次进度：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句，点击恢复
 </div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V84.3</div>
+    <div class="nav-title">🎧 影子跟读 V85</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -560,16 +571,29 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                         </div>
                         <div style="font-size:11px;color:#999;margin-top:8px;line-height:1.5;">💡 仅影响"播单句/循环单句/预习/AI模式"的实际播放范围，不会修改字幕时间戳；遇到相邻句间隔较短时会自动收窄，不会互相重叠。</div>
                     </div>
-                    <!-- V83: 单句循环跟读留白模式选择器 -->
+                    <!-- V85: 循环跟读留白（单句循环+重点句连读共用，原「单句循环跟读留白」） -->
                     <div style="background:#F8F9FA;border:1px solid #eee;border-radius:10px;padding:12px;margin-top:12px;">
-                        <div style="font-size:13px;font-weight:700;color:#444;margin-bottom:8px;">⏱ 单句循环跟读留白</div>
+                        <div style="font-size:13px;font-weight:700;color:#444;margin-bottom:8px;">⏱ 循环跟读留白（单句/连读）</div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;">
                             <button class="btn-loop-gap" data-mode="fixed" style="flex:1;min-width:60px;padding:8px 4px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#5F6368;font-size:12px;font-weight:600;cursor:pointer;" onclick="ui.setLoopGap('fixed')">固定1.5s</button>
                             <button class="btn-loop-gap" data-mode="1.0x" style="flex:1;min-width:60px;padding:8px 4px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#5F6368;font-size:12px;font-weight:600;cursor:pointer;" onclick="ui.setLoopGap('1.0x')">1.0x 句长</button>
                             <button class="btn-loop-gap" data-mode="1.2x" style="flex:1;min-width:60px;padding:8px 4px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#5F6368;font-size:12px;font-weight:600;cursor:pointer;" onclick="ui.setLoopGap('1.2x')">1.2x 句长</button>
                             <button class="btn-loop-gap" data-mode="1.5x" style="flex:1;min-width:60px;padding:8px 4px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#5F6368;font-size:12px;font-weight:600;cursor:pointer;" onclick="ui.setLoopGap('1.5x')">1.5x 句长</button>
                         </div>
-                        <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 循环单句时句末停顿时长：固定1.5s适合短句；按句长倍率模式停顿=句长×倍率（如 5s 句子选 1.2x 留白 6s 给你跟读），自动 clamp 1~20 秒。</div>
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+                            <span style="font-size:12px;color:#666;font-weight:700;flex-shrink:0;">固定秒数</span>
+                            <input type="number" id="drawer-gap-sec" min="0.2" max="20" step="0.1" value="1.5" onchange="ui.setLoopGapSec(this.value)" style="width:64px;padding:5px;border:1px solid #ddd;border-radius:6px;font-weight:700;text-align:center;font-family:inherit;">
+                            <span style="font-size:12px;color:#666;font-weight:700;">s（0.2~20）</span>
+                        </div>
+                        <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 单句循环与重点句连读共用的句末停顿：固定模式按上方秒数；倍率模式停顿=句长×倍率（如 5s 句子选 1.2x 留白 6s）。连读原固定 0.6s 间隔现也跟随此设置。</div>
+                    </div>
+                    <!-- V85: 锁屏自动暂停开关（默认关——挂机磨耳朵听请保持关闭） -->
+                    <div style="background:#F8F9FA;border:1px solid #eee;border-radius:10px;padding:12px;margin-top:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                            <div style="font-size:13px;font-weight:700;color:#444;">🌙 锁屏自动暂停</div>
+                            <button id="btn-lock-pause" class="btn-lock-pause" onclick="ui.toggleLockPause()">关</button>
+                        </div>
+                        <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 开启后息屏/切后台立即暂停（区间循环/磨耳朵/单句循环），回来点「循环」会从暂停的那句继续；挂机磨耳朵听请保持关闭。</div>
                     </div>
                     <!-- V84: 全量备份与恢复（跨端，含生词本+重点句进度+连读设置） -->
                     <button class="btn-file" onclick="app.exportFullBackup()">📦 备份</button>
@@ -633,25 +657,22 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <span class="ai-status-pill" id="ai-status-pill">待机</span>
                 </div>
 
-                <!-- 预习模式入口 -->
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                <!-- 预习模式入口 + V85 速率滚轮（右端） -->
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
                     <button class="btn-preview-entry" id="btn-preview-entry" onclick="previewMode.start()">
                         📚 预习模式
                     </button>
                     <span class="preview-badge" id="preview-badge">0</span>
                     <span id="preview-focus-hint" style="font-size:12px;color:#888;display:none;"></span>
                     <button id="btn-goto-focus" style="display:none;background:var(--preview-light);color:var(--preview);border:1.5px solid var(--preview-border);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;" onclick="previewMode.enterFocusPhase()">⭐ 查看重点句</button>
-                </div>
-
-                <!-- 速率条 -->
-                <div class="speed-bar" id="speed-bar-practice">
-                    <span class="speed-label">速率:</span>
-                    <button class="btn-speed" onclick="ui.setSpeed(0.75)" data-speed="0.75">0.75×</button>
-                    <button class="btn-speed" onclick="ui.setSpeed(0.85)" data-speed="0.85">0.85×</button>
-                    <button class="btn-speed" onclick="ui.setSpeed(0.9)" data-speed="0.9">0.9×</button>
-                    <button class="btn-speed active" onclick="ui.setSpeed(1.0)" data-speed="1.0">1.0×</button>
-                    <button class="btn-speed" onclick="ui.setSpeed(1.25)" data-speed="1.25">1.25×</button>
-                    <button class="btn-speed" onclick="ui.setSpeed(1.5)" data-speed="1.5">1.5×</button>
+                    <select id="speed-sel-practice" class="speed-wheel" onchange="ui.setSpeed(parseFloat(this.value))" aria-label="播放速率">
+                        <option value="0.75">速率 0.75×</option>
+                        <option value="0.85">0.85×</option>
+                        <option value="0.9">0.9×</option>
+                        <option value="1" selected>速率 1.0×</option>
+                        <option value="1.25">1.25×</option>
+                        <option value="1.5">1.5×</option>
+                    </select>
                 </div>
 
                 <div class="row-mixed">
@@ -765,25 +786,37 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <div class="focus-list" id="focus-list"></div>
 
                 <div class="focus-control-area">
-                    <!-- V84: 连读行（连读按钮 + 遍数1/2/3） -->
+                    <!-- V85: 连读行——连读按钮(宽约减30%) + 遍数/速率滚轮 + 一键重置 -->
                     <div class="focus-reps-row">
                         <button class="btn-focus-read" id="btn-focus-read" onclick="previewMode.toggleFocusRead()">▶ 连读重点句</button>
-                        <div class="reps-group">
-                            <span class="reps-label">遍数</span>
-                            <button class="btn-reps" data-reps="1" onclick="previewMode.setFocusReps(1)">1遍</button>
-                            <button class="btn-reps" data-reps="2" onclick="previewMode.setFocusReps(2)">2遍</button>
-                            <button class="btn-reps" data-reps="3" onclick="previewMode.setFocusReps(3)">3遍</button>
-                        </div>
+                        <span class="focus-wheel-label">遍数</span>
+                        <select class="focus-wheel" id="focus-reps-sel" onchange="previewMode.setFocusReps(parseInt(this.value))" aria-label="连读遍数">
+                            <option value="1">1遍</option>
+                            <option value="2">2遍</option>
+                            <option value="3">3遍</option>
+                        </select>
+                        <span class="focus-wheel-label">速率</span>
+                        <select class="focus-wheel" id="speed-sel-focus" onchange="ui.setSpeed(parseFloat(this.value))" aria-label="播放速率">
+                            <option value="0.75">0.75×</option>
+                            <option value="0.85">0.85×</option>
+                            <option value="0.9">0.9×</option>
+                            <option value="1" selected>1.0×</option>
+                            <option value="1.25">1.25×</option>
+                            <option value="1.5">1.5×</option>
+                        </select>
+                        <button class="focus-reset-btn" id="focus-reset-btn" onclick="previewMode.resetFocusSettings()" title="恢复默认：遍数1 · 速率1.0× · 留白固定1.5s">↺</button>
                     </div>
-                    <!-- 速率 -->
-                    <div class="speed-bar" id="speed-bar-preview">
-                        <span class="speed-label">速率:</span>
-                        <button class="btn-speed" onclick="ui.setSpeed(0.75)" data-speed="0.75">0.75×</button>
-                        <button class="btn-speed" onclick="ui.setSpeed(0.85)" data-speed="0.85">0.85×</button>
-                        <button class="btn-speed" onclick="ui.setSpeed(0.9)" data-speed="0.9">0.9×</button>
-                        <button class="btn-speed active" onclick="ui.setSpeed(1.0)" data-speed="1.0">1.0×</button>
-                        <button class="btn-speed" onclick="ui.setSpeed(1.25)" data-speed="1.25">1.25×</button>
-                        <button class="btn-speed" onclick="ui.setSpeed(1.5)" data-speed="1.5">1.5×</button>
+                    <!-- V85: 循环跟读留白（单句循环/连读共用） -->
+                    <div class="focus-gap-row">
+                        <span class="focus-wheel-label">留白</span>
+                        <select class="focus-wheel" id="focus-gap-sel" onchange="ui.setLoopGap(this.value)" aria-label="循环跟读留白">
+                            <option value="fixed">固定1.5s</option>
+                            <option value="1.0x">1.0x句长</option>
+                            <option value="1.2x">1.2x句长</option>
+                            <option value="1.5x">1.5x句长</option>
+                        </select>
+                        <input type="number" id="focus-gap-sec" class="focus-gap-input" min="0.2" max="20" step="0.1" value="1.5" onchange="ui.setLoopGapSec(this.value)">
+                        <span class="focus-gap-unit">s</span>
                     </div>
                     <div class="control-grid">
                         <button class="btn-action btn-orange" id="focus-btn-loop" onclick="engine.toggleLoop()">🔁 循环单句</button>
@@ -838,7 +871,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <button class="vocab-tool vocab-tool-danger" onclick="vocabBook.clearAll()">🗑 清空</button>
         </div>
         <div class="vocab-list" id="vocab-list"></div>
-        <div class="vocab-tip">💡 手机点字幕单词、电脑划选词组即可加入；出处=当时加载的音频</div>
+        <div class="vocab-tip">💡 手机点单词直接加入、长按字幕划选可加短语；电脑划选词组；出处=当时加载的音频</div>
     </div>
 </div>
 
@@ -947,6 +980,7 @@ const state = {
     _loadedAudioUrl: '', // V81: 当前已真正加载成功的音频 URL（本地导入为 ''，统计用此判断而非读输入框）
     _loadedAudioName: '', // V83: 本地导入 MP3 文件名（统计展示用，配合 _loadedAudioUrl='local://'+name+'_'+size）
     loopGapMode: 'fixed', // V83: 单句循环跟读留白模式——'fixed'(1.5s)/'1.0x'/'1.2x'/'1.5x'（按句长倍率动态留白）
+    loopGapFixedSec: 1.5, // V85: 固定模式留白秒数（0.2~20，'shadow_v85_loop_gap_sec'，单句循环/重点句连读共用）
     _audioLoadSeq: 0, // V84.1r2: 音频加载代数——连续导入/加载时只有最后一次的解码结果才允许写 state.audioBuffer（防慢解码覆盖新音频）
     _iconPngUrl: '' // V83: apple-touch-icon 生成的 PNG data URL，供 Media Session artwork 复用
 };
@@ -1506,6 +1540,38 @@ const net = {
     }
 };
 
+// ============================================================
+//  V85: 工具——iOS 检测 / 循环跟读留白计算（单句循环+重点句连读共用）
+// ============================================================
+// iOS/iPadOS 检测（含 iPadOS 13+ 桌面 UA 伪装为 Mac 的场景）；Windows 触屏本返回 false
+function _isIOSDevice() {
+    try {
+        var plat = navigator.platform || '';
+        if (/iPad|iPhone|iPod/.test(plat)) return true;
+        if (plat === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+        return /iPad|iPhone|iPod/.test(navigator.userAgent);
+    } catch(e) { return false; }
+}
+// 留白毫秒数：'fixed'=state.loopGapFixedSec 秒；'1.0x'/'1.2x'/'1.5x'=句长×倍率；clamp 0.2~20s
+// V85: 单句循环与重点句连读（句间/遍间）统一用此函数，原连读固定 600ms
+function calcLoopGapMs(seg) {
+    var gapMs = 1500;
+    try {
+        var mode = state.loopGapMode || 'fixed';
+        if (mode !== 'fixed') {
+            var ratio = parseFloat(mode);
+            if (!isFinite(ratio) || ratio <= 0) ratio = 1.0;
+            if (seg && isFinite(seg.end) && isFinite(seg.start)) {
+                gapMs = Math.round(Math.max(0, seg.end - seg.start) * ratio * 1000);
+            }
+        } else {
+            var sec = parseFloat(state.loopGapFixedSec);
+            if (isFinite(sec) && sec > 0) gapMs = Math.round(sec * 1000);
+        }
+    } catch(e) {}
+    if (!isFinite(gapMs) || gapMs <= 0) gapMs = 1500;
+    return Math.min(20000, Math.max(200, gapMs));
+}
 // V83: 统一设置播放速率并保留原音高（不变调），避免倍速时听不清语音内容
 // 在所有设 a.playbackRate 的位置调用，集中管理 preservesPitch 兼容写法
 function applyPlaybackRate(audioEl, rate) {
@@ -1693,7 +1759,7 @@ const engine = {
             // 这个判断若放在 paused 检查之后就永远走不到，导致卡死不循环
             if (endSeg && startSeg && (ct >= endSeg.end || a.ended)) {
                 a.currentTime = startSeg.start;
-                state.currIndex = startL; ui.updatePractice(startL);
+                state.currIndex = startL; ui.updatePractice(startL); app.saveIndex(); // V85: 循环回跳也持久化
                 const playP = a.play();
                 // V84.1r2: 循环回跳播放被拒时停区间循环（AbortError 是主动停止的副产品，不算失败）
                 if (playP && playP.catch) playP.catch(e => { console.error(e); if (e && e.name === 'AbortError') return; if (this.mode === 'LOOP_RANGE') { this.stopAll(); ui.toast('播放失败，已停止区间循环'); } });
@@ -1701,12 +1767,12 @@ const engine = {
             }
             if (a.paused) return;
             const ai = state.segments.findIndex((s, i) => i >= startL && i <= endL && ct >= s.start && ct < s.end);
-            if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); }
+            if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); app.saveIndex(); } // V85: 推进即持久化（两种循环共用此行）
         } else if (this.mode === 'FULL_PLAY') {
             // 同理：全篇循环也优先判断是否播完，不依赖 a.paused，
             // 避免个别机型 loop 属性失效/原生 pause 导致卡在最后一句
             if (a.ended || (a.duration > 0 && ct >= a.duration - 0.05)) {
-                a.currentTime = 0; state.currIndex = 0; ui.updatePractice(0);
+                a.currentTime = 0; state.currIndex = 0; ui.updatePractice(0); app.saveIndex(); // V85: 磨耳朵回跳也持久化
                 const playP = a.play();
                 // V84.1r2: 回跳播放被拒时停全文播放（AbortError 是主动停止的副产品，不算失败）
                 if (playP && playP.catch) playP.catch(e => { console.error(e); if (e && e.name === 'AbortError') return; if (this.mode === 'FULL_PLAY') { this.stopAll(); ui.toast('播放失败，已停止全文播放'); } });
@@ -1714,7 +1780,7 @@ const engine = {
             }
             if (a.paused) return;
             const ai = state.segments.findIndex(s => ct >= s.start && ct < s.end);
-            if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); }
+            if (ai !== -1 && ai !== state.currIndex) { state.currIndex = ai; ui.updatePractice(ai); app.saveIndex(); } // V85: 推进即持久化（两种循环共用此行）
         }
     },
     startWait(cb) {
@@ -1761,23 +1827,8 @@ const engine = {
         this._playSegmentTimed(win, () => {
             if (this.mode !== 'LOOP_ONE') return;
             document.getElementById('main-audio').pause();
-            // V83: 单句循环跟读留白——按 loopGapMode 计算停顿时长
-            // 'fixed' = 1.5s；'1.0x'/'1.2x'/'1.5x' = 句长(end-start)×倍率×1000，clamp 1000~20000ms
-            var gapMs = 1500;
-            try {
-                var mode = state.loopGapMode || 'fixed';
-                if (mode !== 'fixed') {
-                    var ratio = parseFloat(mode);
-                    if (!isFinite(ratio) || ratio <= 0) ratio = 1.0;
-                    var cur = state.segments[state.currIndex];
-                    if (cur && isFinite(cur.end) && isFinite(cur.start)) {
-                        var segLen = Math.max(0, cur.end - cur.start);
-                        gapMs = Math.round(segLen * ratio * 1000);
-                    }
-                }
-                if (!isFinite(gapMs)) gapMs = 1500;
-                gapMs = Math.min(20000, Math.max(1000, gapMs));
-            } catch(e) { gapMs = 1500; }
+            // V85: 留白计算统一到 calcLoopGapMs（单句循环/重点句连读共用；固定秒数可自定义 0.2~20s，最短从 1s 放宽到 0.2s）
+            var gapMs = calcLoopGapMs(state.segments[state.currIndex]);
             this.waitTimer = setTimeout(() => {
                 if (this.mode !== 'LOOP_ONE') return;
                 this._loopOneCycle();
@@ -1799,13 +1850,19 @@ const engine = {
             s = Math.min(Math.max(1, s), n); e = Math.min(Math.max(1, e), n);
             if (s > e) { const tmp = s; s = e; e = tmp; }
             startEl.value = s; endEl.value = e;
-            const start = s - 1; // 后续用 0-based 索引
-            state.currIndex = start; ui.updatePractice(start);
+            const start = s - 1, endI = e - 1; // 后续用 0-based 索引
+            // V85: 从当前句继续——currIndex 已在区间内时从该句起播（锁屏暂停/中途停掉后点「循环」不再跳回区间第一句）；
+            // 想从区间头开始：先用页码/列表把当前句切到区间头即可
+            let fromIdx = start;
+            if (state.currIndex >= start && state.currIndex <= endI && state.segments[state.currIndex]) fromIdx = state.currIndex;
+            state.currIndex = fromIdx; ui.updatePractice(fromIdx);
+            app.saveIndex(); // V85: 持久化起点（防锁屏期间页面被系统回收后 INDEX 落后）
             this.mode = 'LOOP_RANGE';
             const btn = document.getElementById('btn-range-play'); btn.classList.add('active'); btn.innerText = "停止";
             const a = document.getElementById('main-audio');
-            a.currentTime = state.segments[start].start;
+            a.currentTime = state.segments[fromIdx].start;
             applyPlaybackRate(a, state.playbackRate);
+            if (fromIdx !== start) ui.toast('🔁 从第 ' + (fromIdx + 1) + ' 句继续循环');
             a.play().then(() => this.startTicker()).catch(e => { console.error(e); if (e && e.name === 'AbortError') return; ui.toast("播放失败: " + ((e && e.name) ? e.name : "") + (a.error ? " [code:" + a.error.code + "]" : "")); if (this.mode === 'LOOP_RANGE') { this.mode = 'IDLE'; ui.resetButtons(); try { a.pause(); } catch(e2) {} } }); // V84.1r2: 复位按钮，防卡在停止态；V84.3: AbortError 过滤（连点循环时旧 play 被拒不算失败）
         }
     },
@@ -1869,6 +1926,11 @@ const ui = {
                 });
                 const a = document.getElementById('main-audio');
                 if (a) applyPlaybackRate(a, savedRate);
+                // V85: 同步两个速率滚轮的选中项
+                ['speed-sel-practice', 'speed-sel-focus'].forEach(function(id) {
+                    const sel = document.getElementById(id);
+                    if (sel) sel.value = String(savedRate);
+                });
             }
         } catch(e) {}
 
@@ -1894,6 +1956,14 @@ const ui = {
                 });
             }
         } catch(e) {}
+
+        // V85: 恢复自定义留白秒数（默认 1.5s）并同步滚轮/输入框/锁屏暂停开关
+        try {
+            const savedSec = parseFloat(localStorage.getItem('shadow_v85_loop_gap_sec'));
+            if (isFinite(savedSec) && savedSec > 0) state.loopGapFixedSec = Math.min(20, Math.max(0.2, savedSec));
+        } catch(e) {}
+        this._syncGapWheels();
+        this._syncLockPauseBtn();
 
         const p = new URLSearchParams(location.search);
         if (p.get('mp3')) {
@@ -2217,6 +2287,11 @@ const ui = {
         document.querySelectorAll('.btn-speed').forEach(b => {
             b.classList.toggle('active', parseFloat(b.dataset.speed) === rate);
         });
+        // V85: 速率按钮条已改滚轮 select（练习页+重点句页）——同步选中项
+        ['speed-sel-practice', 'speed-sel-focus'].forEach(function(id) {
+            const sel = document.getElementById(id);
+            if (sel) sel.value = String(rate);
+        });
         const a = document.getElementById('main-audio');
         applyPlaybackRate(a, rate); // V83: 设置倍速 + preservesPitch 不变调
         // V83: 持久化倍速到 localStorage 'shadow_v83_speed'（页面刷新后恢复）
@@ -2235,6 +2310,7 @@ const ui = {
         try { localStorage.setItem(CONST.PADDING, JSON.stringify({ pre: state.padPre, post: state.padPost })); } catch(e) {}
     },
     // V83: 单句循环跟读留白模式选择器——'fixed'(1.5s)/'1.0x'/'1.2x'/'1.5x'
+    // V85: 升级为「循环跟读留白（单句/连读）」——固定秒数可自定义，重点句连读句间/遍间隔也跟随
     setLoopGap(mode) {
         if (['fixed', '1.0x', '1.2x', '1.5x'].indexOf(mode) === -1) return;
         state.loopGapMode = mode;
@@ -2245,8 +2321,57 @@ const ui = {
             b.style.color = isActive ? '#fff' : '#5F6368';
             b.style.borderColor = isActive ? 'var(--primary)' : '#ddd';
         });
-        var labelMap = { 'fixed': '固定1.5s', '1.0x': '1.0x 句长', '1.2x': '1.2x 句长', '1.5x': '1.5x 句长' };
+        this._syncGapWheels();
+        var labelMap = { 'fixed': ('固定' + this._gapFixedLabel()), '1.0x': '1.0x 句长', '1.2x': '1.2x 句长', '1.5x': '1.5x 句长' };
         ui.toast('循环跟读留白: ' + (labelMap[mode] || mode));
+    },
+    // V85: 固定模式留白秒数（0.2~20s，默认 1.5s）
+    setLoopGapSec(v) {
+        var sec = parseFloat(v);
+        if (!isFinite(sec)) return;
+        sec = Math.min(20, Math.max(0.2, sec));
+        sec = Math.round(sec * 10) / 10;
+        state.loopGapFixedSec = sec;
+        try { localStorage.setItem('shadow_v85_loop_gap_sec', String(sec)); } catch(e) {}
+        this._syncGapWheels();
+        ui.toast('循环跟读留白: 固定 ' + sec + 's');
+    },
+    // V85: 固定模式留白的显示文字（如 "1.5s"）
+    _gapFixedLabel() {
+        var sec = parseFloat(state.loopGapFixedSec);
+        if (!isFinite(sec) || sec <= 0) sec = 1.5;
+        return (Math.round(sec * 10) / 10) + 's';
+    },
+    // V85: 留白 UI 三处同步——重点句页滚轮+秒数输入、抽屉秒数输入；固定模式选项文字带当前秒数
+    _syncGapWheels() {
+        const mode = state.loopGapMode || 'fixed';
+        const fixedTxt = '固定' + this._gapFixedLabel();
+        const sel = document.getElementById('focus-gap-sel');
+        if (sel) {
+            const opt = sel.querySelector('option[value="fixed"]');
+            if (opt) opt.textContent = fixedTxt;
+            sel.value = mode;
+        }
+        const inp = document.getElementById('focus-gap-sec');
+        if (inp) { inp.value = state.loopGapFixedSec; inp.disabled = (mode !== 'fixed'); }
+        const dInp = document.getElementById('drawer-gap-sec');
+        if (dInp) { dInp.value = state.loopGapFixedSec; dInp.disabled = (mode !== 'fixed'); }
+        const dFixedBtn = document.querySelector('.btn-loop-gap[data-mode="fixed"]');
+        if (dFixedBtn) dFixedBtn.textContent = fixedTxt;
+    },
+    // V85: 锁屏自动暂停开关（默认关）
+    toggleLockPause() {
+        var on;
+        try { on = localStorage.getItem('shadow_v85_lock_pause') !== '1'; } catch(e) { on = true; }
+        try { localStorage.setItem('shadow_v85_lock_pause', on ? '1' : '0'); } catch(e) {}
+        this._syncLockPauseBtn();
+        ui.toast(on ? '🌙 锁屏自动暂停：开（息屏/切后台即停）' : '锁屏自动暂停：关');
+    },
+    _syncLockPauseBtn() {
+        var on = false;
+        try { on = localStorage.getItem('shadow_v85_lock_pause') === '1'; } catch(e) {}
+        var b = document.getElementById('btn-lock-pause');
+        if (b) { b.innerText = on ? '开' : '关'; b.classList.toggle('on', on); }
     }
 };
 
@@ -2899,6 +3024,11 @@ const app = {
         // 防抖回写离线缓存（用户改了字幕后，缓存里也要同步更新）
         this._scheduleCacheSync();
     },
+    // V85: 轻量持久化当前句索引——区间循环/磨耳朵推进时只写 INDEX 不重写 STORAGE（segments 没变），
+    // 防锁屏期间页面被 iOS 回收重载后 restoreProgress 回退到旧位置（用户遇到的"听到50句回来又从第1句播"）
+    saveIndex() {
+        safeSetItem(CONST.INDEX, state.currIndex);
+    },
     _cacheSyncTimer: null,
     _scheduleCacheSync() {
         if (this._cacheSyncTimer) clearTimeout(this._cacheSyncTimer);
@@ -3006,8 +3136,9 @@ const app = {
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     // V83: 一键全量备份（跨端）——打包 localStorage 轻量数据（不含音频 Blob）
-    // 导出字段：STORAGE/INDEX/HIST/INPUTS/SESSION/PREVIEW/PADDING/AUTOSYNC/STATS/SPEED/LOOP_GAP
+    // 导出字段：STORAGE/INDEX/HIST/INPUTS/SESSION/PREVIEW/PADDING/AUTOSYNC/STATS/SPEED/LOOP_GAP/LOOP_GAP_SEC/LOCK_PAUSE
     // V84: 新增生词本(shadow_v84_vocab)与连读遍数(shadow_v84_focus_reps)——恢复后新设备上原样出现
+    // V85: 新增留白秒数(shadow_v85_loop_gap_sec)与锁屏自动暂停(shadow_v85_lock_pause)
     exportFullBackup() {
         try {
             try { flushStats(); } catch(e0) {} // V84.1r2: 备份前先落盘统计（统计攒30次才写盘，防备份缺最后一段）
@@ -3016,9 +3147,10 @@ const app = {
                 CONST.SESSION, CONST.PREVIEW, CONST.PADDING, CONST.AUTOSYNC,
                 CONST.STATS,
                 'shadow_v83_speed', 'shadow_v83_loop_gap',
-                'shadow_v84_vocab', 'shadow_v84_focus_reps'
+                'shadow_v84_vocab', 'shadow_v84_focus_reps',
+                'shadow_v85_loop_gap_sec', 'shadow_v85_lock_pause'
             ];
-            var data = { type: 'shadow_full_backup', version: 84, exportedAt: new Date().toISOString(), items: {} }; // V84.1r2: 版本号 83→84（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 85, exportedAt: new Date().toISOString(), items: {} }; // V85: 版本号 84→85（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -3383,7 +3515,7 @@ const previewMode = {
         try {
             if (!localStorage.getItem('shadow_v84_pv_hint')) {
                 localStorage.setItem('shadow_v84_pv_hint', '1');
-                ui.toast('💡 点单词入生词本，点空白处复制整句');
+                ui.toast('💡 点单词入生词本，长按划选短语，点空白复制整句');
             }
         } catch(e) {}
     },
@@ -3823,9 +3955,17 @@ const previewMode = {
         ui.toast(this._focusReadActive ? ('连读遍数：' + n + '（下一句生效）') : ('连读遍数：' + n + ' 遍'));
     },
     _syncRepsBtns() {
-        document.querySelectorAll('.btn-reps').forEach(b => {
-            b.classList.toggle('active', parseInt(b.dataset.reps) === this._focusReps);
-        });
+        // V85: 遍数改滚轮 select——同步选中项（原按钮组已移除）
+        const sel = document.getElementById('focus-reps-sel');
+        if (sel) sel.value = String(this._focusReps);
+    },
+    // V85: 一键恢复连读默认设置（遍数1 / 速率1.0× / 留白固定1.5s）
+    resetFocusSettings() {
+        this.setFocusReps(1);
+        ui.setSpeed(1.0);
+        ui.setLoopGap('fixed');
+        ui.setLoopGapSec(1.5);
+        ui.toast('↺ 已恢复默认：遍数1 · 速率1.0× · 留白固定1.5s');
     },
     toggleFocusRead() {
         if (this._focusReadActive) { this._stopFocusRead(); ui.toast('已停止连读'); return; }
@@ -3870,7 +4010,7 @@ const previewMode = {
         this._readOneSegRepeat(segIdx, this._focusReps, () => {
             if (!this._focusReadActive) return;
             this.focusCursor++;
-            this._focusReadTimer = setTimeout(() => this._readNextStarred(), 600); // 句间停顿
+            this._focusReadTimer = setTimeout(() => this._readNextStarred(), calcLoopGapMs(state.segments[segIdx])); // V85: 句间停顿跟随留白设置（原固定600ms）
         });
     },
     _readOneSegRepeat(segIdx, repsLeft, onDone) {
@@ -3881,7 +4021,7 @@ const previewMode = {
             try { document.getElementById('main-audio').pause(); } catch(e) {}
             const next = repsLeft - 1;
             if (next > 0) {
-                this._focusReadTimer = setTimeout(() => this._readOneSegRepeat(segIdx, next, onDone), 600); // 遍间停顿
+                this._focusReadTimer = setTimeout(() => this._readOneSegRepeat(segIdx, next, onDone), calcLoopGapMs(state.segments[segIdx])); // V85: 遍间停顿跟随留白设置（原固定600ms）
             } else {
                 onDone();
             }
@@ -4474,6 +4614,13 @@ document.addEventListener('visibilitychange', () => {
         }
         // V79: 页面隐藏时 flush 统计（避免播放时切后台丢秒）
         try { flushStats(); } catch(e) {}
+        // V85: 锁屏自动暂停（默认关）——开启后息屏/切后台立即停区间循环/磨耳朵/单句循环；
+        // 挂机磨耳朵听的用户保持关闭。stopAll 会连带终止连读链并复位按钮
+        try {
+            if (localStorage.getItem('shadow_v85_lock_pause') === '1' && typeof engine !== 'undefined' && engine && engine.mode !== 'IDLE') {
+                engine.stopAll();
+            }
+        } catch(e) {}
     }
 });
 
@@ -5581,6 +5728,17 @@ document.addEventListener('selectionchange', function() {
         try { previewMode.checkSelBar(); } catch(e) {}
     }, 30);
 });
+// V85: iOS/iPad 页码输入框点按即清空（免手动删数字），留空失焦时还原旧值；Windows 保持原样
+(function() {
+    if (!_isIOSDevice()) return;
+    ['loop-start', 'loop-end'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        let _old = '';
+        el.addEventListener('focus', function() { _old = el.value; el.value = ''; });
+        el.addEventListener('blur', function() { if (String(el.value).trim() === '' && _old !== '') el.value = _old; });
+    });
+})();
 // 转屏/窗口变化 → 重算预习字幕自适应字号
 var _pvResizeTimer = null;
 window.addEventListener('resize', function() {
