@@ -1,15 +1,37 @@
-// 影子跟读 Pro V85 Service Worker
+// 影子跟读 Pro V87 Service Worker
 // 离线支持：仅对同源 navigate 请求用「网络优先 + 断网回退缓存」策略
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v85_offline_v5';
-var PRECACHE_URLS = ['./'];
+var CACHE_NAME = 'shadow_v87_offline_v7';
 
 self.addEventListener('install', function(event) {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(function(cache) {
-            // V84.3: 不再吞掉 addAll 失败——预缓存失败让本次安装失败、旧 SW 继续服务，
-            // 防止"新 SW 激活→删旧缓存→新缓存却是空的→断网打不开应用"（浏览器稍后会自动重试安装）
-            return cache.addAll(PRECACHE_URLS);
+        caches.keys().then(function(names) {
+            // V86: 升级迁移——先把旧版本缓存里的响应搬进新缓存。
+            // 旧缓存里只有页面导航响应（fetch 只缓存 navigate），全量搬运代价极小；
+            // 这样即使 './' 预缓存 404（独立文件名部署、目录无默认首页），
+            // 激活删除旧缓存后断网仍有旧页面可用，不再需要"install 失败保旧 SW"的保守策略
+            var olds = names.filter(function(n) { return /^shadow_v\d+_offline_/.test(n) && n !== CACHE_NAME; });
+            return Promise.all(olds.map(function(n) { return caches.open(n); }));
+        }).then(function(oldCaches) {
+            return caches.open(CACHE_NAME).then(function(fresh) {
+                var chain = Promise.resolve();
+                oldCaches.forEach(function(oc) {
+                    chain = chain.then(function() {
+                        return oc.keys().then(function(reqs) {
+                            return Promise.all(reqs.map(function(r) {
+                                return oc.match(r).then(function(resp) {
+                                    if (resp && resp.ok) return fresh.put(r, resp);
+                                });
+                            }));
+                        });
+                    });
+                });
+                return chain.then(function() { return fresh; });
+            });
+        }).then(function(fresh) {
+            // 预缓存 './'：目录有默认首页则缓存之；404（独立文件名部署）静默跳过——
+            // 页面在用户在线打开时由 fetch 事件动态缓存，上面的旧缓存迁移已兜底
+            return fresh.add('./').catch(function() {});
         }).then(function() {
             return self.skipWaiting();
         })
