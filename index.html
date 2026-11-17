@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V97 | build:20261117 | 用户 6 项改动 + 外部审查 13 条采纳 12 条（第 12 条不采纳）：改动1·撤销条 4 秒→2 秒自动消失。改动2·翻卡复习——「😀认识/😅不认识」一开始就显示（原要点开卡片才出现），「🔊读音」正反面常显（背面新增）；认识=出队本轮不再出现，不认识=排到队尾本轮再看并计入"不认识的词"，战报可"只练不认识的"（自评式间隔重复，主动回忆后自评：想不起=不认识）。改动3·编辑页句首/句尾微调与预习模式统一——±.5/±.1 六钮改同款滚轮（提前/延后 0~3.0s 绝对偏移、幂等、↺重置、越界拦下回显）；工具条从 fixed 屏幕底部改为内联卡片紧跟所调句子下方（renderEditor 清空前挪回 body 停车、末尾经 _edTuneRefresh 挂回所选行后；选中后滚到可见）；滚轮写入复用 updateSeg（校验/联动/还原输入框同路径），写入成功后补记 _os/_oe（updateSeg 的 V93"清基准"规则是给手输/步进定的，滚轮是相对调整需保基准），无净变化/调回原值撤销基准（同 V94 审3 完整语义）；重置走 edTuneReset。改动4·⏰ 定时从练习页顶栏挪到「字幕1」行行首（顶栏腾位给句号下拉）；弹层新增「⏹ 取消定时」（app.cancelSleepTimer）；运行中 ⏰ 橙色高亮（.timing）；进度条与字幕按钮行下边距 2→14px。改动5·重点句练习界面去 📔 生词按钮（_showFocusPhase 隐藏/_showListenPhase 恢复）；遍数/↺ 移到主行速度滚轮后（默认隐藏，点 ⚙ 展开；留白+秒数仍在展开行）——主行不再空荡、展开不再多占一整行。改动6·iPhone 锁屏暂停后 ▶ 一直重播暂停时那句不推进——根因：mediaSession pause→stopAll→IDLE，play 一律 playOnce（单句播完即停、currIndex 不动，每次 ▶ 都重播同句）；修法：pause handler 记下引擎模式（stopAll 后写回 _pausedFrom，stopAll 自身开头清之防过期恢复），play handler 调 engine.resumePaused() 按记录恢复：LOOP_ONE→toggleLoop、LOOP_RANGE→toggleRangeLoop（V85 从当前句续）、FULL_PLAY→resumeFullPlay（新增，从暂停处续不回开头）、FOCUS_READ→toggleFocusRead（从光标续）、PREVIEW_PLAY→previewMode._playCurrentSentence，无记录才 playOnce；锁屏自动暂停（visibilitychange）同款记录。审查采纳：1) _applyNewSegments 刷新字幕立即回写缓存+刷新缓存列表（原借 15s 防抖：窗口内点「▶加载使用」从 IndexedDB 读回旧字幕覆盖刚刷新的，列表句数/⭐也不更新）。2) 翻卡 Tab 下清空生词本——clearAll 重置 _rv+切回列表 Tab（原旧队列全指向已删词条，reviewMark 连点翻完全队列弹"本轮认识 X/X"假战报）+reviewRender 空列表防御。3) 练习入口行 375px 实测折行（Playwright：⭐3句+99+角标最宽情形总宽 382px>351px 折三行）——⭐ 按钮文案缩短为「⭐ N 句」（tooltip 保留全称）+ 行 gap 8→6px + ⭐ 钮 padding 10→8px，实测一行放下（四元素 top 差 1px、零溢出）。4) updateSeg 联动预检（写入前）——句尾延后会把下一句挤到 <0.3s（甚至截断成 0.01s），之后下一句任何 ±0.1 微调都被 0.3s 校验拦死（卡死修不动）；下一句现在合法（≥0.3s）且将被挤到 <0.3s 时拦截并告知上限，下一句本来就短（历史脏数据）不拦保持旧行为。5) _findResumeFromCache 晚归门卫——getAll 异步期间用户已加载音频（?mp3=/手动）或已进练习/预习页时不再把过时"继续上次"橙条挂到顶部。6) engine.stopAll 联动复位编辑试听按钮态 app._edPlaying/_edListenResetBtn（原列表行试听 playSegment→stopAll 后工具条卡红色 ⏹、下次点按先走一遍无声"停止"分支）。7) 撤销条反向互斥（_showUndo 开头 previewMode.hideSelBar——点词/浮条入本瞬间划选浮条可能还在 180ms 延迟窗口内）+ _showFocusPhase/exit/exitFocusToSwitcher 补 vocabBook.hideUndo（撤销条 2 秒窗口内切阶段不再残留漂在重点句顶栏）。8) cacheUI.load 入口先停旧播放链 aiMode.stop+engine.stopAll（loadFromUrl/loadProject 同款——编辑页试听/循环进行中直接从缓存加载新项目时旧 _watchUntil/循环监听挂在新 src 上）。9) loadProject 无 mp3 时也清 url-audio/INPUTS（防 previewMode._getKey 读到上一个音频 URL、把旧音频的重点句记录挂到新导入的工程上）。10) #sw-update-bar 顶部 padding 并入 safe-area（PWA 独立窗口不被状态栏/灵动岛遮挡）+ ✕ 关闭按钮（不想立刻刷新可关掉，绿条不再一直挡顶栏）。11) sw.js 5xx 回退——fetch 对 502/503 是 resolve 非 reject，原直接把错误页展示给用户；现 resp.status>=500 抛错走 fromCache（4xx 如 404 是真实答案照常透传）。12) 不采纳：kaStart 与 main-audio.pause() 顺序调整——V93 设计中两者本在同一 JS 任务内完成交接（无媒体会话空白），且代码中不存在监听 main-audio pause 事件去改 mediaSession.playbackState 的路径（kaStart/kaStop 是仅有的两处主动设置，"先 paused 再闪回 playing"的路径不存在），重排动 V93/V94 精心调过的链条时序、收益为零风险为正。13) 小修五件：纯数字（"1"/"2026"/字幕编号）不包 .pw（手机误触数字不入生词本；90s/B2B/MP3 含字母保持可点）；预习题栏角标选择器升级 .btn-vocab-entry .vocab-entry-badge（元素同时挂 vocab-entry-badge/vocab-badge 两类，原同特异性下被后声明的 .vocab-badge 覆盖成 15px 小尺寸+margin-left:3px 错位）；recorder.playCmp 的 btn 声明前移（原写在引用它的 r.play().catch 之后，靠微任务时序侥幸不炸的 TDZ 风险）；vocabBook.hearSentence 播原句前先停 aiMode（否则 AI 链在原句播完后继续切句播下一句）；drawBarChart padT 12→20（柱顶时长标签画在 y-8，满格柱 y=12 时 10px 字上缘贴 Canvas 顶被裁）。sw.js 缓存名升 shadow_v97_offline_v17（5xx 回退为逻辑改动）；exportProject/全量备份 version 97（无新增 localStorage 键）；版本号统一到 V97 -->
 <!-- V96 | build:20261117 | 外部审查修复 13 项（V95 两处 UI 升级逻辑零改动）：必修2项：1) 离线缓存页整页报错——cacheUI.render 里 _libMetaLine/refreshSubs 定义在 app 对象，原写 this._libMetaLine（this=cacheUI）与 onclick="cacheUI.refreshSubs(...)"，缓存里只要有一项 render 就抛 TypeError、列表变“加载失败”、刷新字幕按钮点不动；改 app._libMetaLine/app.refreshSubs。2) 「▶ 继续上次」橙条走缓存分支（cacheUI.load→switchView('practice')）进练习页后不消失（原只在 restoreProgress 隐藏）——switchView 里 v==='practice' 统一隐藏。很可能碰到3项：3) 撤销条与划选浮条互斥（V95 注释写了没做）——两浮条同位同 z-index:10、撤销条 DOM 靠后盖上面，连续入词时「＋入生词本」被盖住看不见；新增 vocabBook.hideUndo（收条+清定时器+作废撤销索引，不报 _stripHideSoon——调方随即 _stripShow），checkSelBar 显示浮条前调用。4) 生词本面板：.vocab-tabs 补 padding:0 16px（两 Tab 原贴面板边缘）；#vocab-review 补 flex:1+min-height:0+overflow-y:auto（原小屏长例句把「不认识/认识」挤出面板被裁）。5) 练习页顶栏 375px 实测重叠（Playwright 375×667：左组右缘 163px > 居中句号下拉左缘 129.5px，重叠 33.5px；右组压下拉右缘 26.4px 系 V93 前既有状态，不动）——📔 生词挪到「预习模式」入口行（btn-practice-vocab，⭐重点句按钮右侧，样式同款；角标仍走 .vocab-badge class 多处同步），顶栏左组收窄到 ⭐ 右缘 ~126px 不再压下拉。6) .btn-vocab-entry 补 margin-left:auto——重点句阶段进度条 display:none 后剩标题/生词/退出三元素 space-between 会把生词钮挤到中间；逐句听阶段进度条 flex:1 先吃掉剩余空间此规则无影响（flexbox 先分配 flex-grow 再算 auto 边距）。小修7项：7) 翻卡战报重复计数——reviewMark(false) 先判重再进 unknownRound（同词多次“不认识”原会重复，战报出现“认识 −2”、“只练不认识的”带重复词）。8) 编辑页步进 _edStep 补 _scheduleCacheSync(15000)——原只走 updateSeg→save() 的 1.5s 防抖，连点 −.1 停手 1.5s 就把含音频的整条缓存回写一遍（V90 微调滚轮同款待遇）。9) ⭐ 启动态——ui.init 里 updatePractice 先于 previewMode.loadFromStorage，updateBadge 末尾补同步练习页 ⭐ 按钮态；toggleStar 取消 ⭐ 同时清 doneIndices“已练熟”残留（与 markStar 同款处理）。10) _findResumeFromCache bestTs 初值 -1→0——从没打开过的缓存项（时间戳 0）不该当“继续上次”目标。11) 刷新字幕重点句重映射加距离上限——开始时间差>1.5s 丢弃（原句数差异大时“就近”会标到相隔很远的另一句），toast 说明丢弃条数。12) renderEditor 末尾补 _edTuneRefresh——整体换字幕后微调条不再挂旧数值（越界自收起）。13) _edByTouch 触摸后 500ms 复位（新增 _edTouchReset，touchend/touchcancel 起、touchstart 清）——Windows 触屏本触摸一次后鼠标 mousedown 一直被双轨去重忽略、“试听”鼠标点击失效。另：manifest.webmanifest 已随项目交付（V94 加 apple-mobile-web-app-capable，iOS 独立 App 与 Safari 标签页存储不共用，升级前先 ☰→📦 备份）。sw.js 缓存名升 shadow_v96_offline_v16（无逻辑改动，仅强制刷新）；exportProject/全量备份 version 96（无新增 localStorage 键）；版本号统一到 V96 -->
 <!-- V95 | build:20261117 | 预习模式两处 UI 升级（选词/加词链路的 V87–V92 逻辑零改动，只改"位置"与"显示"）：改动1·划选浮条+撤销条移进预习顶栏：1) #pv-sel-add（「＋入生词本」）与 #vocab-undo-bar（「撤销」）原 position:fixed 写死屏幕底部（bottom:120/96px），离字幕很远；现移入 .preview-header 作直接子元素，position:absolute（left/right:0、top/bottom:-4px、z-index:10、圆角12px）出现时整条盖住顶栏一行，不用 JS 算位置。为什么选顶栏：iOS 划选后系统"复制/查询/翻译"菜单出现在选区正上方 ~44px，长句第一行的词菜单会落在字幕框顶部附近，所以不能放字幕框里；顶栏在字幕框外且更靠上，基本不重叠。2) 浮条显示期间顶栏原内容让位：.preview-header 加 strip-on 类，.preview-header.strip-on > :not(#pv-sel-add):not(#vocab-undo-bar) { visibility:hidden }——必须 visibility 不能 display:none：顶栏高度变化会挤动字幕框，正在划的选区位置会跳、字号自适应会重算。新增 previewMode._stripShow/_stripHideSoon/_stripHideNow 三方法统一管理：任何一条浮条显示时 _stripShow（checkSelBar 显示分支、vocabBook._showUndo）；任何一条隐藏时 _stripHideSoon（checkSelBar 两个隐藏分支含 180ms 延迟、hideSelBar、dismissSelBar、撤销条 4 秒自动隐藏、undoLast）——另一条仍在显示则什么都不做，否则起 400ms 定时器、到点二次确认后才移除；延迟 400ms 的原因：浮条在 touchend 里同步消失后 iOS 可能补发一次 click 落到下方元素，顶栏有「✕ 退出」「📔 生词」，落上去会直接退出预习/弹出生词本——400ms 内 visibility:hidden 点不到即落空，与 _selFire('tend')/_xTouchEnd 里已有的 preventDefault（V94 审1，代码行不变仅更新注释语境）互为双保险；切句(_gotoSentence)/进重点句(_showFocusPhase)/退出(exit、tryExit、exitFocusToSwitcher)用 _stripHideNow 立即恢复。3) #pv-sel-text/#vocab-undo-text 由多行 word-break 改单行省略（flex:1+min-width:0+overflow:hidden+ellipsis+nowrap，长词组不再撑爆浮条）；浮条内按钮补触控高度：＋入生词本/撤销 min-height:36px（padding 6→8px）、✕ 28→36px。4) 加入成功不再弹底部 ui.toast——撤销条已在顶栏显示同样信息（重复打扰）；「已在生词本」「太长」「没有选中的词」等提示照旧。5) 收尾配套：_showFocusPhase 补 hideSelBar（earlyFinish 从逐句听底部按钮进入时浮条可能正显示，原来会残浮在重点句界面上）。改动2·顶栏进度文字改细进度条：6) #preview-progress-text（"进度 4/444 ⭐3"）与字幕框「#4/444」徽章重复，改为 #preview-progress（flex 横排：.pv-bar 细条 flex:1 高 6px 底 #EEE 圆角 + .pv-bar-fill 高 100% var(--preview) transition:width .25s + 右侧 #pv-star-count 12px var(--preview) "⭐N"，0 个时清空）；整个容器 pointer-events:none 只显示不可点不可拖（防误触）；role=progressbar 带 aria-valuemin/max/now，aria-label"第 n / N 句"随 _gotoSentence 更新；_gotoSentence 早退路径（最后一句的"下一句"）先把进度条设 100% 再 _finishListenPhase（最后一句刚完成，进度应视为走完）；_showFocusPhase 隐藏进度条（重点句阶段进度无意义）、_showListenPhase 恢复；字幕框「#n/N」徽章保持不变。验收自查：浮条盖顶栏期间字幕框高度/位置/字号不变（visibility 保高度）；✕ 关闭后选区被清、浮条不回弹、连点不误触「退出/生词」；0.4s 内顶栏恢复；切句立即恢复；进重点句进度条消失、回逐句听恢复；横竖屏/iPad/电脑鼠标划选布局稳定。sw.js 缓存名升 shadow_v95_offline_v15（无逻辑改动，仅强制刷新）；exportProject/全量备份 version 95（无新增 localStorage 键）；版本号统一到 V95 -->
 <!-- 影子跟读 Pro V74 | build:20261112 | 新增：基于 IndexedDB 的离线缓存系统——音频+字幕下载后持久化保存，移动网络下也能离线使用；新增「离线缓存」Tab 可查看/播放/删除已缓存项目；加载流程改为先查缓存(0网络请求秒开)，未命中才联网且下载成功后自动回写；缓存命中但本地 segments 被改过时弹窗询问用本地还是原缓存；弱网(2g/slow-2g/省流)下给提示 -->
@@ -41,7 +42,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V96</title>
+<title>影子跟读 Pro V97</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -89,8 +90,10 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .btn-exit-preview { border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
 /* V84: 生词本入口按钮（预习顶栏） */
 .btn-vocab-entry { position: relative; border: 1px solid var(--preview-border); background: var(--preview-light); color: var(--preview); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; margin-left: auto; } /* V96(外审6): 重点句阶段进度条 display:none 后剩标题/生词/退出三元素，space-between 会让生词居中——auto 边距推到右侧；逐句听阶段进度条 flex:1 先吃掉全部剩余空间，此规则无影响 */
-.vocab-entry-badge { display: none; position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
-.vocab-entry-badge.show { display: inline-block; }
+/* V97(外审13): 选择器升级为 .btn-vocab-entry 前缀——角标元素同时挂 vocab-entry-badge/vocab-badge 两类，
+   原来同特异性下被后声明的 .vocab-badge（520 行区）覆盖成 15px 小尺寸+margin-left:3px 错位 */
+.btn-vocab-entry .vocab-entry-badge { display: none; position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; text-align: center; margin-left: 0; }
+.btn-vocab-entry .vocab-entry-badge.show { display: inline-block; }
 
 /* 预习阶段：逐句听 */
 /* V84.1: 加滚动兜底——小屏/横屏/iPad分屏高度不够时可上下滚动，底部按钮不再被裁掉 */
@@ -259,10 +262,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 .practice-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0; height: 40px; position: relative; z-index: 20; }
 .icon-btn { font-size: 24px; cursor: pointer; padding: 5px; color: #5F6368; z-index: 2; user-select: none; }
+.icon-btn.timing { color: var(--orange); } /* V97(改4): 定时倒计时中 ⏰ 橙色高亮 */
 .header-right-group { display: flex; align-items: center; gap: 10px; z-index: 2; }
 .sleep-wrapper { position: relative; display: flex; align-items: center; }
 .sleep-display { font-size: 13px; color: var(--orange); font-weight: bold; margin-left: 4px; display: none; font-family: monospace; }
-.sleep-popup { position: absolute; top: 100%; right: 0; background: #fff; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; display: none; width: 180px; z-index: 100; margin-top: 5px; }
+.sleep-popup { position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; display: none; width: 180px; z-index: 100; margin-top: 5px; } /* V97(改4): 按钮挪到字幕行行首，弹层改左对齐（原右对齐会伸出屏幕左缘） */
 .sleep-popup.show { display: block; }
 .text-toggle { font-size: 14px; font-weight: 600; color: var(--primary); cursor: pointer; padding: 5px; }
 .jump-select-wrapper { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; width: 100%; text-align: center; pointer-events: none; }
@@ -509,7 +513,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 /* ============ V94 ============ */
 /* 练习页细进度条 */
-.pp-progress { height: 5px; background: #E8F0FE; border-radius: 3px; overflow: hidden; margin: 4px 6px 2px; flex-shrink: 0; }
+.pp-progress { height: 5px; background: #E8F0FE; border-radius: 3px; overflow: hidden; margin: 6px 6px 14px; flex-shrink: 0; } /* V97(改4): 下边距 2→14px——与「字幕1/2/3」按钮行拉开距离 */
 .pp-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary), #34A853); border-radius: 3px; transition: width .25s ease; }
 /* 练习页 header 小按钮组（三态显隐 / ⭐ / 📔） */
 .pp-mini-btn { border: 1px solid #ddd; background: #fff; color: #5f6368; border-radius: 6px; font-size: 11px; padding: 3px 8px; cursor: pointer; font-weight: 700; transition: .2s; white-space: nowrap; position: relative; }
@@ -527,19 +531,10 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .idx-badge { cursor: pointer; -webkit-user-select: none; user-select: none; }
 .idx-badge.ed-sel-badge { background: var(--primary); color: #fff; }
 .idx-badge:active { opacity: .7; }
-/* 编辑界面微调工具条 */
-#ed-tune-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 950; background: #fff; border-top: 1px solid #DADCE0; box-shadow: 0 -3px 14px rgba(0,0,0,.10); padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px)); max-width: 800px; margin: 0 auto; }
-.edt-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
-.edt-row:last-child { margin-bottom: 0; }
-.edt-idx { font-size: 12px; font-weight: 800; color: var(--primary); background: #E8F0FE; border-radius: 8px; padding: 4px 8px; flex-shrink: 0; }
-.edt-name { font-size: 11px; font-weight: 700; color: #5F6368; flex-shrink: 0; }
-.edt-btn { border: 1px solid #DADCE0; background: #fff; color: #3C4043; border-radius: 8px; min-width: 34px; padding: 6px 4px; font-size: 12px; font-weight: 800; cursor: pointer; font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
-.edt-btn:active { background: var(--primary); color: #fff; }
-.edt-val { min-width: 50px; text-align: center; font-family: ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 800; color: #202124; background: #F1F3F4; border-radius: 8px; padding: 6px 2px; flex-shrink: 0; }
-.edt-listen { border: none; background: var(--primary); color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 800; cursor: pointer; flex-shrink: 0; margin-left: auto; }
+/* 编辑界面微调工具条 V97(改3): fixed 屏幕底部改内联卡片——紧跟所调句子的下方；句首/句尾改预习同款滚轮，复用 .pt-* 样式 */
+#ed-tune-bar { background: #F0F7FF; border: 1.5px solid var(--primary); border-radius: 12px; padding: 10px 6px 8px; margin: 8px 0; } /* V97(改3): 左右 10→6px——375px 下两分组(160×2+gap) 差 1px 折行，收到 6px 后一行放下 */
+.edt-listen { border: none; background: var(--primary); color: #fff; border-radius: 8px; padding: 6px 10px; min-height: 36px; font-size: 12px; font-weight: 800; cursor: pointer; flex-shrink: 0; }
 .edt-listen.playing { background: var(--red); }
-.edt-close { border: 1px solid #DADCE0; background: #F1F3F4; color: #5F6368; border-radius: 10px; padding: 6px 10px; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; margin-left: auto; }
-.edt-info { font-size: 11px; color: #999; flex-shrink: 0; margin-right: 2px; }
 /* 重点句 ⚙ 收纳行 */
 .focus-more-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 2px; background: #FAFAFA; border: 1px solid #EEE; border-radius: 10px; padding: 8px; }
 .focus-more-toggle.active { background: var(--primary); color: #fff; }
@@ -567,7 +562,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .rv-done { text-align: center; padding: 30px 10px; }
 .rv-done-num { font-size: 40px; font-weight: 800; color: var(--preview); }
 /* SW 更新提示条（审7） */
-#sw-update-bar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 8000; background: #137333; color: #fff; padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+#sw-update-bar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 8000; background: #137333; color: #fff; padding: calc(10px + env(safe-area-inset-top, 0px)) 48px 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.25); } /* V97(外审10): 顶边距并入安全区（PWA 独立窗口不被状态栏/灵动岛遮挡）；右侧 48px 留给 ✕ 关闭 */
+#sw-update-close { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; line-height: 34px; text-align: center; font-size: 18px; font-weight: 400; border-radius: 8px; }
+#sw-update-close:active { background: rgba(255,255,255,.2); }
 /* 恢复条加大（继续上主入口） */
 .restore-bar { padding: 14px 16px; font-size: 14px; font-weight: 600; }
 </style>
@@ -577,9 +574,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     ▶ 继续上次：<strong>《<span id="restore-title">...</span>》</strong> 第 <span id="restore-idx">1</span> 句
 </div>
 <!-- V94(审7): SW 新版本就绪提示条（updatefound 触发显示，点击刷新页面） -->
-<div id="sw-update-bar" onclick="location.reload()">🆕 新版本已就绪，点击刷新</div>
+<div id="sw-update-bar" onclick="location.reload()">🆕 新版本已就绪，点击刷新<span id="sw-update-close" onclick="event.stopPropagation(); this.parentNode.style.display='none';" title="暂不刷新">✕</span></div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V96</div>
+    <div class="nav-title">🎧 影子跟读 V97</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -748,17 +745,6 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 </div>
                 <div class="header-right-group">
                     <button style="border:1px solid #ddd;background:#fff;color:#5f6368;border-radius:4px;font-size:11px;padding:2px 6px;cursor:pointer;font-weight:bold;" onclick="openStats()" aria-label="跟读统计">📊</button>
-                    <div class="sleep-wrapper">
-                        <div class="icon-btn" onclick="ui.toggleSleepModal()">⏰</div>
-                        <div id="sleep-display" class="sleep-display"></div>
-                        <div id="sleep-popup" class="sleep-popup">
-                            <div style="font-size:12px;color:#666;margin-bottom:5px;">定时关闭(分钟)</div>
-                            <div style="display:flex;gap:5px;">
-                                <input type="number" id="sleep-input" value="30" min="1" max="100" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;">
-                                <button class="btn-mini" onclick="app.startSleepTimer()">开始</button>
-                            </div>
-                        </div>
-                    </div>
                     <div id="text-toggle-btn" class="text-toggle" onclick="ui.toggleTextBlur()">👁 显示</div>
                 </div>
             </div>
@@ -766,6 +752,21 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <!-- V94: 细进度条——孩子看得见离终点还有多远（(当前句+1)/总句数） -->
             <div class="pp-progress" role="progressbar" aria-label="学习进度"><div class="pp-progress-fill" id="pp-progress-fill" style="width:0%"></div></div>
             <div class="sub-switcher" style="position: relative; padding-right: 78px;">
+                <!-- V97(改4): ⏰ 定时从顶栏挪到本行行首（字幕1 前面，顶栏腾位给句号下拉）；运行中橙色高亮，弹层内可取消 -->
+                <div class="sleep-wrapper">
+                    <div class="icon-btn" id="sleep-btn" style="font-size:19px;padding:3px 4px;" onclick="ui.toggleSleepModal()">⏰</div>
+                    <div id="sleep-display" class="sleep-display"></div>
+                    <div id="sleep-popup" class="sleep-popup">
+                        <div style="font-size:12px;color:#666;margin-bottom:5px;">定时关闭(分钟)</div>
+                        <div style="display:flex;gap:5px;">
+                            <input type="number" id="sleep-input" value="30" min="1" max="100" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;">
+                            <button class="btn-mini" onclick="app.startSleepTimer()">开始</button>
+                        </div>
+                        <div id="sleep-cancel-row" style="display:none;margin-top:8px;">
+                            <button class="btn-mini" style="width:100%;background:var(--orange);color:#fff;border:none;" onclick="app.cancelSleepTimer()">⏹ 取消定时</button>
+                        </div>
+                    </div>
+                </div>
                 <button class="sub-btn active" onclick="ui.switchSubTab(0)">字幕1</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(1)">字幕2</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(2)">字幕3</button>
@@ -791,13 +792,14 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 </div>
 
                 <!-- 预习模式入口 + V88 ⭐N 个重点句（数量写全） + 速率滚轮（右端带字样） -->
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap;">
                     <button class="btn-preview-entry" id="btn-preview-entry" onclick="previewMode.start()">
                         📚 预习模式
                     </button>
                     <!-- V88: 原来只有一个红数字角标（用户不知道是什么意思），改为按钮文案自带数量；
                          有重点句就显示（不再要求先完成预习），点击即查看/练习重点句 -->
-                    <button id="btn-goto-focus" style="display:none;background:var(--preview-light);color:var(--preview);border:1.5px solid var(--preview-border);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="previewMode.enterFocusPhase()" title="查看/练习已标记的重点句">⭐ <span id="goto-focus-count">0</span> 个重点句</button>
+                    <!-- V97(外审3): 实测 375px 最宽情形（⭐3句+99+角标）总宽 382px>351px 折三行——文案缩短（⭐ N 句，tooltip 保留全称）+ 行 gap 8→6px -->
+                    <button id="btn-goto-focus" style="display:none;background:var(--preview-light);color:var(--preview);border:1.5px solid var(--preview-border);border-radius:8px;padding:4px 8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;" onclick="previewMode.enterFocusPhase()" title="查看/练习已标记的重点句">⭐ <span id="goto-focus-count">0</span> 句</button>
                     <!-- V96(外审5): 📔 生词本入口从练习页顶栏挪来（顶栏 375px 放不下，见上方注释） -->
                     <button id="btn-practice-vocab" style="background:var(--preview-light);color:var(--preview);border:1.5px solid var(--preview-border);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;" onclick="vocabBook.open()" title="生词本（点词/划词入本，翻卡复习；跨音频共用）">📔 生词<span class="vocab-badge"></span></button>
                     <div style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0;">
@@ -864,7 +866,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     <button class="pv-sel-btn" onclick="vocabBook._selFire('click')" ontouchstart="vocabBook._selFire('tstart', event)" ontouchend="vocabBook._selFire('tend', event)" ontouchcancel="vocabBook._selFire('tcancel')">＋入生词本</button>
                     <button class="pv-sel-x" onclick="vocabBook.dismissSelBar()" ontouchend="vocabBook._xTouchEnd(event)">✕</button>
                 </div>
-                <!-- V95: 撤销条（4 秒自动隐藏）；与划选浮条互斥，任何一条在显示顶栏就让位 -->
+                <!-- V95: 撤销条（V97 改 2 秒自动隐藏）；与划选浮条互斥，任何一条在显示顶栏就让位 -->
                 <div id="vocab-undo-bar">
                     <span id="vocab-undo-text"></span>
                     <button class="vocab-undo-btn" onclick="vocabBook.undoLast()">撤销</button>
@@ -967,6 +969,8 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <div class="focus-control-area">
                     <!-- V94: 连读设置收纳——主行只留「▶ 连读」+速度+⚙（375px/360px 都宽松），
                          遍数/留白/秒数/↺ 收进 ⚙ 展开行，不再逐版调像素 -->
+                    <!-- V97(改5): 遍数/↺ 移到主行速度滚轮后面（默认隐藏，点 ⚙ 展开）；留白+秒数仍在展开行——
+                         原来四样全收在第二行，主行只剩 连读+速度+⚙ 显得空、展开又多占一整行 -->
                     <div class="focus-reps-row" id="focus-reps-row">
                         <button class="btn-focus-read" id="btn-focus-read" onclick="previewMode.toggleFocusRead()" title="连读播放全部未练熟的重点句（句间/遍间留白跟随 ⚙ 里的留白设置）">▶ 连读</button>
                         <span class="ctrl-lbl" title="朗读速度">速度</span>
@@ -978,17 +982,20 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                             <option value="1.25">1.25×</option>
                             <option value="1.5">1.5×</option>
                         </select>
+                        <span id="focus-reps-inline" style="display:none;align-items:center;gap:2px;">
+                            <span class="ctrl-lbl">遍数</span>
+                            <select class="focus-wheel" id="focus-reps-sel" onchange="previewMode.setFocusReps(parseInt(this.value)); if(!_isIOSDevice()) this.blur()" aria-label="连读遍数" title="连读遍数">
+                                <option value="1">1遍</option>
+                                <option value="2">2遍</option>
+                                <option value="3">3遍</option>
+                                <option value="4">4遍</option>
+                                <option value="5">5遍</option>
+                            </select>
+                            <button class="focus-reset-btn" id="focus-reset-btn" onclick="previewMode.resetFocusSettings()" title="恢复默认：遍数1 · 速率1.0× · 留白固定1.5s">↺</button>
+                        </span>
                         <button id="focus-more-toggle" class="focus-tool-btn focus-more-toggle" style="margin-left:auto;" title="连读更多设置（遍数/留白/重置）" onclick="previewMode.toggleFocusMore()">⚙</button>
                     </div>
                     <div class="focus-more-row" id="focus-more-row" style="display:none;">
-                        <span class="ctrl-lbl">遍数</span>
-                        <select class="focus-wheel" id="focus-reps-sel" onchange="previewMode.setFocusReps(parseInt(this.value)); if(!_isIOSDevice()) this.blur()" aria-label="连读遍数" title="连读遍数">
-                            <option value="1">1遍</option>
-                            <option value="2">2遍</option>
-                            <option value="3">3遍</option>
-                            <option value="4">4遍</option>
-                            <option value="5">5遍</option>
-                        </select>
                         <span class="ctrl-lbl">留白</span>
                         <select class="focus-wheel" id="focus-gap-sel" onchange="ui.setLoopGap(this.value); if(!_isIOSDevice()) this.blur()" aria-label="循环跟读留白（单句循环/连读共用）" title="循环跟读留白（单句循环/连读共用）">
                             <option value="fixed">固定1.5s</option>
@@ -997,7 +1004,6 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                             <option value="1.5x">1.5x句</option>
                         </select>
                         <input type="number" id="focus-gap-sec" class="focus-gap-input" min="0.2" max="20" step="0.1" value="1.5" onchange="ui.setLoopGapSec(this.value)" title="固定留白秒数（0.2~20，可小数）">
-                        <button class="focus-reset-btn" id="focus-reset-btn" onclick="previewMode.resetFocusSettings()" title="恢复默认：遍数1 · 速率1.0× · 留白固定1.5s">↺</button>
                     </div>
                     <div class="control-grid">
                         <button class="btn-action btn-orange" id="focus-btn-loop" onclick="engine.toggleLoop()">🔁 循环单句</button>
@@ -1067,27 +1073,34 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 <!-- V94: 编辑界面时间轴微调工具条（点序号徽章选中后弹出，fixed 底部不占列表高度） -->
 <div id="ed-tune-bar" style="display:none;">
-    <div class="edt-row">
-        <span class="edt-idx" id="edt-idx">#1</span>
-        <span class="edt-name">句首</span>
-        <button class="edt-btn" onclick="app._edStep('start',-0.5)">−.5</button>
-        <button class="edt-btn" onclick="app._edStep('start',-0.1)">−.1</button>
-        <span class="edt-val" id="edt-start-val">0.00</span>
-        <button class="edt-btn" onclick="app._edStep('start',0.1)">+.1</button>
-        <button class="edt-btn" onclick="app._edStep('start',0.5)">+.5</button>
-        <button id="edt-listen" class="edt-listen" title="短按=精确本句（核对切点）；长按≈0.5秒=扩边听感+上一句尾/下一句头各约1.5s（校对拆分点接得顺不顺）；播放中点按=停止"
-            ontouchstart="app._edListenDown(event)" ontouchend="app._edListenUp(event)" ontouchcancel="app._edListenCancel(event)"
-            onmousedown="app._edListenDown(event)" onmouseup="app._edListenUp(event)" onmouseleave="app._edListenCancel(event)">▶ 试听</button>
+    <!-- V97(改3): 与预习模式统一的滚轮版——句首/句尾 提前/延后 滚轮（相对原始时间 0~3.0s 绝对偏移）
+         + 试听（短按精确本句/长按扩边）+ ↺ 重置 + ✕ 收起；条子内联插在所调句子的下方（不再 fixed 屏幕底部） -->
+    <div class="pt-line pt-wheel-line">
+        <!-- V97(改3): 无序号徽章——信息行已显示 #N；徽章会让 375px 四滚轮折行（预习同款一行布局） -->
+        <span class="pt-group">
+            <span class="pt-name">句首</span>
+            <span class="pt-dir">提前</span>
+            <select class="pt-wheel" id="edt-start-early" onchange="app.edTuneWheel('start', 1, this)" aria-label="句首提前秒数" title="句首提前（相对原始时间，0.1~3.0s）"></select>
+            <span class="pt-dir">延后</span>
+            <select class="pt-wheel" id="edt-start-late" onchange="app.edTuneWheel('start', -1, this)" aria-label="句首延后秒数" title="句首延后（相对原始时间，0.1~3.0s）"></select>
+        </span>
+        <span class="pt-group">
+            <span class="pt-name">句尾</span>
+            <span class="pt-dir">提前</span>
+            <select class="pt-wheel" id="edt-end-early" onchange="app.edTuneWheel('end', 1, this)" aria-label="句尾提前秒数" title="句尾提前（相对原始时间，0.1~3.0s）"></select>
+            <span class="pt-dir">延后</span>
+            <select class="pt-wheel" id="edt-end-late" onchange="app.edTuneWheel('end', -1, this)" aria-label="句尾延后秒数" title="句尾延后（相对原始时间，0.1~3.0s）"></select>
+        </span>
     </div>
-    <div class="edt-row">
-        <span class="edt-info" id="edt-info">句长 --</span>
-        <span class="edt-name">句尾</span>
-        <button class="edt-btn" onclick="app._edStep('end',-0.5)">−.5</button>
-        <button class="edt-btn" onclick="app._edStep('end',-0.1)">−.1</button>
-        <span class="edt-val" id="edt-end-val">0.00</span>
-        <button class="edt-btn" onclick="app._edStep('end',0.1)">+.1</button>
-        <button class="edt-btn" onclick="app._edStep('end',0.5)">+.5</button>
-        <button class="edt-close" onclick="app._edBarHide()" title="收起工具条">✕</button>
+    <div class="pt-info-line">
+        <span class="pt-info" id="edt-info">#1 -- ~ -- (--)</span>
+        <span class="pt-ops">
+            <button class="edt-listen" id="edt-listen" title="短按=精确本句（核对切点）；长按≈0.5秒=扩边听感+上一句尾/下一句头各约1.5s（校对拆分点接得顺不顺）；播放中点按=停止"
+                ontouchstart="app._edListenDown(event)" ontouchend="app._edListenUp(event)" ontouchcancel="app._edListenCancel(event)"
+                onmousedown="app._edListenDown(event)" onmouseup="app._edListenUp(event)" onmouseleave="app._edListenCancel(event)">▶ 试听</button>
+            <button class="pt-mini pt-reset" id="edt-reset" onclick="app.edTuneReset()">↺ 重置</button>
+            <button class="pt-mini" onclick="app._edBarHide()" title="收起微调条">✕</button>
+        </span>
     </div>
 </div>
 <!-- V95: #pv-sel-add 已移入 .preview-header（出现时盖住整条顶栏，V87/V88/V92 注释随元素迁移）；
@@ -1436,6 +1449,10 @@ const cacheUI = {
     },
     async load(id) {
         const _seq = ++state._audioLoadSeq; // V84.1r2: 加载代数——并发加载时只认最后一次
+        // V97(外审8): 入口先停旧播放链（loadFromUrl/loadProject 同款）——编辑页试听/循环进行中直接从缓存
+        // 加载新项目时，旧 _watchUntil/循环监听还会挂在 <audio> 的新 src 上
+        try { if (aiMode.active) aiMode.stop(); } catch(eStop) {}
+        try { engine.stopAll(); } catch(eStop) {}
         // 备份当前工程（含音频状态）：cancel / 加载失败时恢复（参考 loadFromUrl 的 restoreBackup 模式）
         const backupSegments = state.segments;
         const backupCurrIndex = state.currIndex;
@@ -1879,6 +1896,7 @@ const engine = {
     },
     stopAll(releaseMic = false) {
         this._playSeq++; // V86: 播放代数递增——作废所有在途 play() 的晚到回调
+        this._pausedFrom = null; // V97(改6): 常规停播作废"待恢复模式"（锁屏暂停 handler 在 stopAll 之后另行写回）
         this.mode = 'IDLE'; this.isWaiting = false;
         // V84: 连读中断联动——任何 stopAll（点循环/播单句/切页/锁屏暂停等）都先终止重点句连读链，
         // 防连读定时器残留继续播下一句/下一遍（quiet=true 只清 flag/定时器/按钮，不动音频，由本次 stopAll 统一清）
@@ -1900,6 +1918,9 @@ const engine = {
         if (recorder.cmpTimer) { clearInterval(recorder.cmpTimer); recorder.cmpTimer = null; }
         // P2-2: 清理 playCmp 内部延时播放录音的定时器
         if (recorder._playCmpTimer) { clearTimeout(recorder._playCmpTimer); recorder._playCmpTimer = null; }
+        // V97(外审6): 编辑页工具条「▶ 试听」播放中若点了列表行「▶ 试听」（playSegment→stopAll），原来不复位
+        // app._edPlaying/按钮——工具条按钮卡红色 ⏹，下次点按先走一遍无声的"停止"分支
+        try { if (typeof app !== 'undefined' && app && app._edPlaying) { app._edPlaying = false; if (typeof app._edListenResetBtn === 'function') app._edListenResetBtn(); } } catch(e) {}
         ui.resetButtons();
     },
     playSegment(i) {
@@ -2229,6 +2250,39 @@ const engine = {
         if (!state.segments.length) { ui.toast("请先加载内容"); return false; }
         if (!document.getElementById('main-audio').src) { ui.toast("音频未就绪"); return false; }
         return true;
+    },
+    // V97(改6): 锁屏 ▶ 恢复暂停前的引擎模式——mediaSession pause handler 记下模式（stopAll 后写回
+    // _pausedFrom），play handler 调本方法按记录续播。原来一律 playOnce：磨耳朵/区间/单句循环被锁屏
+    // 暂停后，每次按 ▶ 都把"暂停时那句话"重播一遍、永远不推进（用户实测"一直播放暂停时候那句话"）
+    _pausedFrom: null,
+    resumePaused() {
+        var from = this._pausedFrom || null;
+        this._pausedFrom = null;
+        if (from === 'LOOP_ONE') { this.toggleLoop(); return; }        // 从当前句重挂单句循环
+        if (from === 'LOOP_RANGE') { this.toggleRangeLoop(); return; } // V85 语义：从当前句续区间
+        if (from === 'FOCUS_READ') { try { previewMode.toggleFocusRead(); return; } catch(e) {} } // 从光标续连读
+        if (from === 'PREVIEW_PLAY') { try { previewMode._playCurrentSentence(); return; } catch(e) {} }
+        if (from === 'FULL_PLAY') { this.resumeFullPlay(); return; }   // 从暂停处续磨耳朵（不回开头）
+        this.playOnce(); // 无记录（暂停前本就闲着/记录被后续操作作废）：维持原行为
+    },
+    // V97(改6): 磨耳朵续播——toggleFullPlay 会 currentTime=0 回开头，续播要保住暂停位置
+    resumeFullPlay() {
+        this.stopAll();
+        var a = document.getElementById('main-audio');
+        if (!a || !a.src) return;
+        var self = this;
+        a.loop = true;
+        applyPlaybackRate(a, state.playbackRate);
+        a.play().then(function() {
+            self.mode = 'FULL_PLAY';
+            var btn = document.getElementById('btn-full-play'); btn.classList.add('active'); btn.innerText = "⏹ 停止";
+            self.startTicker();
+        }).catch(function(e) {
+            console.error(e);
+            if (e && e.name === 'AbortError') return; // 被下一次操作打断，非真失败
+            if (self.mode === 'FULL_PLAY') { self.mode = 'IDLE'; ui.resetButtons(); }
+            try { a.pause(); } catch(e2) {}
+        });
     }
 };
 
@@ -2431,7 +2485,13 @@ const ui = {
             .replace(/'/g, '&#39;');
     },
     renderEditor(opts) {
-        const l = document.getElementById('editor-list'); l.innerHTML = '';
+        const l = document.getElementById('editor-list');
+        // V97(改3): 清空前把微调条挪回 body 停车——条子现在内联住在列表里，innerHTML='' 会把它销毁
+        try {
+            const _tb = document.getElementById('ed-tune-bar');
+            if (_tb && _tb.parentNode && _tb.parentNode.id === 'editor-list') document.body.appendChild(_tb);
+        } catch(e) {}
+        l.innerHTML = '';
         document.getElementById('row-count').innerText = state.segments.length;
         state.segments.forEach((s, i) => {
             const d = document.createElement('div'); d.className = 'sub-item';
@@ -2468,6 +2528,7 @@ const ui = {
         // 下载大文件期间页面被 iOS 回收重载后旧工程字幕就丢了）
         if (!(opts && opts.noSave)) app.save();
         // V96(外审·小6): 整体换字幕后微调条可能还挂着旧句数值——句号越界时 _edTuneRefresh 自己收起
+        // V97(改3): _edTuneRefresh 现在还负责把条子挂回重建后的所选行下方
         try { app._edTuneRefresh(); } catch(e) {}
     },
     updatePractice(idx) {
@@ -2568,7 +2629,9 @@ const ui = {
                         if (engine.mode !== 'IDLE' && engine._kaEl && !engine._kaEl.paused) return;
                         var a = document.getElementById('main-audio');
                         if (engine.mode === 'IDLE') {
-                            engine.playOnce();
+                            // V97(改6): 恢复暂停前的引擎模式——原来一律 playOnce：磨耳朵/区间循环/单句循环被
+                            // 锁屏暂停后每次 ▶ 都把当前句重播一遍、永远不推进（"一直播放暂停时那句话"）
+                            engine.resumePaused();
                         } else if (a && a.src && a.paused) {
                             var p = a.play();
                             if (p && p.catch) p.catch(function(e) { console.warn('mediaSession play err:', e); });
@@ -2581,7 +2644,13 @@ const ui = {
                 ms.setActionHandler('pause', function() {
                     try {
                         if (aiMode.active) { aiMode.stop(); }
-                        else { engine.stopAll(); }
+                        else {
+                            // V97(改6): 先记下暂停时的引擎模式再停，锁屏 ▶ 按它恢复原模式
+                            // （stopAll 会清 _pausedFrom，所以在 stopAll 之后写回）
+                            var wasMode = engine.mode;
+                            engine.stopAll();
+                            try { engine._pausedFrom = (wasMode && wasMode !== 'IDLE') ? wasMode : null; } catch(e2) {}
+                        }
                     } catch(e) {}
                 });
             } catch(e) {}
@@ -2766,9 +2835,6 @@ const app = {
         if (this._edSelIdx === i) { this._edBarHide(); return; }
         if (!state.segments[i]) return;
         this._edSelIdx = i;
-        const bar = document.getElementById('ed-tune-bar');
-        if (bar) bar.style.display = 'block';
-        this._edTuneRefresh();
         document.querySelectorAll('.sub-item.ed-selected').forEach(el => el.classList.remove('ed-selected'));
         document.querySelectorAll('.idx-badge.ed-sel-badge').forEach(el => el.classList.remove('ed-sel-badge'));
         const row = document.getElementById('ed-row-' + i);
@@ -2776,44 +2842,135 @@ const app = {
             row.classList.add('ed-selected');
             const badge = row.querySelector('.idx-badge');
             if (badge) badge.classList.add('ed-sel-badge');
-            try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch(e) {}
         }
+        this._edTuneRefresh(); // V97(改3): 负责把条子挂到所选行下方并刷新滚轮回显
+        const bar = document.getElementById('ed-tune-bar');
+        if (bar && row) { try { bar.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch(e) {} } // 条子在句子下方，滚到看得见
     },
     _edBarHide() {
         this._edSelIdx = null;
         clearTimeout(this._edLTimer); this._edLongFired = false;
         if (this._edPlaying) { try { engine.stopAll(); } catch(e) {} }
         this._edPlaying = false;
-        const bar = document.getElementById('ed-tune-bar'); if (bar) bar.style.display = 'none';
+        const bar = document.getElementById('ed-tune-bar');
+        if (bar) {
+            bar.style.display = 'none';
+            // V97(改3): 挪回 body 停车——renderEditor 清空列表 innerHTML 会把住在列表里的条子销毁
+            try { if (bar.parentNode && bar.parentNode.id === 'editor-list') document.body.appendChild(bar); } catch(e) {}
+        }
         document.querySelectorAll('.sub-item.ed-selected').forEach(el => el.classList.remove('ed-selected'));
         document.querySelectorAll('.idx-badge.ed-sel-badge').forEach(el => el.classList.remove('ed-sel-badge'));
         const b = document.getElementById('edt-listen'); if (b) { b.innerText = '▶ 试听'; b.classList.remove('playing'); }
+    },
+    _edWheelsBuilt: false,
+    _edBuildWheels() { // V97(改3): 编辑页滚轮选项（与预习 _buildTuneWheels 同款：0~3.0s、0.1 步进）；幂等
+        if (this._edWheelsBuilt) return;
+        ['edt-start-early', 'edt-start-late', 'edt-end-early', 'edt-end-late'].forEach(id => {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            for (let i = 0; i <= 30; i++) {
+                const v = i / 10;
+                const opt = document.createElement('option');
+                opt.value = String(v);
+                opt.innerText = (v === 0) ? '0' : v.toFixed(1);
+                if (i === 0) opt.selected = true;
+                sel.appendChild(opt);
+            }
+        });
+        this._edWheelsBuilt = true;
     },
     _edTuneRefresh() {
         if (this._edSelIdx == null) return;
         const seg = state.segments[this._edSelIdx];
         if (!seg) { this._edBarHide(); return; }
+        this._edBuildWheels();
         const s = isFinite(seg.start) ? seg.start : 0, e2 = isFinite(seg.end) ? seg.end : 0;
-        const idxEl = document.getElementById('edt-idx'); if (idxEl) idxEl.innerText = '#' + (this._edSelIdx + 1);
-        const sv = document.getElementById('edt-start-val'); if (sv) sv.innerText = s.toFixed(2);
-        const ev = document.getElementById('edt-end-val'); if (ev) ev.innerText = e2.toFixed(2);
-        const info = document.getElementById('edt-info'); if (info) info.innerText = '句长 ' + Math.max(0, e2 - s).toFixed(2) + 's';
-        // 同步该行输入框（步进/试听后编辑页显示与 state 一致）
+        // V97(改3): 条子紧跟所选句子的下方（原 fixed 屏幕底部离句子远）；renderEditor 重建列表后也经这里挂回
+        const bar = document.getElementById('ed-tune-bar');
+        const row = document.getElementById('ed-row-' + this._edSelIdx);
+        if (bar) {
+            if (row && row.parentNode && (bar.parentNode !== row.parentNode || bar.previousElementSibling !== row)) {
+                try { row.insertAdjacentElement('afterend', bar); } catch(e) {}
+            }
+            bar.style.display = row ? 'block' : 'none';
+        }
+        const info = document.getElementById('edt-info');
+        if (info) info.innerText = '#' + (this._edSelIdx + 1) + '  ' + s.toFixed(2) + 's ~ ' + e2.toFixed(2) + 's  (' + Math.max(0, e2 - s).toFixed(2) + 's)';
+        const resetBtn = document.getElementById('edt-reset');
+        if (resetBtn) resetBtn.disabled = (seg._os === undefined && seg._oe === undefined);
+        // 4 滚轮按实际偏移回显（同预习 _updateTuneUI：偏移=当前时间与原始时间 _os/_oe 的差，四舍五入到 0.1 档）
+        const so = seg._os !== undefined ? seg._os : seg.start;
+        const eo = seg._oe !== undefined ? seg._oe : seg.end;
+        const se = document.getElementById('edt-start-early'), sl = document.getElementById('edt-start-late');
+        const ee = document.getElementById('edt-end-early'), el2 = document.getElementById('edt-end-late');
+        if (se) se.value = String(Math.max(0, Math.round((so - seg.start) * 10) / 10));
+        if (sl) sl.value = String(Math.max(0, Math.round((seg.start - so) * 10) / 10));
+        if (ee) ee.value = String(Math.max(0, Math.round((eo - seg.end) * 10) / 10));
+        if (el2) el2.value = String(Math.max(0, Math.round((seg.end - eo) * 10) / 10));
+        // 同步该行输入框（滚轮/试听后编辑页显示与 state 一致）
         const si = document.getElementById('start-input-' + this._edSelIdx);
         const ei = document.getElementById('end-input-' + this._edSelIdx);
         if (si) si.value = s.toFixed(2);
         if (ei) ei.value = e2.toFixed(2);
     },
-    // 步进：复用 updateSeg（校验/自动联动/清 _os/_oe/持久化全同一条路径）
-    _edStep(k, d) {
+    // V97(改3): 滚轮微调——语义与预习 tuneWheel 一致（滚轮值=相对原始时间的绝对偏移，幂等不随 iOS picker 连环累计），
+    // 写入复用 updateSeg（校验/自动联动/还原输入框同一条路径）。updateSeg 按 V93 规则清 _os/_oe（那是给
+    // 手输定的"重定基准"），滚轮是相对调整——写入成功后把基准补记回来，↺重置才能回到本轮调整前的值
+    edTuneWheel(which, dir, sel) {
+        if (!_isIOSDevice()) { try { sel.blur(); } catch(e) {} } // V90: 桌面选完失焦，防 ←/→ 被滚轮吃掉
         if (this._edSelIdx == null) return;
-        const seg = state.segments[this._edSelIdx]; if (!seg) return;
-        const cur = (k === 'start') ? seg.start : seg.end;
-        if (!isFinite(cur)) return;
-        const target = Math.round((cur + d) * 100) / 100;
-        this.updateSeg(this._edSelIdx, k, String(target));
-        this._scheduleCacheSync(15000); // V96(外审·小2): 步进与微调滚轮同待遇（V90）——原只走 updateSeg→save() 的 1.5s 防抖，连点 −.1 停手 1.5s 就把含音频的整条缓存回写一遍
+        const seg = state.segments[this._edSelIdx];
+        if (!seg) { this._edTuneRefresh(); return; }
+        const v = Math.round((parseFloat(sel.value) || 0) * 10) / 10;
+        const base = (which === 'start') ? (seg._os !== undefined ? seg._os : seg.start) : (seg._oe !== undefined ? seg._oe : seg.end);
+        if (!isFinite(base)) { this._edTuneRefresh(); return; }
+        const target = Math.round((base - dir * v) * 100) / 100;
+        // 音频时长上限（updateSeg 不查这一条，同预习规则）
+        const a = document.getElementById('main-audio');
+        const dur = (a && isFinite(a.duration) && a.duration > 0) ? a.duration : Infinity;
+        if (which === 'end' && isFinite(dur) && target > dur) {
+            ui.toast('超出音频末尾（最长 ' + dur.toFixed(2) + 's）');
+            this._edTuneRefresh();
+            return;
+        }
+        // 无净变化：撤销已记的原始时间（同 V94 审3——滚轮停在 0/转回原位时重置钮熄灭、"本句未调整"）
+        const curVal0 = (which === 'start') ? seg.start : seg.end;
+        if (Math.abs(curVal0 - target) < 0.001) {
+            let touched = false;
+            if (which === 'start' && seg._os !== undefined) { delete seg._os; touched = true; }
+            if (which === 'end' && seg._oe !== undefined) { delete seg._oe; touched = true; }
+            if (touched) { this.save(); this._scheduleCacheSync(15000); }
+            this._edTuneRefresh();
+            return;
+        }
+        this.updateSeg(this._edSelIdx, which, String(target)); // 校验失败会 toast+还原输入框，seg 未变
+        const after = (which === 'start') ? seg.start : seg.end;
+        if (Math.abs(after - target) < 0.001) { // 写入成功（未被校验拦下）——补记原始时间
+            if (which === 'start' && seg._os === undefined) seg._os = base;
+            if (which === 'end' && seg._oe === undefined) seg._oe = base;
+            // 调回原始值 → 撤销记录（与"停在 0"分支合成完整语义）
+            if (which === 'start' && seg._os !== undefined && Math.abs(seg.start - seg._os) < 0.001) delete seg._os;
+            if (which === 'end' && seg._oe !== undefined && Math.abs(seg.end - seg._oe) < 0.001) delete seg._oe;
+            this.save();
+            ui.toast((which === 'start' ? '句首' : '句尾') + (dir > 0 ? '提前' : '延后') + ' ' + v + 's → ' + target.toFixed(2) + 's');
+        }
+        this._scheduleCacheSync(15000); // V90: 滚轮连续转动合并成一次缓存回写
         this._edTuneRefresh();
+    },
+    // V97(改3): 重置本句到原始时间（同预习 tuneReset；与滚轮配对）
+    edTuneReset() {
+        if (this._edSelIdx == null) return;
+        const seg = state.segments[this._edSelIdx];
+        if (!seg) return;
+        if (seg._os === undefined && seg._oe === undefined) return ui.toast('本句没有调整过');
+        if (!confirm('恢复本句的原始时间？\n' + (seg._os !== undefined ? (seg._os.toFixed(2) + 's') : (seg.start.toFixed(2) + 's(未调)')) + ' ~ ' + (seg._oe !== undefined ? (seg._oe.toFixed(2) + 's') : (seg.end.toFixed(2) + 's(未调)')))) return;
+        if (seg._os !== undefined) seg.start = seg._os;
+        if (seg._oe !== undefined) seg.end = seg._oe;
+        delete seg._os; delete seg._oe;
+        this.save();
+        this._scheduleCacheSync(15000);
+        this._edTuneRefresh();
+        ui.toast('↺ 已恢复原始时间');
     },
     // 长按试听窗口：本句扩边听感 + 上一句尾/下一句头各最多 1.5s，被邻句边界与音频首尾截断。
     // 数学上完整覆盖练习播放窗口（扩边≤0.5s<1.5s 且被邻句截断后仍包含扩边范围）——校对满意=练习不漏词
@@ -2953,6 +3110,14 @@ const app = {
             if (!idbCache.isAvailable()) return;
             idbCache.getAll().then(all => {
                 if (!all || !all.length) return;
+                // V97(外审5): 晚归门卫——getAll 异步期间用户已加载音频（?mp3= 参数/手动加载）或已进入
+                // 练习/预习页时，不再把过时的"继续上次"橙条挂到顶部
+                try {
+                    if (state._loadedAudioUrl) return;
+                    const _pv = document.getElementById('practice-view');
+                    const _pvw = document.getElementById('preview-view');
+                    if ((_pv && _pv.classList.contains('active')) || (_pvw && _pvw.classList.contains('active'))) return;
+                } catch(eG) {}
                 let best = null, bestTs = 0; // V96(外审·小4): 初值 0——从没打开过的缓存项（时间戳 0）不该胜出，原 -1 会把它当"继续上次"目标
                 const lib = libMetaAll();
                 all.forEach(function(p) {
@@ -3000,6 +3165,10 @@ const app = {
         this.saveInput(); ui.toast("📋 链接已智能分配");
     },
     sleepTimerId: null, sleepIntervalId: null,
+    _sleepUI(on) { // V97(改4): 定时运行态 UI——⏰ 橙色高亮 + 弹层内「⏹ 取消定时」按钮
+        const sb = document.getElementById('sleep-btn'); if (sb) sb.classList.toggle('timing', on);
+        const cr = document.getElementById('sleep-cancel-row'); if (cr) cr.style.display = on ? 'block' : 'none';
+    },
     startSleepTimer() {
         const mins = parseInt(document.getElementById('sleep-input').value);
         if (!mins||mins<1||mins>100) return ui.toast("请输入 1-100");
@@ -3008,6 +3177,7 @@ const app = {
         const end = Date.now() + mins*60*1000;
         ui.toggleSleepModal();
         const disp = document.getElementById('sleep-display'); disp.style.display = 'block';
+        this._sleepUI(true); // V97(改4)
         const upd = () => {
             const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
             if (!rem) { disp.innerText=''; disp.style.display='none'; clearInterval(this.sleepIntervalId); this.sleepIntervalId = null; }
@@ -3022,8 +3192,17 @@ const app = {
             engine.stopAll(); ui.toast("⏰ 定时结束");
             disp.style.display='none';
             if (this.sleepIntervalId) { clearInterval(this.sleepIntervalId); this.sleepIntervalId = null; }
+            this._sleepUI(false); // V97(改4)
         }, mins*60*1000);
         ui.toast('⏳ 倒计时 ' + mins + ' 分钟开始');
+    },
+    cancelSleepTimer() { // V97(改4): 原来定时开了就没有取消办法（只能等它到点或刷新页面）
+        if (!this.sleepTimerId && !this.sleepIntervalId) return ui.toast('没有进行中的定时');
+        if (this.sleepTimerId) { clearTimeout(this.sleepTimerId); this.sleepTimerId = null; }
+        if (this.sleepIntervalId) { clearInterval(this.sleepIntervalId); this.sleepIntervalId = null; }
+        const disp = document.getElementById('sleep-display'); if (disp) { disp.innerText = ''; disp.style.display = 'none'; }
+        this._sleepUI(false);
+        ui.toast('⏰ 已取消定时关闭');
     },
     saveInput() {
         localStorage.setItem(CONST.INPUTS, JSON.stringify({
@@ -3512,7 +3691,10 @@ const app = {
         app.save();
         ui.renderEditor();
         ui.updatePractice(state.currIndex);
-        app._scheduleCacheSync(15000);
+        // V97(外审1): 刷新字幕是一次性显式操作——立即回写缓存并刷新缓存列表（原借 15s 防抖：
+        // 窗口内点「▶ 加载使用」会从 IndexedDB 读回旧字幕把刚刷新的覆盖掉，列表句数/⭐也不更新）
+        try { app._syncCacheSegments(); } catch(e) {}
+        try { if (typeof cacheUI !== 'undefined' && cacheUI) cacheUI.render(); } catch(e) {}
         const dropStar = beforeStar - previewMode.starredIndices.length; // V96(外审·小5): 超距丢弃的条数要在提示里说明
         ui.toast('✅ ' + okMsg + '（共 ' + newSegs.length + ' 句）' + (beforeStar ? ('；⭐ 重映射保留 ' + previewMode.starredIndices.length + '/' + beforeStar + (dropStar > 0 ? '，丢弃 ' + dropStar + ' 条（时间差>1.5s）' : '')) : ''));
     },
@@ -3639,6 +3821,20 @@ const app = {
                 const newLen = (k === 'start') ? (otherVal - n) : (n - otherVal);
                 if (newLen < 0.3) {
                     ui.toast('句长至少 0.3s（当前将变 ' + newLen.toFixed(2) + 's）');
+                    const inp = document.getElementById(k + '-input-' + i);
+                    if (inp) inp.value = state.segments[i][k].toFixed(2);
+                    return;
+                }
+            }
+            // V97(外审4): 联动预检（写入前）——句尾延后会把下一句挤到不足 0.3s（甚至被下方截断逻辑
+            // 压成 0.01s），之后下一句任何 ±0.1 微调都被 0.3s 校验拦死（卡死修不动）。下一句现在合法
+            // （≥0.3s）且将被挤到 <0.3s 时直接拒绝并告知上限；下一句本来就短（历史脏数据）不拦，保持旧行为
+            if (state.autoSyncNextStart && k === 'end' && i + 1 < state.segments.length
+                && isFinite(state.segments[i+1].end) && isFinite(state.segments[i+1].start)) {
+                const _newStartPre = Math.round((n + 0.01) * 100) / 100;
+                const _nextNowLen = state.segments[i+1].end - state.segments[i+1].start;
+                if (_nextNowLen >= 0.3 && (state.segments[i+1].end - _newStartPre) < 0.3) {
+                    ui.toast('句尾延后会挤掉下一句（下一句至少留 0.3s，本句句尾最多 ' + (state.segments[i+1].end - 0.31).toFixed(2) + 's）');
                     const inp = document.getElementById(k + '-input-' + i);
                     if (inp) inp.value = state.segments[i][k].toFixed(2);
                     return;
@@ -3930,7 +4126,7 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 96, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V96: 95→96（导出文件名同步，防看着乱）
+        const data = { version: 97, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V97: 96→97（导出文件名同步，防看着乱）
         const b = new Blob([JSON.stringify(data, null, 2)]);
         const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v96.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
@@ -3953,7 +4149,7 @@ const app = {
                 'shadow_v93_keep_alive',
                 'shadow_v94_lib_meta' // V94: 音频库进度（继续上次/缓存列表进度行）
             ];
-            var data = { type: 'shadow_full_backup', version: 96, exportedAt: new Date().toISOString(), items: {} }; // V96: 版本号 95→96（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 97, exportedAt: new Date().toISOString(), items: {} }; // V97: 版本号 96→97（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -4079,13 +4275,15 @@ const app = {
             // P3-5: clamp currIndex 防越界
             state.currIndex = Math.min(Math.max(0, d.idx || 0), Math.max(0, state.segments.length - 1));
             if (d.inputs) {
-                if (d.inputs.mp3) document.getElementById('url-audio').value = d.inputs.mp3;
+                document.getElementById('url-audio').value = d.inputs.mp3 || ''; // V97(外审9): 无 mp3 也清空——防 previewMode._getKey() 读到上一个音频的 URL、把旧音频的重点句挂到新工程上
                 if (d.inputs.s1)  document.getElementById('url-srt-1').value = d.inputs.s1;
                 if (d.inputs.s2)  document.getElementById('url-srt-2').value = d.inputs.s2;
                 if (d.inputs.s3)  document.getElementById('url-srt-3').value = d.inputs.s3;
                 app.saveInput();
-                ui.toast('工程加载成功，可点「极速加载」重新载入音频');
+                ui.toast(d.inputs.mp3 ? '工程加载成功，可点「极速加载」重新载入音频' : '工程加载成功（工程未含音频链接，请手动填入）');
             } else {
+                document.getElementById('url-audio').value = ''; // V97(外审9): 同上——清掉旧音频标识，重点句按空 key 隔离
+                app.saveInput();
                 ui.toast('工程加载成功（旧版工程，请手动填入音频链接）');
             }
             state._loopInitialized = false; // 新工程：重新初始化循环区间默认值
@@ -4191,9 +4389,10 @@ const recorder = {
         engine._playSegmentTimed({ start: s.start, end: s.end }, () => {
             this._playCmpTimer = setTimeout(() => {
                 this._playCmpTimer = null;
-                ui.toast("🎙️ 录音"); r.currentTime=0; r.play().catch(e => { console.error(e); if(btn) btn.classList.remove('playing'); ui.toast('录音播放失败'); });
+                // V97(外审13): btn 声明前移——原写在引用它的 r.play().catch 之后，靠微任务时序侥幸不炸（TDZ 风险）
                 const inPreview = document.getElementById('preview-view').classList.contains('active');
                 const btn = inPreview ? document.getElementById('focus-btn-record') : document.getElementById('btn-record');
+                ui.toast("🎙️ 录音"); r.currentTime=0; r.play().catch(e => { console.error(e); if(btn) btn.classList.remove('playing'); ui.toast('录音播放失败'); });
                 r.onended = () => { if(btn) btn.classList.remove('playing'); ui.toast("播放完毕"); };
                 if(btn) btn.classList.add('playing');
             }, 500);
@@ -4303,6 +4502,7 @@ const previewMode = {
     exit() {
         engine.stopAll(); this._stopFocusRead(true); // V84: 退出预习先停连读（stopAll 已联动，双保险）
         this.hideSelBar();
+        try { vocabBook.hideUndo(); } catch(e) {} // V97(外审7): 撤销条 2 秒窗口内退出预习——立即收掉（含定时器与撤销索引）
         this._stripHideNow(); // V95: 退出预习立即恢复顶栏
         this.saveToStorage(); this.updateBadge();
         const pvw = document.getElementById('preview-view'); pvw.style.display = 'none'; pvw.classList.remove('active');
@@ -4316,9 +4516,12 @@ const previewMode = {
         document.getElementById('preview-focus-phase').classList.remove('active');
         const _pp = document.getElementById('preview-progress'); // V95: 回逐句听恢复进度条
         if (_pp) _pp.style.display = '';
+        try { const _ve = document.querySelector('.btn-vocab-entry'); if (_ve) _ve.style.display = ''; } catch(e) {} // V97(改5): 回逐句听恢复生词入口
     },
     _showFocusPhase() {
         this.hideSelBar(); this._stripHideNow(); // V95: 进重点句阶段立即收浮条+恢复顶栏（earlyFinish 从逐句听底部进入时浮条可能正显示）
+        try { vocabBook.hideUndo(); } catch(e) {} // V97(外审7): 逐句听刚入词（撤销条 2 秒窗口内）立刻进重点句——撤销条不再漂在重点句顶栏上
+        try { const _ve = document.querySelector('.btn-vocab-entry'); if (_ve) _ve.style.display = 'none'; } catch(e) {} // V97(改5): 重点句阶段不需要生词入口（回逐句听恢复）
         document.getElementById('preview-progress').style.display = 'none'; // V95: 重点句阶段进度条无意义（练习有独立光标），隐藏
         document.getElementById('preview-listen-phase').style.display = 'none';
         const fp = document.getElementById('preview-focus-phase'); fp.style.display = 'flex'; fp.classList.add('active');
@@ -4387,9 +4590,15 @@ const previewMode = {
         let last = 0, m;
         while ((m = re.exec(str)) !== null) {
             if (m.index > last) el.appendChild(document.createTextNode(str.slice(last, m.index)));
-            const sp = document.createElement('span');
-            sp.className = 'pw'; sp.dataset.word = m[0]; sp.textContent = m[0];
-            el.appendChild(sp);
+            if (!/[A-Za-z]/.test(m[0])) {
+                // V97(外审13): 纯数字（"1"、"2026"、字幕编号）不包 .pw——手机误触数字不该入生词本；
+                // 含字母的混排词（90s、B2B、MP3）保持可点
+                el.appendChild(document.createTextNode(m[0]));
+            } else {
+                const sp = document.createElement('span');
+                sp.className = 'pw'; sp.dataset.word = m[0]; sp.textContent = m[0];
+                el.appendChild(sp);
+            }
             last = m.index + m[0].length;
         }
         if (last < str.length) el.appendChild(document.createTextNode(str.slice(last)));
@@ -4568,6 +4777,7 @@ const previewMode = {
     exitFocusToSwitcher() {
         engine.stopAll(); this._stopFocusRead(true); // V84: 同上
         this.hideSelBar(); this._stripHideNow(); // V95: 退出链路统一收浮条+立即恢复顶栏
+        try { vocabBook.hideUndo(); } catch(e) {} // V97(外审7): 同上——撤销条立即收掉
         this.saveToStorage(); this.updateBadge();
         const pvw = document.getElementById('preview-view'); pvw.style.display = 'none'; pvw.classList.remove('active');
         app.switchView('practice');
@@ -4978,6 +5188,8 @@ const previewMode = {
         if (!row) return;
         const open = row.style.display === 'none';
         row.style.display = open ? 'flex' : 'none';
+        const inline = document.getElementById('focus-reps-inline'); // V97(改5): 遍数/↺ 已移到主行，随 ⚙ 一起显隐
+        if (inline) inline.style.display = open ? 'flex' : 'none';
         if (btn) btn.classList.toggle('active', open);
     },
     // V85: 一键恢复连读默认设置（遍数1 / 速率1.0× / 留白固定1.5s）
@@ -5369,13 +5581,14 @@ const vocabBook = {
         return { ok: true };
     },
     _showUndo(word) {
+        try { previewMode.hideSelBar(); } catch(e) {} // V97(外审7): 反向互斥——点词/浮条入本瞬间划选浮条可能还在 180ms 延迟窗口内，先收掉防两条同位重叠
         const bar = document.getElementById('vocab-undo-bar');
         if (!bar) return;
         document.getElementById('vocab-undo-text').innerText = '已加入「' + (word.length > 16 ? word.substring(0, 16) + '…' : word) + '」';
         bar.classList.add('show');
         previewMode._stripShow(); // V95: 撤销条显示→顶栏让位
         if (this._undoTimer) clearTimeout(this._undoTimer);
-        this._undoTimer = setTimeout(() => { bar.classList.remove('show'); this._lastAddIdx = null; previewMode._stripHideSoon(); }, 4000); // V95: 4 秒自动隐藏后报 _stripHideSoon
+        this._undoTimer = setTimeout(() => { bar.classList.remove('show'); this._lastAddIdx = null; previewMode._stripHideSoon(); }, 2000); // V97(改1): 4 秒太长改 2 秒；隐藏后报 _stripHideSoon
     },
     hideUndo() {
         // V96(外审3): 撤销条与划选浮条互斥——两条同为 absolute+z-index:10 盖顶栏同一行，撤销条在 DOM
@@ -5413,7 +5626,9 @@ const vocabBook = {
         if (!this.list().length) return ui.toast('生词本已经是空的');
         if (!confirm('确认清空生词本（' + this.list().length + ' 个词）？此操作不可恢复。')) return;
         this._list = []; this._lastAddIdx = null;
-        this._persist(); this.render();
+        this._rv = null; // V97(外审2): 翻卡 Tab 下清空——旧队列全指向已删词条，reviewMark 连点会翻完全队列弹"本轮认识 X/X"假战报
+        this._persist();
+        this.tabList(); // V97(外审2): 切回列表 Tab 显示空状态（原只重绘被隐藏的列表，翻卡界面还停在旧卡上）
         ui.toast('已清空生词本');
     },
     // 入口按钮/面板计数。V94: 角标 class 化——预习/练习/编辑三个入口同步
@@ -5451,6 +5666,7 @@ const vocabBook = {
         const a = document.getElementById('main-audio');
         if (!a || !a.src) return ui.toast('音频未就绪');
         if (!engine || typeof engine._playSegmentTimed !== 'function') return;
+        try { if (aiMode.active) aiMode.stop(); } catch(e) {} // V97(外审13): AI 模式运行中听原句——先停 AI，否则 AI 链在原句播完后继续切句播下一句
         engine.stopAll();
         // 小扩边与练习听感一致（首 0.12s/尾 0.2s），不超出音频范围
         const st = Math.max(0, v.st - 0.12);
@@ -5518,6 +5734,7 @@ const vocabBook = {
         const rv = this._rv;
         if (!rv) { el.innerHTML = ''; return; }
         const list = this.list();
+        if (!list.length) { el.innerHTML = '<div class="vocab-empty">生词本已空，先在预习/练习里点词入本</div>'; return; } // V97(外审2): 清空后残卡防御
         if (rv.done || rv.pos >= rv.queue.length) {
             // 战报
             const unk = rv.unknownRound.length;
@@ -5536,22 +5753,24 @@ const vocabBook = {
         const v = list[rv.queue[rv.pos]];
         if (!v) { rv.pos++; this.reviewRender(); return; }
         const canHear = (v.st != null && v.en != null && v.a && String(state._loadedAudioUrl || '') === String(v.a || ''));
+        // V97(改2): 「不认识/认识」从一开始就显示（原来要点开卡片才出现），「🔊 读音」正反面都在——
+        // 自评不必先看例句；想看例句再点卡片翻面（翻面仍保留：先回忆再对照正是背词的主动回忆流程）
+        const markOps = '<div class="rv-ops">' +
+            '<button class="rv-btn rv-btn-minor" onclick="vocabBook.speak(' + rv.queue[rv.pos] + ')">🔊 读音</button>' +
+            '<button class="rv-btn rv-btn-dont" onclick="vocabBook.reviewMark(false)">😅 不认识</button>' +
+            '<button class="rv-btn rv-btn-know" onclick="vocabBook.reviewMark(true)">😀 认识</button>' +
+            '</div>';
         const front = '<div class="rv-card" onclick="vocabBook.reviewFlip()" title="点卡片翻面">' +
             '<div class="rv-word">' + ui.escapeHTML(v.w || '') + '</div>' +
             '<div style="font-size:12px;color:#999;margin-top:10px;">点卡片看例句 · 第 ' + (rv.pos + 1) + '/' + rv.queue.length + ' 张</div>' +
-            '</div>' +
-            '<div class="rv-ops"><button class="rv-btn rv-btn-minor" onclick="vocabBook.speak(' + rv.queue[rv.pos] + ')">🔊 读音</button></div>';
+            '</div>' + markOps;
         const back = '<div class="rv-card" style="cursor:default;">' +
             '<div class="rv-word" style="font-size:26px;">' + ui.escapeHTML(v.w || '') + '</div>' +
             (v.s ? '<div class="rv-sent">' + ui.escapeHTML(v.s) + '</div>' : '') +
             (v.src ? '<div class="rv-src">🎧 ' + ui.escapeHTML(v.src) + '</div>' : '') +
-            (canHear ? '<div class="rv-ops"><button class="rv-btn rv-btn-minor" onclick="vocabBook.hearSentence(' + rv.queue[rv.pos] + ')">▶ 听原句</button></div>' : '') +
+            (canHear ? '<div class="rv-ops" style="margin-top:12px;"><button class="rv-btn rv-btn-minor" onclick="vocabBook.hearSentence(' + rv.queue[rv.pos] + ')">▶ 听原句</button></div>' : '') +
             '</div>' +
-            '<div class="rv-meta">第 ' + (rv.pos + 1) + '/' + rv.queue.length + ' 张 · 剩 ' + (rv.queue.length - rv.pos - 1) + ' 张</div>' +
-            '<div class="rv-ops">' +
-            '<button class="rv-btn rv-btn-dont" onclick="vocabBook.reviewMark(false)">😅 不认识</button>' +
-            '<button class="rv-btn rv-btn-know" onclick="vocabBook.reviewMark(true)">😀 认识</button>' +
-            '</div>';
+            '<div class="rv-meta">第 ' + (rv.pos + 1) + '/' + rv.queue.length + ' 张 · 剩 ' + (rv.queue.length - rv.pos - 1) + ' 张</div>' + markOps;
         el.innerHTML = '<div class="rv-wrap">' + (rv.flipped ? back : front) + '</div>';
     },
     open() { document.getElementById('vocab-modal').classList.add('show'); this.tabList(); },
@@ -6160,7 +6379,9 @@ document.addEventListener('visibilitychange', () => {
         // 挂机磨耳朵听的用户保持关闭。stopAll 会连带终止连读链并复位按钮
         try {
             if (localStorage.getItem('shadow_v85_lock_pause') === '1' && typeof engine !== 'undefined' && engine && engine.mode !== 'IDLE') {
+                var _wasMode = engine.mode; // V97(改6): 锁屏自动暂停也记模式——息屏后按锁屏 ▶ 同样恢复原模式而非重播单句
                 engine.stopAll();
+                engine._pausedFrom = (_wasMode && _wasMode !== 'IDLE') ? _wasMode : null;
             }
         } catch(e) {}
     }
@@ -6687,7 +6908,7 @@ function drawBarChart(values, dates) {
     if (sig.aborted) return;
 
     const max = Math.max(1, ...values);
-    const padL = 4, padR = 4, padT = 12, padB = 22;
+    const padL = 4, padR = 4, padT = 20, padB = 22; // V97(外审13): 12→20——柱顶时长标签画在 y-8，满格柱 y=12 时 10px 字上缘贴 Canvas 顶被裁
     const innerW = w - padL - padR, innerH = h - padT - padB;
     const barW = innerW / 7 * 0.6, gap = innerW / 7 * 0.4;
     const today = todayKey();
