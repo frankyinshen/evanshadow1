@@ -1,4 +1,4 @@
-// 影子跟读 Pro V95 Service Worker
+// 影子跟读 Pro V96 Service Worker
 // 离线支持：仅对同源 navigate 请求用「网络优先 + 3 秒超时回退缓存」策略
 // V88: 原「网络优先，断网才回退」在弱网下 fetch 一直挂着、页面迟迟打不开——而整个应用本可离线用；
 //      现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
@@ -9,8 +9,9 @@
 //         回退时先按新键（pathname）查，miss 再按完整 URL 查（带 ignoreSearch），V13 旧缓存条目也能命中。
 //      2) 缓存名随 V94 升 v14 强制刷新；无逻辑改动
 // V95: 随 V95（划选浮条/撤销条移进预习顶栏盖住整行 + 顶栏进度文字改细进度条）升缓存名强制刷新；无逻辑改动
+// V96: 随 V96（外部审查修复 13 项：缓存页报错/橙条残留/浮条互斥/生词本面板/375px 顶栏等）升缓存名 v16 强制刷新；无逻辑改动
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v95_offline_v15';
+var CACHE_NAME = 'shadow_v96_offline_v16';
 
 // V94: 键归一——同源页面请求一律用 URL pathname 做缓存键（query 参数不参与）
 var keyOf = function(u) {
