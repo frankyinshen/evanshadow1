@@ -1,13 +1,21 @@
-// 影子跟读 Pro V93 Service Worker
+// 影子跟读 Pro V95 Service Worker
 // 离线支持：仅对同源 navigate 请求用「网络优先 + 3 秒超时回退缓存」策略
 // V88: 原「网络优先，断网才回退」在弱网下 fetch 一直挂着、页面迟迟打不开——而整个应用本可离线用；
-// 现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
+//      现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
 // V89: install 预缓存 './' 改用 cache:'reload' 绕过 HTTP 缓存——托管端若给页面设了 max-age，
-// 原写法会把旧版本 HTML 存进新缓存；现在 3 秒就回退缓存，旧页面被打开的概率比以前高，必须存新的
-// V90: 无逻辑改动，仅随主文件升版本强制刷新缓存
-// V93: 随 V93（息屏保活修复循环单句/连读断链）升缓存名强制刷新；无逻辑改动
+//      原写法会把旧版本 HTML 存进新缓存；现在 3 秒就回退缓存，旧页面被打开的概率比以前高，必须存新的
+// V94: 1) 存取键归一为 pathname（外部审查7）——带 ?mp3= 参数的页面 URL，原来 put 用完整 URL 做键、
+//         回退 match({ignoreSearch:true}) 取"第一个匹配"，可能取到更旧的条目；归一后每个页面只存一份。
+//         回退时先按新键（pathname）查，miss 再按完整 URL 查（带 ignoreSearch），V13 旧缓存条目也能命中。
+//      2) 缓存名随 V94 升 v14 强制刷新；无逻辑改动
+// V95: 随 V95（划选浮条/撤销条移进预习顶栏盖住整行 + 顶栏进度文字改细进度条）升缓存名强制刷新；无逻辑改动
 // 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
-var CACHE_NAME = 'shadow_v93_offline_v13';
+var CACHE_NAME = 'shadow_v95_offline_v15';
+
+// V94: 键归一——同源页面请求一律用 URL pathname 做缓存键（query 参数不参与）
+var keyOf = function(u) {
+    try { return new URL(u, self.location.href).pathname; } catch(e) { return u; }
+};
 
 self.addEventListener('install', function(event) {
     event.waitUntil(
@@ -26,7 +34,7 @@ self.addEventListener('install', function(event) {
                         return oc.keys().then(function(reqs) {
                             return Promise.all(reqs.map(function(r) {
                                 return oc.match(r).then(function(resp) {
-                                    if (resp && resp.ok) return fresh.put(r, resp);
+                                    if (resp && resp.ok) return fresh.put(keyOf(r.url), resp); // V94: 迁移时同步归一键
                                 });
                             }));
                         });
@@ -86,12 +94,17 @@ self.addEventListener('fetch', function(event) {
     // 仅对 navigate（页面跳转/主文档）请求：网络优先 + 3 秒超时回退缓存 + 断网回退缓存
     if (req.mode === 'navigate' || dest === 'document') {
         var putTask = Promise.resolve();
+        var pageKey = keyOf(req.url); // V94: 本页面的归一缓存键
         var fromCache = function() {
             // V84.3: 回退只在自身 CACHE_NAME 内查找（原 caches.match 会搜同源全部缓存，
-            // 可能命中其他应用的页面）；带 ?mp3= 参数的 URL 用 ignoreSearch 兜底
+            // 可能命中其他应用的页面）；V94: 先按归一键（pathname）查——
+            // 带参 URL 不再可能命中"同页面的另一份旧条目"，miss 再按完整 URL 查（V13 旧键兼容）
             return caches.open(CACHE_NAME).then(function(cache) {
-                return cache.match(req, { ignoreSearch: true }).then(function(c) {
-                    return c || cache.match('./', { ignoreSearch: true });
+                return cache.match(pageKey, { ignoreSearch: true }).then(function(c) {
+                    if (c) return c;
+                    return cache.match(req, { ignoreSearch: true }).then(function(c2) {
+                        return c2 || cache.match('./', { ignoreSearch: true });
+                    });
                 });
             });
         };
@@ -100,9 +113,9 @@ self.addEventListener('fetch', function(event) {
             if (resp && resp.ok) {
                 var clone = resp.clone();
                 // V84.3: putTask 只构造一次——同一 Response body 只能消费一次，
-                // 无论超时与否缓存写入都只发生一次
+                // 无论超时与否缓存写入都只发生一次；V94: put 键用归一 pathname
                 putTask = caches.open(CACHE_NAME).then(function(cache) {
-                    return cache.put(req, clone);
+                    return cache.put(pageKey, clone);
                 }).catch(function() {});
             }
             return resp;
