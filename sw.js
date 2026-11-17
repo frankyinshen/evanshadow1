@@ -1,4 +1,4 @@
-// Shadow Reading Pro V96 Service Worker
+// Shadow Reading Pro V97 Service Worker
 // Offline strategy: same-origin navigate requests only, "network-first + 3s timeout fallback to cache".
 // V88: previous "network-first, fallback only when offline" hung on weak networks and pages never opened,
 //      while the whole app is fully usable offline. Now: if network does not respond in 3s, open from cache;
@@ -16,11 +16,14 @@
 //      row; top progress text replaced by a thin progress bar). No logic change.
 // V96: Cache name bumped to v16 with V96 (external review fixes: cache page error / orange bar residue /
 //      bar mutual exclusion / vocab panel / 375px header, etc.). No logic change.
+// V97: Cache name bumped to v17 with V97. Logic change: transient HTTP 5xx from host/CDN now falls back to
+//      cache (external review #11) - fetch() RESOLVES on 502/503, the old code showed the error page instead
+//      of the cached copy; 4xx (e.g. 404) is a real answer and still passes through.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v96_offline_v16';
+var CACHE_NAME = 'shadow_v97_offline_v17';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -123,6 +126,11 @@ self.addEventListener('fetch', function(event) {
             });
         };
         var network = fetch(req, { cache: 'no-cache' }).then(function(resp) {
+            // V97(external review #11): transient 5xx from host/CDN - reject so the race falls back to cache
+            // instead of showing the error page (fetch RESOLVES on 502/503; 4xx like 404 is a real answer, pass through)
+            if (resp && resp.status >= 500 && resp.status < 600) {
+                throw new Error('HTTP ' + resp.status);
+            }
             // Network success - clone the response and cache one copy (same-origin only)
             if (resp && resp.ok) {
                 var clone = resp.clone();
