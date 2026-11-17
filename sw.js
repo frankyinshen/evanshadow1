@@ -1,4 +1,4 @@
-// Shadow Reading Pro V97 Service Worker
+// Shadow Reading Pro V98 Service Worker
 // Offline strategy: same-origin navigate requests only, "network-first + 3s timeout fallback to cache".
 // V88: previous "network-first, fallback only when offline" hung on weak networks and pages never opened,
 //      while the whole app is fully usable offline. Now: if network does not respond in 3s, open from cache;
@@ -19,11 +19,13 @@
 // V97: Cache name bumped to v17 with V97. Logic change: transient HTTP 5xx from host/CDN now falls back to
 //      cache (external review #11) - fetch() RESOLVES on 502/503, the old code showed the error page instead
 //      of the cached copy; 4xx (e.g. 404) is a real answer and still passes through.
+// V98: Cache name bumped to v18 with V98 (timer popup closes on cancel / subtitle re-fetch for audio-only
+//      cache entries / flashcard auto-pronounce / focus reps row visible by default). No SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v97_offline_v17';
+var CACHE_NAME = 'shadow_v98_offline_v18';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
