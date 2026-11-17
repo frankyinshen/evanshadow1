@@ -1,19 +1,28 @@
-// 影子跟读 Pro V96 Service Worker
-// 离线支持：仅对同源 navigate 请求用「网络优先 + 3 秒超时回退缓存」策略
-// V88: 原「网络优先，断网才回退」在弱网下 fetch 一直挂着、页面迟迟打不开——而整个应用本可离线用；
-//      现在 3 秒没回应就先用缓存打开，网络回来后新页面仍会写进缓存（putTask 不受影响）
-// V89: install 预缓存 './' 改用 cache:'reload' 绕过 HTTP 缓存——托管端若给页面设了 max-age，
-//      原写法会把旧版本 HTML 存进新缓存；现在 3 秒就回退缓存，旧页面被打开的概率比以前高，必须存新的
-// V94: 1) 存取键归一为 pathname（外部审查7）——带 ?mp3= 参数的页面 URL，原来 put 用完整 URL 做键、
-//         回退 match({ignoreSearch:true}) 取"第一个匹配"，可能取到更旧的条目；归一后每个页面只存一份。
-//         回退时先按新键（pathname）查，miss 再按完整 URL 查（带 ignoreSearch），V13 旧缓存条目也能命中。
-//      2) 缓存名随 V94 升 v14 强制刷新；无逻辑改动
-// V95: 随 V95（划选浮条/撤销条移进预习顶栏盖住整行 + 顶栏进度文字改细进度条）升缓存名强制刷新；无逻辑改动
-// V96: 随 V96（外部审查修复 13 项：缓存页报错/橙条残留/浮条互斥/生词本面板/375px 顶栏等）升缓存名 v16 强制刷新；无逻辑改动
-// 严禁拦截第三方资源、媒体请求（含 Range 请求）——确保音频流式播放不受影响
+// Shadow Reading Pro V96 Service Worker
+// Offline strategy: same-origin navigate requests only, "network-first + 3s timeout fallback to cache".
+// V88: previous "network-first, fallback only when offline" hung on weak networks and pages never opened,
+//      while the whole app is fully usable offline. Now: if network does not respond in 3s, open from cache;
+//      when network eventually returns, the new page is still written to cache (putTask is unaffected).
+// V89: install precache for './' now uses cache:'reload' to bypass HTTP cache. If the host sets max-age on
+//      pages, the old add('./') would store stale HTML into the fresh cache; since we now fall back to cache
+//      after only 3s, stale pages are more likely to be opened, so we must store the fresh one.
+// V94: 1) Cache key normalized to URL pathname (external review #7). Page URLs with ?mp3= previously used
+//         the full URL as the put key, while fallback match({ignoreSearch:true}) returned the "first match"
+//         which could be an older entry. After normalization, only one entry per page is stored.
+//         Fallback first looks up by the new key (pathname); on miss, falls back to full URL (with
+//         ignoreSearch) so V13 legacy entries still hit.
+//      2) Cache name bumped to v14 with V94 to force refresh. No logic change.
+// V95: Cache name bumped with V95 (selection bar / undo bar moved into preview header covering the whole
+//      row; top progress text replaced by a thin progress bar). No logic change.
+// V96: Cache name bumped to v16 with V96 (external review fixes: cache page error / orange bar residue /
+//      bar mutual exclusion / vocab panel / 375px header, etc.). No logic change.
+// NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
+//       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
+//       with a SyntaxError. ASCII-only source is immune to this.
+// Never intercept third-party resources or media requests (including Range) - audio streaming must work.
 var CACHE_NAME = 'shadow_v96_offline_v16';
 
-// V94: 键归一——同源页面请求一律用 URL pathname 做缓存键（query 参数不参与）
+// V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
     try { return new URL(u, self.location.href).pathname; } catch(e) { return u; }
 };
@@ -21,10 +30,11 @@ var keyOf = function(u) {
 self.addEventListener('install', function(event) {
     event.waitUntil(
         caches.keys().then(function(names) {
-            // V86: 升级迁移——先把旧版本缓存里的响应搬进新缓存。
-            // 旧缓存里只有页面导航响应（fetch 只缓存 navigate），全量搬运代价极小；
-            // 这样即使 './' 预缓存 404（独立文件名部署、目录无默认首页），
-            // 激活删除旧缓存后断网仍有旧页面可用，不再需要"install 失败保旧 SW"的保守策略
+            // V86: upgrade migration - move responses from old cache into the new one first.
+            // Old cache only holds navigation responses (fetch caches navigate only), so the cost is tiny.
+            // This way even if precaching './' 404s (standalone filename deploy, no directory index),
+            // after activation deletes the old cache we still have a page available offline -
+            // no need for the conservative "keep old SW if install fails" strategy.
             var olds = names.filter(function(n) { return /^shadow_v\d+_offline_/.test(n) && n !== CACHE_NAME; });
             return Promise.all(olds.map(function(n) { return caches.open(n); }));
         }).then(function(oldCaches) {
@@ -35,7 +45,7 @@ self.addEventListener('install', function(event) {
                         return oc.keys().then(function(reqs) {
                             return Promise.all(reqs.map(function(r) {
                                 return oc.match(r).then(function(resp) {
-                                    if (resp && resp.ok) return fresh.put(keyOf(r.url), resp); // V94: 迁移时同步归一键
+                                    if (resp && resp.ok) return fresh.put(keyOf(r.url), resp); // V94: normalize key on migration
                                 });
                             }));
                         });
@@ -44,11 +54,13 @@ self.addEventListener('install', function(event) {
                 return chain.then(function() { return fresh; });
             });
         }).then(function(fresh) {
-            // 预缓存 './'：目录有默认首页则缓存之；404（独立文件名部署）静默跳过——
-            // 页面在用户在线打开时由 fetch 事件动态缓存，上面的旧缓存迁移已兜底。
-            // V89: 用 cache:'reload' 绕过 HTTP 缓存强制取最新页面（原 add('./') 在托管端
-            // 设了 max-age 时会把旧版 HTML 存进新缓存；现在 3 秒就回退缓存，存旧的更易被打开）；
-            // Request 构造在不支持的古老浏览器抛错时退回普通 add（再失败仍静默）
+            // Precache './': if the directory has an index page, cache it; 404 (standalone filename deploy)
+            // is silently skipped - the page will be cached dynamically by the fetch event when the user
+            // opens it online, and the old-cache migration above already covers the fallback.
+            // V89: use cache:'reload' to bypass HTTP cache and force the freshest page (the original add('./')
+            // would store stale HTML if the host set max-age; since we now fall back after 3s, stale pages
+            // are even more likely to be opened).
+            // If Request constructor throws on very old browsers, fall back to plain add (still silent on fail).
             var homeReq = './';
             try { homeReq = new Request('./', { cache: 'reload' }); } catch(e) {}
             return fresh.add(homeReq).catch(function() {});
@@ -62,9 +74,9 @@ self.addEventListener('activate', function(event) {
     event.waitUntil(
         caches.keys().then(function(names) {
             return Promise.all(names.map(function(n) {
-                // V84.3: 清理范围收窄到本应用专属命名（shadow_vNN_offline_*）——
-                // caches.keys() 返回同源全部缓存，原 /^shadow_/ 会误删同域其他应用
-                // （如英语精听播放器）以 shadow_ 开头的缓存
+                // V84.3: cleanup narrowed to this app's own namespace (shadow_vNN_offline_*) -
+                // caches.keys() returns all same-origin caches; the original /^shadow_/ would delete caches
+                // of other apps on the same domain (e.g. an English listening player) that start with shadow_.
                 if (n !== CACHE_NAME && /^shadow_v\d+_offline_/.test(n)) return caches.delete(n);
             }));
         }).then(function() {
@@ -75,31 +87,32 @@ self.addEventListener('activate', function(event) {
 
 self.addEventListener('fetch', function(event) {
     var req = event.request;
-    // 仅处理 GET；跳过非 GET（POST/PUT 等）
+    // Only handle GET; skip non-GET (POST/PUT etc.)
     if (req.method !== 'GET') return;
 
     var url;
     try { url = new URL(req.url); } catch(e) { return; }
 
-    // 仅同源请求才处理；第三方资源一律直连放行
+    // Only same-origin requests are handled; third-party resources always pass through
     if (url.origin !== self.location.origin) return;
 
-    // 媒体资源（audio/video）一律直连放行，避免拦截 Range 请求破坏流式播放
+    // Media resources (audio/video) always pass through; never block Range requests and break streaming
     var dest = req.destination || '';
     if (dest === 'audio' || dest === 'video' || dest === 'media') return;
 
-    // 显式跳过 Range 请求（音频 seek 时浏览器会发 Range）
+    // Explicitly skip Range requests (audio seek sends Range)
     var rangeHeader = req.headers && req.headers.get ? req.headers.get('range') : null;
     if (rangeHeader) return;
 
-    // 仅对 navigate（页面跳转/主文档）请求：网络优先 + 3 秒超时回退缓存 + 断网回退缓存
+    // Only navigate (page navigation / main document) requests: network-first + 3s timeout fallback + offline fallback
     if (req.mode === 'navigate' || dest === 'document') {
         var putTask = Promise.resolve();
-        var pageKey = keyOf(req.url); // V94: 本页面的归一缓存键
+        var pageKey = keyOf(req.url); // V94: normalized cache key for this page
         var fromCache = function() {
-            // V84.3: 回退只在自身 CACHE_NAME 内查找（原 caches.match 会搜同源全部缓存，
-            // 可能命中其他应用的页面）；V94: 先按归一键（pathname）查——
-            // 带参 URL 不再可能命中"同页面的另一份旧条目"，miss 再按完整 URL 查（V13 旧键兼容）
+            // V84.3: fallback only looks up inside our own CACHE_NAME (caches.match searches all same-origin
+            // caches and could hit another app's page); V94: first try the normalized key (pathname) -
+            // a URL with params can no longer hit an older copy of the same page; on miss, fall back to the
+            // full URL (with ignoreSearch) for V13 legacy key compatibility.
             return caches.open(CACHE_NAME).then(function(cache) {
                 return cache.match(pageKey, { ignoreSearch: true }).then(function(c) {
                     if (c) return c;
@@ -110,36 +123,39 @@ self.addEventListener('fetch', function(event) {
             });
         };
         var network = fetch(req, { cache: 'no-cache' }).then(function(resp) {
-            // 网络成功——克隆响应缓存一份（同源才会进缓存）
+            // Network success - clone the response and cache one copy (same-origin only)
             if (resp && resp.ok) {
                 var clone = resp.clone();
-                // V84.3: putTask 只构造一次——同一 Response body 只能消费一次，
-                // 无论超时与否缓存写入都只发生一次；V94: put 键用归一 pathname
+                // V84.3: putTask is built once - the same Response body can only be consumed once,
+                // so cache write happens exactly once whether we timed out or not; V94: put key is the
+                // normalized pathname.
                 putTask = caches.open(CACHE_NAME).then(function(cache) {
                     return cache.put(pageKey, clone);
                 }).catch(function() {});
             }
             return resp;
         });
-        // V88: 同步登记——即使 3 秒后先用了缓存，网络回来的新页面仍会写入缓存；
-        // 网络失败也吞掉（回退逻辑由 race 的 catch 处理）
+        // V88: register synchronously - even if we already returned from cache after 3s, the page returned
+        // by the network later is still written to the cache; network failure is swallowed (the race's
+        // catch handles the fallback).
         try { event.waitUntil(network.then(function() { return putTask; }, function() {})); } catch(e) {}
         var timeout = new Promise(function(resolve) {
             setTimeout(function() { fromCache().then(resolve, function() { resolve(null); }); }, 3000);
         });
         event.respondWith(
-            // 网络赢：正常返回；3 秒先到：有缓存先用缓存（r 非空），没缓存（r 为 null）继续等网络
+            // Network wins: return normally; 3s fires first: use cache if available (r non-null), else
+            // (r null) keep waiting for network.
             Promise.race([network, timeout]).then(function(r) { return r || network; })
             .catch(function() {
-                // 断网且缓存也没有：返回 503 文字提示而非浏览器错误页
+                // Offline and no cache either: return a 503 text hint instead of the browser error page.
                 return fromCache().then(function(c) {
-                    return c || new Response('离线且尚无缓存：请联网打开一次本页面',
+                    return c || new Response('Offline and no cache yet: please open this page once while online.',
                         { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
                 });
             })
         );
         return;
     }
-    // 其他同源 GET（JS/CSS/SRT/图片等）：一律直连放行，不拦截
-    // 单文件应用无外链 JS/CSS，拦截会导致断网返回 undefined 报错
+    // Other same-origin GET (JS/CSS/SRT/images, etc.): always pass through, never intercept.
+    // This single-file app has no external JS/CSS; intercepting would make offline return undefined errors.
 });
