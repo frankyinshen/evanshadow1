@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V104 | build:20261118 | 第五份外部审查 11 项（高1/中6/低4）全部采纳落地。高1·翻卡复习空池三态渲染：tabReview 在切走列表/显示翻卡区/切 Tab 高亮之后才判空池，原 toast 早退把 #vocab-review 留成空白页（列表点进）或僵尸卡（翻卡中切筛选，_rv=null 后翻面/判定全失灵、无返回按钮），且"当前筛选全毕业但别处还有未毕业词"也被一刀切拦死无法重练本组。现明确渲染三种空池状态：筛选下无词（🔍+切回全部/返回列表）/ 筛选下全毕业（🎓+重练本组（含已毕业）+看全部音频）/ 全局全毕业（🎓+重练全部），_rv=null+_stopAllAudio 收口。中2·_mergeVocab 字典改 Map：普通 {} 吃原型链——词库里没有但导入文件有 constructor/toString 等英文词时 byKey['constructor'] 拿到 Object.prototype.constructor（非 undefined），进合并分支 lv=list[函数]=undefined，lv.st 抛 TypeError 炸掉整个合并。中3·翻卡正面等待自动翻牌期间手动点「🔊 读音」重听：读音 0.8s 结束 arm() 已挂 _rvFlipTmr（3s 倒计时中），第 2.5s 点重听原只清 _rvReadTmr 未清 _rvFlipTmr——重听刚开头 0.5s 旧定时器到点强制翻面掐断读音；重听分支开头改调 _rvFlipClear()（一次清两个定时器+作废两路代数，替代原两行）。中4·连读遍数滚轮双向同步补全：练习页改遍数走 engine.setSeqReps→previewMode._syncRepsBtns 同步重点句页，但重点句页改 #focus-reps-sel 或 ↺ 重置（setFocusReps）不刷练习页 #seq-reps-sel，切回显示旧遍数；setFocusReps 补 engine._syncSeqRepsSel()。中5·预习页 .pw-in 标记刷新链补全：a) remove/clearAll/_mergeVocab 末尾补 _refreshPwMarks（原只有 add/undoLast 接了——预习时开生词本删词/清空/合并导入，关弹窗回预习页标记不同步）；b) _refreshPwMarks 改就地 toggle 现有 .pw 节点的 .pw-in（原全量 innerHTML 重建：长句缩不住内部滚动时滚到底部点词 scrollTop 跳回顶部+数百 span 白建）；c) 撇号归一 u2019→'（词条存 it's、字幕写 it's 也能点亮，与 V102 _wordRe 互通规则同口径，渲染与刷新两处统一）。中6·离线缓存页「↻ 刷新字幕」后列表不刷新：#group-cache 从来没有 .active 类（ui.setTab 只切 style.display），原 classList.contains('active') 永远 false；且 _syncCacheSegments 是 async、Promise 被丢弃，render 抢在落库前读回旧句数——改 Promise.resolve(...).then 按落库完成后看 display 重绘。中7·服务器目录徽章三处：a) lib_meta 的 idx/total 写入只挂 saveIndex——新加载音频自动进预习走 app.save()、刷新字幕/重新断句改总句数也走 save()，徽章 N/M 停在旧值（save() 末尾补 libMetaTouch，loadFromUrl 清空阶段 noSave 不经过、双保险判 segments.length）；b) _gotoSentence 推进即 saveIndex（原只有 exit/完成落盘，预习途中切去目录看 N/M 停在进预习前）；c) _loadBadges 异步竞态——getIds 晚归时无条件 renderList 把上一级目录写回屏幕/渲染隐藏弹窗，增 _badgeSeq 代数（open/close/fetchAndRender 递增+回调校验代数与弹窗可见）；d) renderList 每文件重复 JSON.parse lib_meta 与 PREVIEW（百文件=两百次）——顶部一次解析传参 _badgeFor(f, pvAll, metaAll)。低8·刷新字幕对齐生词时间戳三处：matchByText 同文本短句（"Yes."全篇多次）无距离上限会漂移匹配到几分钟之外，超 15s 丢弃交 nearOld+remap；页面重载后未点「▶ 继续上次」直接进缓存页刷新字幕时 _loadedAudioUrl 为空漏同步——回落读 SESSION（只在加载成功时写）；原无 st 词条匹配到 ns.start===0 时 (v.st||0)-0=0 误判无需写——改 isFinite 显式判缺失。低9·_isCurrentAudio：v.a 与已加载音频都有 URL 时直接以 URL 比对说了算（不同目录同文件名/本地网络同名不再被 v.src 兜底误命中），未加载音频直接 false（不再拿 INPUTS 残留 URL 文件名当当前音频），仅老词条缺 v.a 才退出处名比对。低10·区间连读自然播完一轮后再点「▶ 区间连读」只重播末句即停——currIndex 停在区间末句仍在区间内，"从当前句续"只播 1 句；新增 _seqFinished（_seqFinish 置 true / toggleSeqRead 启动清 false 且 startIdx 判定加 !finished / 手动跳句 loadItem、换字幕 _applyNewSegments、换音频 loadFromUrl 三处清标记恢复"从当前句续"），参照重点句 V91 _focusFinished 同款。低11·编辑页 #1 试听播放中点 #2 序号徽章换选：原旧句音频不停+试听按钮卡红 ⏹（下次点按先走一遍无声"停止"分支）；edTuneSel 换选前先 engine.stopAll+_edPlaying=false（与 _edBarHide 同款）。sw.js 缓存名升 shadow_v104_offline_v24（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 103→104（无新增 localStorage 键）；版本号统一到 V104 -->
 <!-- V103 | build:20261118 | 用户 5 项新功能 + 2 项指定增强 + 第四份外部审查 6 条（高1/中2/低3）全部采纳落地。功能A·练习页「▶ 区间连读」：新增按钮行（页码区间逐句连读，每句读 N 遍 + 留白自动下一句）——复用重点句连读那套「遍数+留白+保活不断链」引擎（_seqReadAt 与 _readOneSegRepeat 同款时序）：遍数与重点句连读共用 shadow_v84_focus_reps（两处滚轮双向同步）、句间/遍间留白跟随 ☰「循环跟读留白」calcLoopGapMs、留白期 kaStart 保活音防息屏断链、占 engine.mode='SEQ_READ'（锁屏自动暂停/锁屏 ▶ 恢复按 V86/V97 机制自动生效）、stopAll 联动中断、播放被拒 onError 兜底终止、页码设 1-末句即全篇连读、当前句在区间内从当前句续（V85 语义）、逐句推进即 saveIndex 持久化。功能B·生词本筛选：面板新增筛选行（🔍 搜索框 + 音频下拉：全部音频/当前音频/指定某期），列表/计数跟随筛选+搜索，翻卡复习池与「全部再来一轮」跟随音频筛选（搜索是列表找词工具不参与复习池，翻卡中换筛选直接按新筛选重建卡组；shadow_v103_vocab_filter 持久化，出处列表随词库重建、失效自动回落全部）——攒到几百词后刚学完第 10 课想只过第 10 课新词，先筛再翻卡。功能C·服务器目录徽章：渲染文件列表时每个音频右侧标 💾已缓存 · 练到N/M · ⭐K——缓存判定走新增 idbCache.getIds()（getAllKeys 只读键不读几十 MB Blob，毫秒级；老引擎返回 null 退化为只显进度/⭐），进度 idx/total 走 lib_meta（libMetaTouch 增 total 参，saveIndex 顺带记录），⭐ 走预习存储；点开前一眼看出哪些课离线秒开/练到一半。功能D·预习页已入生词本标词：渲染 .pw 时按词面小写比对生词本，命中加淡蓝底+虚线下划线（.pw-in）；加词/撤销瞬间 _refreshPwMarks 重渲当前句立即点亮/熄灭，隔天续看不再重复误点也能强化记忆。功能E·刷新字幕同步生词时间戳：_applyNewSegments 里把 v.a 匹配当前音频的生词按旧起点就近（±1.5s）找旧句、复用 remap 落到新句整句更新 st/en——重点句早就会自动重映射，老词条「▶ 听原句」不再偏。需求一·编辑页全量备份入口：保存/加载工程行下方新增 📦 全量备份 / 📥 恢复全量备份 + 小字说明——#practice-view 无字幕时切不进去，新设备打开编辑页即可直接恢复备份不用再「+ 添加空行」；练习页抽屉原按钮不动。需求二·生词本 JSON 导出/合并：工具栏新增 📤 JSON（{type:'shadow_vocab_backup',version:103,exportedAt,vocab}，文件名复用 _exportBaseName+'.json'）与 📥 合并（隐藏 #vocabJsonInput，每次触发前重置 value 防同文件连选失效）；导入兼容三种格式（本功能 JSON / 全量备份自动只取 shadow_v84_vocab 不覆盖其他设置 / 纯数组），格式不对或 JSON 损坏弹 toast 且绝不改动当前生词本；合并按 w.trim().toLowerCase() 忽略大小写去重——文件有本地没有的词：校验非空后标准化字段追加（计“新增”）；两台都有的同词：补全本地缺失的 st/en/a/src/s/tr（本地已有则保留）、ok 取 Math.max、grad 取或（计“合并补全”），无变化计跳过；完成后 _persist 落盘+刷新角标+清 _lastAddIdx+重置 _rv（翻卡中切回列表刷新视图）+toast 汇报「✅ 合并完成：新增 X 词，补全/合并 Y 词，已存在跳过 Z 词」。外审1(高)·_rvShowCard 开头先 _rvFlipClear（必须在生成新卡代数之前）——3 秒倒计时内点「认识/不认识」切下一张（或 setRvMode/reviewRestart 换卡）时旧卡翻牌定时器残留且代数校验全过，会在新卡没读完音时被提前翻面。外审2(中)·estMs 兜底两处：无时间戳词条退 Level 3 TTS 读整句例句时按例句字符数估算（原停默认 1200ms，十几个词的例句 TTS 要 4~6 秒，兜底抢跑）；有时间段按 Math.max(1500,((段长+0.32)/倍速+1.2)*1000) 估算（0.75× 慢放与 Level 2 读大 Blob+等 metadata 的耗时下，兜底只晚不早）。外审3(中)·正面手动点「🔊 读音」重听：speak() 先递增 _rvReadTk 作废上一轮正在等的 onend/onerror（speechSynthesis.cancel 会立即触发前一个 utterance 的 onerror(canceled)，原会提前唤醒 arm 在重听刚开头就起算翻面倒计时）；翻卡正面且自动翻牌开着时重走带估算兜底的读音等待。外审4(低)·setRvFlip 在读音尚未结束（_rvReadTmr 还在跑）时改秒数不立即起算——读音结束的 arm() 自会按新秒数挂（原直接 _rvFlipArm 起算一遍、几秒后 arm 又重挂一遍双计时）。外审5(低)·enterFocusPhase 补 state._revealIdx=-1（与 previewMode.start 两条进预习路径完全对称）。外审6(低)·tabReview 全部毕业分支补 _stopAllAudio（防御性收口——进毕业提示页时残留音频一并停）。sw.js 缓存名升 shadow_v103_offline_v23（无 SW 逻辑改动）；exportProject/全量备份 version 103（新增 localStorage 键 shadow_v103_vocab_filter 并入备份）；版本号统一到 V103 -->
 <!-- V102 | build:20261118 | 用户 2 条新需求 + 第三份外部审查 10 项（高2/中5/低3）全部落地。用户1·自动翻牌计时改从「读音结束后」起算：原来从正面第一个音起播就开始倒计时，词/词组稍长（如 abbreviation、四字中文词）或例句填空模式整句原音没读完 N 秒就先翻面。现在读音链结束才开始计——词面/听音模式 speak→_speakText 增可选 onEnd（utterance onend/onerror 读完即回调）；例句填空模式 hearSentence→_hearFallback 增可选 onEnd（Level 1 段落播完 / Level 2 停止定时器到点 / Level 3 TTS 读完，哪级成功哪级回调）；_rvShowCard 里两路先到先起算（arm 去重），并按词长（中文≈320ms/字、英文≈100ms/字符、引擎启动 650ms）与句长（en-st+0.6s）挂估算兜底定时器——iOS TTS onend 不可靠不作唯一信号、听原句三级兑底时长不定，兜底只晚不早；_rvFlipClear 同步清兜底定时器+作废回调代数（_rvReadTk），手动翻/判卡/切 Tab/关面板全路径不漏；自动翻牌关时照常读音不起算；设置行 tooltip「正面出现后 N 秒」→「读音结束后 N 秒」。用户2·单词卡原音 iOS 残余根修（=外审高1）：_unlockHearEl 去掉 el.muted=true——静音 WAV 采样值全 0 物理无声无需再叠 muted，而部分 iOS WebKit 对"静音播放"不计入手势解锁，muted 播过的元素异步改 muted=false 再 play() 仍会被拒（单词卡放不出原音的残余根因）；_hearFallback 里 await el.play() 成功后也置 _hearUnlocked=true（open() 解锁 Promise 未落、缓存命中已换 src 的竞态下标记不再卡 false，双保险）。外审高2·previewMode.exit() 补 app.saveIndex()：预习逐句听切句只写预习存储+内存 currIndex，「🎧 返回正式跟读」后直接关页面，下次「▶ 继续上次」读旧 INDEX/lib_meta 回不到所见句（完成弹窗/重点句完成路径走 switchView→loadItem 已写盘，唯 exit 漏）。外审中3·翻卡战报与「📋 列表」停音：判完最后一张进战报、放音途中切回列表，上一张卡 Level 1/2 原音与 TTS 原来会一直播完甚至与弹出的界面重叠；新增 _stopAllAudio 统一收口（tabList/reviewMark 毕业分支/close 三处接，close 原四行散写并入）。外审中4·toggleTextBlur 永显分支 userBlurState 赋值反了：临时藏起当前句（_revealIdx===currIndex）时应为 true（模糊），原照抄永隐分支成了 false；当前显示不受影响（updatePractice 看 _revealIdx），但 AI 模式 _prevUserBlurState/状态排查会拿到反值。外审中5·换字幕/导入工程/重新断句/进预习四处重置 state._revealIdx：永隐下临时点亮第 1 句后换新时间轴（新 currIndex 也是 0），第 1 句会因 _revealIdx===0 命中而直接亮出原文。外审中6·playOnce/_loopOneCycle 的 NotAllowedError 补轻提示「自动播放被拦，请再点一次播放按钮」：锁屏控制等非手势路径被拦时按钮原来无声弹回熄灭（V101 只静默跳过了吓人的 toast，没给替代反馈）。外审中7·_hearFallback 停止计时 +250ms→+100ms：原句尾（en+0.2）再叠 0.25s 共多出 0.45s，快语速对话常把紧随其后的下一句开头一两个音带出来。外审低8·_pickTr 单行混合双语尾部提取放宽字符集（夹杂数字/百分号/半角标点）："It costs $5. 花了5美元。"原从 5 处截断只剩"美元。"，现提取"花了5美元。"。外审低9·_wordRe 词内空白 / /g→/\s+/g（换行等任意空白）、撇号直/弯互通（['\u2019]）——词条存 it's、字幕写 it's 也能命中高亮/挖空。外审低10·loadProject 顺带清 state.subFileNames：导出 SRT 不再沿用上一个本地字幕文件名。sw.js 缓存名升 shadow_v102_offline_v22（无 SW 逻辑改动）；exportProject/全量备份 version 102；版本号统一到 V102 -->
 <!-- V101 | build:20261118 | 用户 3 条新需求 + 两份外部审查（5 必修/8 建议 + 7 项/4 小项）全部落地。用户1·预习结束进跟读从第 1 句开始：「🎧 直接去正式跟读」（预习完成弹窗）与「✅ 完成重点练习，去正式跟读」两处落点把 currIndex 归 0（原停在预习光标——最后一句/续预习起点），符合“预习全文→跟读全文”的学习流；「🎧 返回正式跟读」（中途退出）保持原位置不强拉，「▶ 继续上次」照旧恢复跟读进度。用户2·字幕显隐重定义（永隐/永显的一次性显隐 + 「自动」改名）：原来永隐下点一下字幕/「显示」钮会把 permBlurMode 拉回 none 且 userBlurState 翻转，之后每句都亮着——与“永隐”承诺矛盾。现在 updatePractice 统一算有效显隐：永显=每句显示、点一下只临时藏当前句（state._revealIdx）；永隐=每句隐藏、点一下只临时看当前句；切句自动回模式默认（_revealIdx 换句即作废，磨耳朵/区间循环等所有推进路径天然覆盖）；AI 模式仍由自己管 userBlurState（_restoreBlurState 补清 _revealIdx）；「自动」改名「手动」并补模式说明 toast（手动=记住我上次的选择，新音频默认藏）——三态现在是 手动→永显→永隐。用户3·翻卡读音仍 TTS 根修（=外审一必修2+外审二1）：V100 的 _unlockHearEl 假解锁——play() 一发起就无条件置 _hearUnlocked=true，自动翻牌定时器（无手势）触发时解锁被 iOS 拒绝却照样标记成功，之后真手势来了也不重试，缓存直放整页报废退 TTS。现在：a) 只在 play() resolve 时标记成功，reject 保持 false 下次真手势重试（1 秒重入保护）；b) done() 里 pause 前校验 src 还是静音 WAV（src 已被真音频换掉时不去 pause 刚起播的原句——并发竞态会把新播放打断）；c) 在真手势里提前解锁——open()/tabReview()/reviewMark() 开头各补一次（面板一打开元素就解锁，自动翻牌再触发时早已解锁）；d) hearSentence 后半段抽出 _hearFallback(v, tk)，Level 1 主音频直放失败不再只弹“播放失败”而是降级缓存直放（原 onError 是空的）；e) Level 2 起播补 -0.12s 扩边与 Level 1 一致（原从 v.st 起播吃掉第一个音）+ 换 src 后 muted 复位；f) TTS 兑底只读英文行（双语字幕不再“先中文后英文”）。外审一必修：1) reviewRestart 毕业界面死按钮——池子空时 tabReview 把 _rv 置 null，原函数 if(!rv) return tabReview() 又回到同一个毕业界面；rv 为 null 时直接按 list 重建队列。3) 点判定后上一张 Level 1 主音频直放不停与新卡读音叠音——新增 _stopMainHear()（speak()/close()/hearSentence 三处接）。4) “预习完一遍”被回退重点刷大——previewedCount 三处 ++ 改取最远到达 Math.max(…, idx+1)（原回退几次就可能在没看完时 ≥总句数，下次加载直接进跟读违反强制规则）。5) 平移快照两处不精确——a) _resetShiftForNewAudio 不再清快照（iOS 回收页面重载同音频是常态，快照使用处本来就校验 key+句数，清掉反而让“刷新后归零”永远退化为反向平移）；b) 快照补记拍摄时累计值 t：重开页面后在上次累计基础上继续平移时，快照是“已平移 t”状态，归零=还原快照后再 applyShift(-t) 才是真原始；撤销回到 0 且快照干净时同样走精确还原（原来 applyShift(-d) 触界句会漂移几十毫秒）。外审一建议：_pickTr 挑纯中文行（字幕2 是 Eng+Chs 时 tr 不再存英中混合行，markWord/_backfillVocabTr 两处）；_syncCacheSegments 空字幕保护（补拉超时后台成功写回缓存后，内存空字幕不能盖回去——否则 srts 已有 text 导致永不再补拉，“字幕消失”复活）；loadFromUrl 网络分支 _resetShiftForNewTimeline 挪到 saveInput() 之后（原按旧音频 key 清累计值/给新音频挂「套用上次」）；_applyNewSegments 只在缓存面板可见时才 render（不再 getAll 整库）；Anki 导出去掉表头行（部分版本导入不跳首行会多一张空卡）。外审二：4) 平移撤销触界漂移+归零覆盖手动修改——updateSeg(时间)/delSeg/splitSeg/mergeSeg/addNewRow/两页微调滚轮与重置共 8 处清平移快照（_dropShiftSnap），归零安全退化为按累计值反向平移；5) 300ms 渲染防抖期间切页编辑页残留旧时间——_clearShiftTimers 清渲染定时器前立即 renderEditor({noSave:true}) 刷一次；6) 预习首句自动播被拦时 _playSegmentTimed 不再叠加“播放失败: NotAllowedError”toast（调用方 onError 已接管提示）；7) 高亮/挖空正则撇号边界——it's 里的 it、don't 里的 don 不再误伤（前后瞻排除撇号，老浏览器退回 \b），三处全部改为“原文匹配+逐段转义”（原来先 escapeHTML 再匹配，' 变 &#39; 后边界判断全乱），词内空格按 \s+ 匹配（跨行短语填空卡不再露答案）；8) loadProject 旧版工程也清字幕 1/2/3 输入框；9) #edt-info 窄屏格式缩短（#100 123.45~128.90 (5.45s)）；10) edTuneWheel 校验失败不再白排一次 15s 缓存同步。sw.js 缓存名升 shadow_v101_offline_v21（无 SW 逻辑改动）；exportProject/全量备份 version 101；版本号统一到 V101 -->
@@ -48,7 +49,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V103</title>
+<title>影子跟读 Pro V104</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -599,7 +600,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <!-- V94(审7): SW 新版本就绪提示条（updatefound 触发显示，点击刷新页面） -->
 <div id="sw-update-bar" onclick="location.reload()">🆕 新版本已就绪，点击刷新<span id="sw-update-close" onclick="event.stopPropagation(); this.parentNode.style.display='none';" title="暂不刷新">✕</span></div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V103</div>
+    <div class="nav-title">🎧 影子跟读 V104</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -1805,11 +1806,13 @@ const wakeLock = {
 const serverBrowser = {
     history: [], allParsedFiles: [],
     open() {
+        this._badgeSeq = (this._badgeSeq || 0) + 1; // V104(外审7): 作废上一次会话的在途徽章回调
         document.getElementById('server-browser-modal').style.display = 'flex';
         this.history = [CONST.SERVER_BROWSER_BASE_URL];
         this.fetchAndRender(CONST.SERVER_BROWSER_BASE_URL);
     },
     close() {
+        this._badgeSeq = (this._badgeSeq || 0) + 1; // V104(外审7): 关闭后晚归的 getIds 回调不得渲染隐藏列表
         document.getElementById('server-browser-modal').style.display = 'none';
         document.getElementById('server-browser-list').innerHTML = '';
         const s = document.getElementById('server-browser-search'); if (s) s.value = '';
@@ -1820,6 +1823,7 @@ const serverBrowser = {
         if (this.history.length > 1) { this.history.pop(); this.fetchAndRender(this.history[this.history.length - 1]); }
     },
     fetchAndRender(url) {
+        this._badgeSeq = (this._badgeSeq || 0) + 1; // V104(外审7): 切目录/重开——父目录在途 getIds 晚归不得把旧列表写回"正在加载..."的屏幕
         const listEl = document.getElementById('server-browser-list');
         const pathEl = document.getElementById('server-browser-path');
         listEl.innerHTML = '<div class="browser-item loading">正在加载...</div>';
@@ -1851,21 +1855,28 @@ const serverBrowser = {
     // V103(功能C): 徽章数据源——idbCache 键集合 + lib_meta（idx/total）+ 预习存储（⭐）。
     // _cachedIds 为 null（IDB 不可用/老引擎无 getAllKeys）时只显示进度/⭐；进度与⭐ 每次渲染实时读（localStorage 零成本）
     _cachedIds: null,
+    _badgeSeq: 0, // V104(外审7): 徽章回调代数——getIds 异步期间用户关弹窗/进子目录，晚归回调按代数作废
     _loadBadges() {
         this._cachedIds = null;
+        const seq = (this._badgeSeq || 0);
         try {
-            idbCache.getIds().then(ids => { this._cachedIds = ids || []; this.renderList(); }).catch(() => {});
+            idbCache.getIds().then(ids => {
+                if (seq !== (this._badgeSeq || 0)) return; // 期间已切目录/已关弹窗——作废，不重绘
+                const m = document.getElementById('server-browser-modal');
+                if (!m || m.style.display !== 'flex') return; // 弹窗已关（双保险）
+                this._cachedIds = ids || []; this.renderList();
+            }).catch(() => {});
         } catch(e) {}
     },
     // 单个音频文件的徽章文本（无任何信息返回 ''——不占行宽）
-    _badgeFor(f) {
+    _badgeFor(f, pvAll, metaAll) { // V104(外审7): pvAll/metaAll 由 renderList 顶部一次解析传入——原来每个文件都 JSON.parse 一遍 lib_meta 与 PREVIEW（百文件目录=两百次大 JSON.parse）；缺参时自取（向后兼容）
         const parts = [];
         try {
             if (this._cachedIds && this._cachedIds.indexOf(idbCache.hashUrl(f.url)) >= 0) parts.push('💾已缓存');
             let idx = -1, total = 0;
-            try { const m = libMetaGet(f.url); if (m) { if (Number.isFinite(m.idx)) idx = m.idx; if (Number.isFinite(m.total)) total = m.total; } } catch(e0) {}
+            try { const m = (metaAll || libMetaAll())[net.fixUrl(f.url)] || null; if (m) { if (Number.isFinite(m.idx)) idx = m.idx; if (Number.isFinite(m.total)) total = m.total; } } catch(e0) {}
             if (idx >= 0) parts.push(total > 0 ? ((Math.min(idx, total - 1) + 1) + '/' + total) : ('练到第' + (idx + 1) + '句'));
-            const pv = safeParse(localStorage.getItem(CONST.PREVIEW), {})[net.fixUrl(f.url)];
+            const pv = (pvAll || safeParse(localStorage.getItem(CONST.PREVIEW), {}))[net.fixUrl(f.url)];
             const star = (pv && Array.isArray(pv.starred)) ? pv.starred.length : 0;
             if (star > 0) parts.push('⭐' + star);
         } catch(e) {}
@@ -1889,6 +1900,9 @@ const serverBrowser = {
             return !q || f.name.toLowerCase().includes(q);
         }).sort((a, b) => { if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1; return a.name.localeCompare(b.name); });
         if (!display.length && q) { const tip = document.createElement('div'); tip.className = 'browser-item loading'; tip.textContent = '没有找到匹配的音频'; listEl.appendChild(tip); }
+        // V104(外审7): 两个 JSON 一次解析传给每个文件的 _badgeFor（原来每文件重复 parse）
+        const pvAll = safeParse(localStorage.getItem(CONST.PREVIEW), {});
+        const metaAll = libMetaAll();
         display.forEach(f => {
             const item = document.createElement('div'); item.className = 'browser-item';
             // 用 textContent 防 XSS（f.name 来自服务器目录列表）
@@ -1898,7 +1912,7 @@ const serverBrowser = {
             // V103(功能C): 文件名右侧徽章（textContent 防注入；无任何信息不渲染）——一眼看出
             // 哪几篇已离线缓存可秒开、练到一半、有标星重点句
             if (!f.isDirectory) {
-                const btxt = this._badgeFor(f);
+                const btxt = this._badgeFor(f, pvAll, metaAll);
                 if (btxt) { const bSpan = document.createElement('span'); bSpan.className = 'browser-item-badge'; bSpan.textContent = btxt; item.appendChild(bSpan); }
             }
             item.onclick = () => f.isDirectory ? this.navigate(f.url) : this.selectFile(f);
@@ -2502,10 +2516,14 @@ const engine = {
         startEl.value = s; endEl.value = e;
         const from = s - 1, to = e - 1;
         // V85 同款语义：当前句已在区间内 → 从当前句继续（息屏暂停/中途停掉后再点连读不跳回区间第一句）
+        // V104(外审10): 刚自然播完一轮（_seqFinished）再点 → 从区间第一句重新起播——原 currIndex 停在
+        // 区间末句（仍在区间内），"从当前句续"只重播最后 1 句就又"完成"；手动跳句/换字幕/换音频会清标记
+        // （loadItem/_applyNewSegments/loadFromUrl），恢复"从当前句续"的直觉语义
         let startIdx = from;
-        if (state.currIndex >= from && state.currIndex <= to && state.segments[state.currIndex]) startIdx = state.currIndex;
+        if (!this._seqFinished && state.currIndex >= from && state.currIndex <= to && state.segments[state.currIndex]) startIdx = state.currIndex;
         this._seqRange = { from: from, to: to }; // stopAll 不清它——锁屏 ▶ 恢复（resumePaused→toggleSeqRead）仍按原区间从当前句续
         this._seqActive = true;
+        this._seqFinished = false;
         this.mode = 'SEQ_READ';
         this._setSeqBtn(true);
         if (startIdx !== from) ui.toast('🔁 从第 ' + (startIdx + 1) + ' 句继续连读');
@@ -2543,6 +2561,7 @@ const engine = {
     },
     _seqFinish() {
         const r = this._seqRange;
+        this._seqFinished = true; // V104(外审10): 自然播完标记——再点「▶ 区间连读」从区间第一句重新起播（不标记会只重播末句）
         this._stopSeqRead(true);
         ui.toast('🎉 区间连读完成（第 ' + ((r ? r.from : 0) + 1) + '-' + ((r ? r.to : 0) + 1) + ' 句）');
     },
@@ -3165,6 +3184,9 @@ const app = {
     edTuneSel(i) {
         if (this._edSelIdx === i) { this._edBarHide(); return; }
         if (!state.segments[i]) return;
+        // V104(外审11): #1 试听播放中点 #2 徽章换选——原旧句音频不停、试听按钮还卡红 ⏹（下次点按先
+        // 走一遍无声"停止"分支）；与 _edBarHide 同款先停再选（stopAll 联动会复位按钮态）
+        if (this._edPlaying) { try { engine.stopAll(); } catch(e) {} this._edPlaying = false; }
         this._edSelIdx = i;
         document.querySelectorAll('.sub-item.ed-selected').forEach(el => el.classList.remove('ed-selected'));
         document.querySelectorAll('.idx-badge.ed-sel-badge').forEach(el => el.classList.remove('ed-sel-badge'));
@@ -3623,6 +3645,7 @@ const app = {
         // 下载期间被回收重载会得到"旧字幕+新URL"：恢复条对不上 SESSION、预习进度 key 错配。
         // 新 URL 推迟到下载成功后再存（输入框 onchange 本就存过，删掉不影响手动使用）
         state.segments = []; ui.renderEditor({ noSave: true });
+        try { engine._seqFinished = false; } catch(eSq) {} // V104(外审10): 换音频——上一音频的连读"播完"标记不带进新工程（恢复位置续播语义）
         state._loadedAudioUrl = ''; // V81: 加载中先置空，成功后再赋值
         state._loadedAudioName = ''; // V83: 加载网络 URL 时清空本地文件名
         const btn = document.getElementById('btn-load-url'), spin = document.getElementById('url-spinner');
@@ -4140,12 +4163,16 @@ const app = {
         previewMode.previewedCount = Math.min(previewMode.previewedCount, newSegs.length);
         previewMode.focusCursor = Math.min(previewMode.focusCursor, Math.max(0, previewMode.starredIndices.length - 1));
         previewMode._lastPlayedFocusIdx = null; previewMode._focusFinished = false;
+        try { engine._seqFinished = false; } catch(eSq) {} // V104(外审10): 新时间轴——区间连读的"播完"标记随字幕一起作废
         // V103(功能E): 换字幕顺带把本音频生词的 st/en 重映射到新时间轴——重点句早就会自动重映射，
         // 生词本存的还是旧时间轴的话「▶ 听原句」会偏。匹配策略：先按例句文本（SRT 修时间轴不改文本，
         // 多条同文本取离旧起点最近的），文本对不上再按旧起点就近（±1.5s）找旧句、复用 remap 落到新句
         let vocabMoved = 0;
         try {
-            const vUrl = String(state._loadedAudioUrl || '');
+            let vUrl = String(state._loadedAudioUrl || '');
+            // V104(外审8): 重载后未点「▶ 继续上次」直接在缓存页刷新字幕——_loadedAudioUrl 尚空，回落读
+            // SESSION（只在加载成功时写入、blob: 不会进来），老词条 st/en 不再因取不到音频而漏同步
+            if (!vUrl) { try { vUrl = String(localStorage.getItem(CONST.SESSION) || ''); } catch(eSs) {} }
             if (vUrl && old.length) {
                 const normT = function(t) { return String(t == null ? '' : t).replace(/\s+/g, ' ').trim().toLowerCase(); };
                 const matchByText = function(sTxt, refStart) {
@@ -4158,6 +4185,9 @@ const app = {
                         const d = (refStart != null && isFinite(refStart)) ? Math.abs(ns.start - refStart) : 0;
                         if (d < bd) { bd = d; best = j; }
                     });
+                    // V104(外审8): 同文本短句（"Yes."/"Thank you."全篇出现多次）距离上限——原位置附近的
+                    // 同名句被删改合并后，无上限会漂移匹配到几分钟之外的同名句；超 15s 丢弃，交 nearOld+remap 按时间邻近重映射
+                    if (refStart != null && isFinite(refStart) && bd > 15) return -1;
                     return best;
                 };
                 const nearOld = function(st) {
@@ -4172,7 +4202,9 @@ const app = {
                     if (ni < 0) { const oi = nearOld(v.st); if (oi < 0) return; ni = remap(oi); }
                     const ns = (ni >= 0) ? newSegs[ni] : null;
                     if (!ns) return;
-                    if (Math.abs((v.st || 0) - ns.start) > 0.001 || Math.abs((v.en || 0) - ns.end) > 0.001) {
+                    // V104(外审8): 原无 st（undefined）但匹配到 ns.start===0 的词条，(v.st||0)-0=0 误判
+                    // "无需写"——isFinite 显式判缺失，真没有时间戳的一律写入
+                    if (!isFinite(v.st) || !isFinite(v.en) || Math.abs(v.st - ns.start) > 0.001 || Math.abs(v.en - ns.end) > 0.001) {
                         v.st = ns.start; v.en = ns.end; vocabMoved++;
                     }
                 });
@@ -4189,12 +4221,17 @@ const app = {
         ui.updatePractice(state.currIndex);
         // V97(外审1): 刷新字幕是一次性显式操作——立即回写缓存并刷新缓存列表（原借 15s 防抖：
         // 窗口内点「▶ 加载使用」会从 IndexedDB 读回旧字幕把刚刷新的覆盖掉，列表句数/⭐也不更新）
-        try { app._syncCacheSegments(); } catch(e) {}
         // V101(外审一建议·上轮遗留): 只在缓存面板可见时才刷新列表——render 会 getAll 整库（含几十 MB 音频 Blob）
-        try {
-            const gc = document.getElementById('group-cache');
-            if (gc && gc.classList.contains('active') && typeof cacheUI !== 'undefined' && cacheUI) cacheUI.render();
-        } catch(e) {}
+        // V104(外审6): a) #group-cache 从来没有 .active 类（ui.setTab 只切 style.display），原
+        //    classList.contains('active') 永远 false——缓存页点「↻ 刷新字幕」后列表句数/⭐ 一直显示旧值；改看 display
+        // b) _syncCacheSegments 是 async——原 Promise 直接丢弃，render 抢在落库完成前读 IndexedDB 还是旧句数；
+        //    等回写完成再重绘（catch 静默：回写失败不影响主流程，下次进页面自会重读）
+        Promise.resolve(app._syncCacheSegments()).then(function() {
+            try {
+                const gc = document.getElementById('group-cache');
+                if (gc && gc.style.display !== 'none' && typeof cacheUI !== 'undefined' && cacheUI) cacheUI.render();
+            } catch(e) {}
+        }).catch(function() {});
         const dropStar = beforeStar - previewMode.starredIndices.length; // V96(外审·小5): 超距丢弃的条数要在提示里说明
         ui.toast('✅ ' + okMsg + '（共 ' + newSegs.length + ' 句）' + (beforeStar ? ('；⭐ 重映射保留 ' + previewMode.starredIndices.length + '/' + beforeStar + (dropStar > 0 ? '，丢弃 ' + dropStar + ' 条（时间差>1.5s）' : '')) : '') + (vocabMoved ? ('；生词 ' + vocabMoved + ' 条时间已对齐新字幕') : ''));
     },
@@ -4509,6 +4546,7 @@ const app = {
         // V88: 切句字幕没变，只轻量持久化 INDEX——原 this.save() 会触发 _scheduleCacheSync，
         // 停 1.5 秒后把整条缓存记录（含几十 MB 音频 Blob）从 IndexedDB 读出再 put 回去：发热/耗电/卡顿
         state.currIndex = i; engine.stopAll(); ui.updatePractice(i); this.saveIndex();
+        try { engine._seqFinished = false; } catch(eSq) {} // V104(外审10): 手动跳句——恢复"从当前句续"，不再被上轮自然播完的标记拉回区间第一句
         if (play) engine.playOnce();
     },
     next() {
@@ -4791,6 +4829,12 @@ const app = {
         safeSetItem(CONST.INDEX, state.currIndex);
         // 防抖回写离线缓存（用户改了字幕后，缓存里也要同步更新）
         this._scheduleCacheSync();
+        // V104(外审7): lib_meta 的 idx/total 同步——新加载音频自动进预习、刷新字幕/重新断句改总句数走的是
+        // save() 而非 saveIndex()，原来 lib_meta 不更新：预习途中切去服务器目录看不到 N/M 或仍是旧总句数。
+        // loadFromUrl 清空阶段走 renderEditor({noSave:true}) 不经过这里，空字幕不会写坏 total（双保险再判 length）
+        if (state._loadedAudioUrl && state.segments.length) {
+            try { libMetaTouch(state._loadedAudioUrl, state.currIndex, state.segments.length); } catch(eLm) {}
+        }
     },
     // V85: 轻量持久化当前句索引——区间循环/磨耳朵推进时只写 INDEX 不重写 STORAGE（segments 没变），
     // 防锁屏期间页面被 iOS 回收重载后 restoreProgress 回退到旧位置（用户遇到的"听到50句回来又从第1句播"）
@@ -4913,7 +4957,7 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 103, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V103: 102→103（导出文件名同步，防看着乱）
+        const data = { version: 104, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V104: 103→104（导出文件名同步，防看着乱）
         const b = new Blob([JSON.stringify(data, null, 2)]);
         const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v103.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
@@ -4940,7 +4984,7 @@ const app = {
                 'shadow_v100_rv_read', // V100: 翻面读句开关
                 'shadow_v103_vocab_filter' // V103: 生词本音频筛选（功能B）
             ];
-            var data = { type: 'shadow_full_backup', version: 103, exportedAt: new Date().toISOString(), items: {} }; // V103: 版本号 102→103（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 104, exportedAt: new Date().toISOString(), items: {} }; // V104: 版本号 103→104（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -5379,6 +5423,7 @@ const previewMode = {
             return;
         }
         this.cursorIdx = idx; state.currIndex = idx; const seg = state.segments[idx];
+        try { app.saveIndex(); } catch(eSv) {} // V104(外审7): 预习逐句推进即写 INDEX/lib_meta——原只有 exit/完成才落盘，服务器目录徽章的 N/M 停在进预习前的句号
         const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
         const text = seg[mainKey] || seg.text || '(无内容)'; const text2 = this._getSub(seg);
         document.getElementById('preview-sentence-num').innerText = '#' + (idx+1) + ' / ' + state.segments.length;
@@ -5428,7 +5473,8 @@ const previewMode = {
         let inSet = null;
         try {
             const vl = vocabBook.list();
-            if (vl.length) { inSet = new Set(); vl.forEach(function(v) { const w = String(v.w || '').trim().toLowerCase(); if (w) inSet.add(w); }); }
+            // V104(外审5): 弯撇号 u2019 归一为直撇号——词条存 it's、字幕写 it's（或反之）也能点亮标记（与 _wordRe 的 V102 撇号互通规则一致）
+            if (vl.length) { inSet = new Set(); vl.forEach(function(v) { const w = String(v.w || '').trim().toLowerCase().replace(/\u2019/g, "'"); if (w) inSet.add(w); }); }
         } catch(e0) {}
         let last = 0, m;
         while ((m = re.exec(str)) !== null) {
@@ -5440,7 +5486,7 @@ const previewMode = {
             } else {
                 const sp = document.createElement('span');
                 sp.className = 'pw'; sp.dataset.word = m[0]; sp.textContent = m[0];
-                if (inSet && inSet.has(m[0].toLowerCase())) sp.classList.add('pw-in'); // V103(功能D): 已入生词本
+                if (inSet && inSet.has(m[0].toLowerCase().replace(/\u2019/g, "'"))) sp.classList.add('pw-in'); // V103(功能D): 已入生词本；V104: 撇号归一后比对
                 el.appendChild(sp);
             }
             last = m.index + m[0].length;
@@ -6011,16 +6057,28 @@ const previewMode = {
         if (bar) bar.classList.remove('show');
         this._stripHideSoon(); // V95: 隐藏后 400ms 延迟恢复顶栏
     },
-    // V103(功能D): 重渲当前句主文本刷新“已入生词本”标记——加词/撤销瞬间立即点亮/熄灭
-    // （只在预习视图激活时渲染；重点句阶段不碰它的列表）
+    // V103(功能D): 刷新“已入生词本”标记——加词/撤销瞬间立即点亮/熄灭
+    // （只在预习视图激活时刷新；重点句阶段不碰它的列表）
+    // V104(外审5): 改为就地切换现有 .pw 节点的 .pw-in——原走 _renderPreviewMainText 全量重建
+    // innerHTML：a) 长句缩不住内部滚动时滚到底部点词，scrollTop 跳回顶部（丢阅读位置）；
+    // b) 重建数百个 span 白费。.pw 节点本就是当前句渲染出来的，就地 toggle 零成本且不丢滚动位置；
+    // 撇号归一与 _renderPreviewMainText 同口径（词条存 it's、字幕写 it's 也互通）
     _refreshPwMarks() {
         try {
             const pvw = document.getElementById('preview-view');
             if (!pvw || !pvw.classList.contains('active')) return;
             if (document.getElementById('preview-focus-phase').classList.contains('active')) return;
-            const seg = state.segments[this.cursorIdx];
-            const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
-            this._renderPreviewMainText(seg ? ((seg[mainKey] || seg.text || '') + '') : '');
+            const el = document.getElementById('preview-sentence-text');
+            if (!el) return;
+            const inSet = new Set();
+            vocabBook.list().forEach(function(v) {
+                const w = String(v.w || '').trim().toLowerCase().replace(/\u2019/g, "'");
+                if (w) inSet.add(w);
+            });
+            el.querySelectorAll('.pw').forEach(function(sp) {
+                const w = String(sp.dataset.word || sp.textContent || '').toLowerCase().replace(/\u2019/g, "'");
+                sp.classList.toggle('pw-in', inSet.has(w));
+            });
         } catch(e) {}
     },
     // V84: 入生词本（词 + 所在句 + 出处）
@@ -6054,6 +6112,7 @@ const previewMode = {
         this._focusReps = n;
         try { localStorage.setItem('shadow_v84_focus_reps', String(n)); } catch(e) {}
         this._syncRepsBtns();
+        try { engine._syncSeqRepsSel(); } catch(e2) {} // V104(外审4): 反向同步——练习页改遍数会刷重点句滚轮，重点句页改（或 ↺ 重置走 setFocusReps(1)）原来不刷练习页 #seq-reps-sel，切回去显示的还是旧遍数
         ui.toast(this._focusReadActive ? ('连读遍数：' + n + '（下一句生效）') : ('连读遍数：' + n + ' 遍'));
     },
     _syncRepsBtns() {
@@ -6504,6 +6563,7 @@ const vocabBook = {
         if (this._lastAddIdx === i) this._lastAddIdx = null; // 撤销目标被删，作废
         else if (this._lastAddIdx !== null && i < this._lastAddIdx) this._lastAddIdx--; // V84.1r2: 删的是撤销目标之前的词，撤销索引随之前移
         this._persist(); this.render();
+        try { previewMode._refreshPwMarks(); } catch(ePw) {} // V104(外审5): 预习页里删词——当前句对应 .pw-in 立即熄灭
     },
     clearAll() {
         if (!this.list().length) return ui.toast('生词本已经是空的');
@@ -6512,6 +6572,7 @@ const vocabBook = {
         this._rv = null; // V97(外审2): 翻卡 Tab 下清空——旧队列全指向已删词条，reviewMark 连点会翻完全队列弹"本轮认识 X/X"假战报
         this._persist();
         this.tabList(); // V97(外审2): 切回列表 Tab 显示空状态（原只重绘被隐藏的列表，翻卡界面还停在旧卡上）
+        try { previewMode._refreshPwMarks(); } catch(ePw) {} // V104(外审5): 清空后预习页所有 .pw-in 立即熄灭
         ui.toast('已清空生词本');
     },
     // 入口按钮/面板计数。V94: 角标 class 化——预习/练习/编辑三个入口同步
@@ -6530,8 +6591,16 @@ const vocabBook = {
     _filterAudioKey() { try { return localStorage.getItem('shadow_v103_vocab_filter') || 'all'; } catch(e) { return 'all'; } },
     // 当前音频判定：v.a 与已加载音频 fixUrl 比对（主路径），老词条缺 a 时退 v.src 与当前出处名比对
     _isCurrentAudio(v) {
+        // V104(外审9): a) 没加载音频就没有"当前音频"——原会掉到 v.src 兜底，currentSourceName() 回落读
+        //    INPUTS 残留 URL 的文件名，把"上次输入框里的同名文件"误当当前音频；
+        //    b) 词条(v.a)与已加载音频(url)都有 URL 时直接以 URL 比对说了算——不同目录同文件名
+        //    （dirA/lesson1.mp3 与 dirB/lesson1.mp3）或本地/网络同名文件，原来 fixUrl 明显不等还继续
+        //    走 v.src===出处名 兜底误命中；仅老词条缺 v.a 时才退回出处名比对
         const url = String(state._loadedAudioUrl || '');
-        if (v && v.a && url) { try { if (net.fixUrl(v.a) === net.fixUrl(url)) return true; } catch(e) {} }
+        if (!url) return false;
+        if (v && v.a) {
+            try { return net.fixUrl(v.a) === net.fixUrl(url); } catch(e) { return false; }
+        }
         try {
             const nm = currentSourceName();
             if (nm && nm !== '未知音频' && v && v.src && v.src === nm) return true;
@@ -6591,7 +6660,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 103, exportedAt: new Date().toISOString(), vocab: list };
+        const data = { type: 'shadow_vocab_backup', version: 104, exportedAt: new Date().toISOString(), vocab: list };
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
@@ -6633,15 +6702,19 @@ const vocabBook = {
     // 合并与去重：按 w.trim().toLowerCase() 匹配——新词标准化后追加；同词按“保留最完整数据”合并
     _mergeVocab(incoming) {
         const list = this.list();
-        const byKey = {};
-        list.forEach(function(v, i) { const k = String(v.w || '').trim().toLowerCase(); if (k) byKey[k] = i; });
+        // V104(外审2): 普通对象做字典会吃到原型链上的属性——词库里没有但导入文件里有 constructor/toString
+        // 这类英文词时，byKey['constructor'] 拿到 Object.prototype.constructor（不是 undefined），
+        // 跳过"新增"分支进合并分支，lv=list[函数] 为 undefined，lv.st 直接 TypeError 炸掉整个合并。
+        // Map 的 get 找不到就是 undefined，没有原型链问题
+        const byKey = new Map();
+        list.forEach(function(v, i) { const k = String(v.w || '').trim().toLowerCase(); if (k) byKey.set(k, i); });
         let added = 0, merged = 0, skipped = 0, invalid = 0;
         incoming.forEach(function(iv) {
             if (!iv || typeof iv !== 'object') { invalid++; return; }
             const w = String(iv.w == null ? '' : iv.w).trim();
             if (!w || w.length > 60) { invalid++; return; } // 与 add() 同规：空词/超长词不入本
             const k = w.toLowerCase();
-            const li = byKey[k];
+            const li = byKey.get(k);
             if (li === undefined) {
                 // 新增：标准化字段（与 add() 同构）
                 const e2 = { w: w, s: String(iv.s || '').trim(), src: String(iv.src || '').trim(), t: Number.isFinite(iv.t) ? iv.t : Date.now() };
@@ -6651,7 +6724,7 @@ const vocabBook = {
                 if (Number.isFinite(iv.ok)) e2.ok = Math.max(0, Math.floor(iv.ok));
                 if (iv.grad) e2.grad = true;
                 list.push(e2);
-                byKey[k] = list.length - 1;
+                byKey.set(k, list.length - 1);
                 added++;
                 return;
             }
@@ -6680,6 +6753,7 @@ const vocabBook = {
                 if (rev && lst && rev.style.display !== 'none' && lst.style.display === 'none') this.tabList();
                 else this.render();
             } catch(e) {}
+            try { previewMode._refreshPwMarks(); } catch(ePw) {} // V104(外审5): 合并导入新词——预习页当前句对应 .pw-in 立即点亮
         }
         ui.toast('✅ 合并完成：新增 ' + added + ' 词，补全/合并 ' + merged + ' 词，已存在跳过 ' + skipped + ' 词' + (invalid ? ('，无效 ' + invalid + ' 条') : ''));
     },
@@ -6698,8 +6772,11 @@ const vocabBook = {
         // 原会把 arm 提前唤醒、在重听刚开头就起算翻面倒计时）；自动翻牌开着时重走带估算兜底的
         // “读音结束后起算”链。自动读词路径（onEnd 为函数）不走此分支，维持 _rvShowCard 原逻辑
         if (typeof onEnd !== 'function' && this._rv && !this._rv.done && !this._rv.flipped) {
-            this._rvReadTk = (this._rvReadTk || 0) + 1; // 旧回调全部作废
-            if (this._rvReadTmr) { clearTimeout(this._rvReadTmr); this._rvReadTmr = null; }
+            // V104(外审3): _rvFlipClear 一次清干净——读音 0.8s 结束 arm() 已挂上翻面倒计时（_rvFlipTmr），
+            // 第 2.5s 点重听时原代码只清了读音等待（_rvReadTmr）、递增了 _rvReadTk，翻面倒计时继续跑：
+            // 重听刚开头 0.5s 旧 _rvFlipTmr 到点，代数校验全过直接强制翻面掐断单词读音。
+            // _rvFlipClear 同时清两个定时器并作废两路代数（含 _rvReadTk 递增，替代原两行）
+            this._rvFlipClear();
             if (this._rvFlipSec() > 0) {
                 const tk = this._rvReadTk;
                 const arm = () => {
@@ -6916,19 +6993,37 @@ const vocabBook = {
         this._syncRvSettings();
         // V99(毕业): 默认复习池排除已毕业（连续 3 次认识）的词
         // V103(功能B): 复习池跟随音频筛选（搜索只过滤列表不参与）——刚学完第 10 课想集中过第 10 课的新词，先筛到该音频再进翻卡
-        const pool = this._filteredIdx(true).filter(function(i) { return !list[i].grad; });
-        if (!pool.length && list.some(function(v) { return !v.grad; })) {
-            return ui.toast('当前音频筛选下没有可复习的词（上方换回「全部音频」试试）');
+        // V104(外审1·高): 空池不再 toast 早退——上面已经把 #vocab-list 藏了、#vocab-review 显示出来、
+        // Tab 高亮也切过来了，早退会把翻卡区留成一片空白（或残留旧战报/旧卡，_rv 已被置 null 点啥都没反应的僵尸卡）；
+        // 且"当前筛选下全毕业、别的音频还有未毕业词"也被这条早退一刀切拦死，无法重练本筛选。现明确渲染三种空池状态
+        const filteredAll = this._filteredIdx(true);
+        const pool = filteredAll.filter(function(i) { return !list[i].grad; });
+        if (!filteredAll.length) {
+            // 状态一：筛选（当前音频/指定某期）下连词都没有——切回全部或返回列表，不留空白
+            this._rv = null;
+            this._stopAllAudio();
+            document.getElementById('vocab-review').innerHTML = '<div class="rv-wrap"><div class="rv-done">' +
+                '<div style="font-size:40px;">🔍</div>' +
+                '<div style="font-size:15px;font-weight:700;color:#202124;margin-top:6px;">当前筛选下暂无生词</div>' +
+                '<div class="rv-ops" style="margin-top:14px;">' +
+                '<button class="rv-btn rv-btn-know" onclick="vocabBook.setFilterAudio(\'all\')">🌐 切回全部音频</button>' +
+                '<button class="rv-btn rv-btn-minor" onclick="vocabBook.tabList()">📋 返回列表</button>' +
+                '</div></div></div>';
+            return;
         }
         if (!pool.length) {
+            // 状态二：筛选下（或全局）全毕业——给重练入口，不再被"别处还有未毕业词"的早退拦死
+            const allGrad = !list.some(function(v) { return !v.grad; });
             this._rv = null;
             this._stopAllAudio(); // V103(外审6): 防御性收口——进毕业提示页时把残留的原音/TTS 一并停
             document.getElementById('vocab-review').innerHTML = '<div class="rv-wrap"><div class="rv-done">' +
                 '<div style="font-size:44px;">🎓</div>' +
-                '<div style="font-size:16px;font-weight:700;color:#202124;margin-top:6px;">全部毕业！</div>' +
+                '<div style="font-size:16px;font-weight:700;color:#202124;margin-top:6px;">' + (allGrad ? '全部毕业！' : '当前筛选下已全部毕业！') + '</div>' +
                 '<div style="font-size:13px;color:#5F6368;margin:8px 0 14px;line-height:1.6;">每个词都连续 3 次「认识」，已移出默认复习池。<br>列表里带 🎓 标记的还能查到；忘了的词点「不认识」会自动回池。</div>' +
-                '<div class="rv-ops"><button class="rv-btn rv-btn-know" onclick="vocabBook.reviewRestart(false)">🔄 重练全部（含已毕业）</button></div>' +
-                '</div></div>';
+                '<div class="rv-ops">' +
+                '<button class="rv-btn rv-btn-know" onclick="vocabBook.reviewRestart(false)">🔄 重练本组（含已毕业）</button>' +
+                (!allGrad ? '<button class="rv-btn rv-btn-minor" onclick="vocabBook.setFilterAudio(\'all\')">🌐 看全部音频</button>' : '') +
+                '</div></div></div>';
             return;
         }
         this._rv = { queue: pool, pos: 0, flipped: false, unknownRound: [], total: pool.length, graduated: 0 };
