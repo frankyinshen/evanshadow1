@@ -1,4 +1,4 @@
-// Shadow Reading Pro V98 Service Worker
+// Shadow Reading Pro V99 Service Worker
 // Offline strategy: same-origin navigate requests only, "network-first + 3s timeout fallback to cache".
 // V88: previous "network-first, fallback only when offline" hung on weak networks and pages never opened,
 //      while the whole app is fully usable offline. Now: if network does not respond in 3s, open from cache;
@@ -21,11 +21,13 @@
 //      of the cached copy; 4xx (e.g. 404) is a real answer and still passes through.
 // V98: Cache name bumped to v18 with V98 (timer popup closes on cancel / subtitle re-fetch for audio-only
 //      cache entries / flashcard auto-pronounce / focus reps row visible by default). No SW logic change.
+// V99: 1) Offline-with-no-cache hint now says "server unavailable or offline" (the old text only mentioned
+//      offline, which misled debugging when the host was actually returning 5xx). 2) Cache name bumped to v19.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v98_offline_v18';
+var CACHE_NAME = 'shadow_v99_offline_v19';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -159,7 +161,7 @@ self.addEventListener('fetch', function(event) {
             .catch(function() {
                 // Offline and no cache either: return a 503 text hint instead of the browser error page.
                 return fromCache().then(function(c) {
-                    return c || new Response('Offline and no cache yet: please open this page once while online.',
+                    return c || new Response('Server unavailable or offline, and no cached copy yet: please open this page once while online.',
                         { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
                 });
             })
