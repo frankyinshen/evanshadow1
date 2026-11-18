@@ -54,11 +54,20 @@
 //      selection bar z-index 8100 + blind-mode no-select + dismiss calls; batch-cache stop/reset/late-
 //      return fixes; edTuneSel keepOpen; IME composing guard; subtitle-1-failure guard; word-boundary
 //      matching for old vocab entries; backup reminder bar moved into document flow). No SW logic change.
+// V109: Cache name bumped to v29 with V109 (preview "I know it" keeps the star on sentences that still
+//      hold ungraduated vocab words; practice-page rate wheel moved into the seq-read settings row so it
+//      no longer wraps alone on 375px; _fetchSubsIfMissing requires both sub text AND non-empty segments
+//      before skipping re-fetch; _restoreShiftSnap remaps vocab entries added after the shift snapshot;
+//      SRS reviewMark only advances the interval chain when the word was actually due; editor-page jump
+//      label refresh extracted to _syncEdJumpCur called on renderEditor and switchView; dict popup Esc/
+//      shortcut-key handling; vocab-star button only shows while some vocab sentence is unstarred, with
+//      _vocabSentIdx(v, cheap) shared locator; focus-phase exit returns to the pre-entry practice sentence
+//      when entered from the practice page). No SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v108_offline_v28';
+var CACHE_NAME = 'shadow_v109_offline_v29';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
