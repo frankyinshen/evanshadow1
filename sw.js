@@ -25,11 +25,14 @@
 //      offline, which misled debugging when the host was actually returning 5xx). 2) Cache name bumped to v19.
 // V100: Cache name bumped to v20 with V100 (flip-sentence read toggle + hear-original iOS chain fix +
 //      preview auto-play of first sentence + shift-session reset on audio switch + toast queue). No SW logic change.
+// V102: Cache name bumped to v22 with V102 (flip-card auto-flip countdown now starts after the card's
+//      pronunciation ends; iOS unmuted-gesture unlock for hear-original; stop audio on review report /
+//      tab switch / close; preview-exit index persistence; misc small fixes). No SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v101_offline_v21';
+var CACHE_NAME = 'shadow_v102_offline_v22';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
