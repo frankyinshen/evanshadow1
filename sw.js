@@ -47,11 +47,18 @@
 //      state; editor-page sentence jump + text search; backup reminder bar + shadow_last_backup_at;
 //      iPad TTS voice fix - explicit u.voice selection in vocabBook._speakText with Eloquence filtering
 //      and enhanced/premium scoring). No SW logic change.
+// V108: Cache name bumped to v28 with V108 (auto-star vocab sentences on add from both practice and
+//      preview pages; iPad TTS voice lock via _voiceCache + localStorage shadow_v108_voice_en/zh to stop
+//      mid-session voice switching; dictionary lookup popup with note backfill; editor-page "locate
+//      current practice sentence" button; SRS graduation now requires full 1/3/7/15-day chain; practice
+//      selection bar z-index 8100 + blind-mode no-select + dismiss calls; batch-cache stop/reset/late-
+//      return fixes; edTuneSel keepOpen; IME composing guard; subtitle-1-failure guard; word-boundary
+//      matching for old vocab entries; backup reminder bar moved into document flow). No SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v107_offline_v27';
+var CACHE_NAME = 'shadow_v108_offline_v28';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
