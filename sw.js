@@ -37,11 +37,21 @@
 // V105: Cache name bumped to v25 with V105 (preview phrase marking for vocab entries; review filter
 //      dropdown sync in tabReview; export filename fix; seq-read finished flag scoped to same range).
 //      No SW logic change.
+// V106: Cache name bumped to v26 with V106 (practice-page gap control next to seq-read; practice-page
+//      vocab marks + selection-to-book; vocab sentences batch-star; seq/focus read per-rep progress +
+//      blind-listen last-rep reveal + slow-first-rep speed; server-browser batch offline cache + filter
+//      chips; external-review fixes for _applyPwMarks phrase union / single-token fallback and
+//      vocab-count in tabReview). No SW logic change.
+// V107: Cache name bumped to v27 with V107 (proposal 4/5/7/8: vocab entry notes with edit UI in list +
+//      flashcard back; SRS spaced repetition ivl/due with due-only review pool toggle + fourth empty-pool
+//      state; editor-page sentence jump + text search; backup reminder bar + shadow_last_backup_at;
+//      iPad TTS voice fix - explicit u.voice selection in vocabBook._speakText with Eloquence filtering
+//      and enhanced/premium scoring). No SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v105_offline_v25';
+var CACHE_NAME = 'shadow_v107_offline_v27';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
