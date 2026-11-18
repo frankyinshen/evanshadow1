@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V102 | build:20261118 | 用户 2 条新需求 + 第三份外部审查 10 项（高2/中5/低3）全部落地。用户1·自动翻牌计时改从「读音结束后」起算：原来从正面第一个音起播就开始倒计时，词/词组稍长（如 abbreviation、四字中文词）或例句填空模式整句原音没读完 N 秒就先翻面。现在读音链结束才开始计——词面/听音模式 speak→_speakText 增可选 onEnd（utterance onend/onerror 读完即回调）；例句填空模式 hearSentence→_hearFallback 增可选 onEnd（Level 1 段落播完 / Level 2 停止定时器到点 / Level 3 TTS 读完，哪级成功哪级回调）；_rvShowCard 里两路先到先起算（arm 去重），并按词长（中文≈320ms/字、英文≈100ms/字符、引擎启动 650ms）与句长（en-st+0.6s）挂估算兜底定时器——iOS TTS onend 不可靠不作唯一信号、听原句三级兑底时长不定，兜底只晚不早；_rvFlipClear 同步清兜底定时器+作废回调代数（_rvReadTk），手动翻/判卡/切 Tab/关面板全路径不漏；自动翻牌关时照常读音不起算；设置行 tooltip「正面出现后 N 秒」→「读音结束后 N 秒」。用户2·单词卡原音 iOS 残余根修（=外审高1）：_unlockHearEl 去掉 el.muted=true——静音 WAV 采样值全 0 物理无声无需再叠 muted，而部分 iOS WebKit 对"静音播放"不计入手势解锁，muted 播过的元素异步改 muted=false 再 play() 仍会被拒（单词卡放不出原音的残余根因）；_hearFallback 里 await el.play() 成功后也置 _hearUnlocked=true（open() 解锁 Promise 未落、缓存命中已换 src 的竞态下标记不再卡 false，双保险）。外审高2·previewMode.exit() 补 app.saveIndex()：预习逐句听切句只写预习存储+内存 currIndex，「🎧 返回正式跟读」后直接关页面，下次「▶ 继续上次」读旧 INDEX/lib_meta 回不到所见句（完成弹窗/重点句完成路径走 switchView→loadItem 已写盘，唯 exit 漏）。外审中3·翻卡战报与「📋 列表」停音：判完最后一张进战报、放音途中切回列表，上一张卡 Level 1/2 原音与 TTS 原来会一直播完甚至与弹出的界面重叠；新增 _stopAllAudio 统一收口（tabList/reviewMark 毕业分支/close 三处接，close 原四行散写并入）。外审中4·toggleTextBlur 永显分支 userBlurState 赋值反了：临时藏起当前句（_revealIdx===currIndex）时应为 true（模糊），原照抄永隐分支成了 false；当前显示不受影响（updatePractice 看 _revealIdx），但 AI 模式 _prevUserBlurState/状态排查会拿到反值。外审中5·换字幕/导入工程/重新断句/进预习四处重置 state._revealIdx：永隐下临时点亮第 1 句后换新时间轴（新 currIndex 也是 0），第 1 句会因 _revealIdx===0 命中而直接亮出原文。外审中6·playOnce/_loopOneCycle 的 NotAllowedError 补轻提示「自动播放被拦，请再点一次播放按钮」：锁屏控制等非手势路径被拦时按钮原来无声弹回熄灭（V101 只静默跳过了吓人的 toast，没给替代反馈）。外审中7·_hearFallback 停止计时 +250ms→+100ms：原句尾（en+0.2）再叠 0.25s 共多出 0.45s，快语速对话常把紧随其后的下一句开头一两个音带出来。外审低8·_pickTr 单行混合双语尾部提取放宽字符集（夹杂数字/百分号/半角标点）："It costs $5. 花了5美元。"原从 5 处截断只剩"美元。"，现提取"花了5美元。"。外审低9·_wordRe 词内空白 / /g→/\s+/g（换行等任意空白）、撇号直/弯互通（['\u2019]）——词条存 it's、字幕写 it's 也能命中高亮/挖空。外审低10·loadProject 顺带清 state.subFileNames：导出 SRT 不再沿用上一个本地字幕文件名。sw.js 缓存名升 shadow_v102_offline_v22（无 SW 逻辑改动）；exportProject/全量备份 version 102；版本号统一到 V102 -->
 <!-- V101 | build:20261118 | 用户 3 条新需求 + 两份外部审查（5 必修/8 建议 + 7 项/4 小项）全部落地。用户1·预习结束进跟读从第 1 句开始：「🎧 直接去正式跟读」（预习完成弹窗）与「✅ 完成重点练习，去正式跟读」两处落点把 currIndex 归 0（原停在预习光标——最后一句/续预习起点），符合“预习全文→跟读全文”的学习流；「🎧 返回正式跟读」（中途退出）保持原位置不强拉，「▶ 继续上次」照旧恢复跟读进度。用户2·字幕显隐重定义（永隐/永显的一次性显隐 + 「自动」改名）：原来永隐下点一下字幕/「显示」钮会把 permBlurMode 拉回 none 且 userBlurState 翻转，之后每句都亮着——与“永隐”承诺矛盾。现在 updatePractice 统一算有效显隐：永显=每句显示、点一下只临时藏当前句（state._revealIdx）；永隐=每句隐藏、点一下只临时看当前句；切句自动回模式默认（_revealIdx 换句即作废，磨耳朵/区间循环等所有推进路径天然覆盖）；AI 模式仍由自己管 userBlurState（_restoreBlurState 补清 _revealIdx）；「自动」改名「手动」并补模式说明 toast（手动=记住我上次的选择，新音频默认藏）——三态现在是 手动→永显→永隐。用户3·翻卡读音仍 TTS 根修（=外审一必修2+外审二1）：V100 的 _unlockHearEl 假解锁——play() 一发起就无条件置 _hearUnlocked=true，自动翻牌定时器（无手势）触发时解锁被 iOS 拒绝却照样标记成功，之后真手势来了也不重试，缓存直放整页报废退 TTS。现在：a) 只在 play() resolve 时标记成功，reject 保持 false 下次真手势重试（1 秒重入保护）；b) done() 里 pause 前校验 src 还是静音 WAV（src 已被真音频换掉时不去 pause 刚起播的原句——并发竞态会把新播放打断）；c) 在真手势里提前解锁——open()/tabReview()/reviewMark() 开头各补一次（面板一打开元素就解锁，自动翻牌再触发时早已解锁）；d) hearSentence 后半段抽出 _hearFallback(v, tk)，Level 1 主音频直放失败不再只弹“播放失败”而是降级缓存直放（原 onError 是空的）；e) Level 2 起播补 -0.12s 扩边与 Level 1 一致（原从 v.st 起播吃掉第一个音）+ 换 src 后 muted 复位；f) TTS 兑底只读英文行（双语字幕不再“先中文后英文”）。外审一必修：1) reviewRestart 毕业界面死按钮——池子空时 tabReview 把 _rv 置 null，原函数 if(!rv) return tabReview() 又回到同一个毕业界面；rv 为 null 时直接按 list 重建队列。3) 点判定后上一张 Level 1 主音频直放不停与新卡读音叠音——新增 _stopMainHear()（speak()/close()/hearSentence 三处接）。4) “预习完一遍”被回退重点刷大——previewedCount 三处 ++ 改取最远到达 Math.max(…, idx+1)（原回退几次就可能在没看完时 ≥总句数，下次加载直接进跟读违反强制规则）。5) 平移快照两处不精确——a) _resetShiftForNewAudio 不再清快照（iOS 回收页面重载同音频是常态，快照使用处本来就校验 key+句数，清掉反而让“刷新后归零”永远退化为反向平移）；b) 快照补记拍摄时累计值 t：重开页面后在上次累计基础上继续平移时，快照是“已平移 t”状态，归零=还原快照后再 applyShift(-t) 才是真原始；撤销回到 0 且快照干净时同样走精确还原（原来 applyShift(-d) 触界句会漂移几十毫秒）。外审一建议：_pickTr 挑纯中文行（字幕2 是 Eng+Chs 时 tr 不再存英中混合行，markWord/_backfillVocabTr 两处）；_syncCacheSegments 空字幕保护（补拉超时后台成功写回缓存后，内存空字幕不能盖回去——否则 srts 已有 text 导致永不再补拉，“字幕消失”复活）；loadFromUrl 网络分支 _resetShiftForNewTimeline 挪到 saveInput() 之后（原按旧音频 key 清累计值/给新音频挂「套用上次」）；_applyNewSegments 只在缓存面板可见时才 render（不再 getAll 整库）；Anki 导出去掉表头行（部分版本导入不跳首行会多一张空卡）。外审二：4) 平移撤销触界漂移+归零覆盖手动修改——updateSeg(时间)/delSeg/splitSeg/mergeSeg/addNewRow/两页微调滚轮与重置共 8 处清平移快照（_dropShiftSnap），归零安全退化为按累计值反向平移；5) 300ms 渲染防抖期间切页编辑页残留旧时间——_clearShiftTimers 清渲染定时器前立即 renderEditor({noSave:true}) 刷一次；6) 预习首句自动播被拦时 _playSegmentTimed 不再叠加“播放失败: NotAllowedError”toast（调用方 onError 已接管提示）；7) 高亮/挖空正则撇号边界——it's 里的 it、don't 里的 don 不再误伤（前后瞻排除撇号，老浏览器退回 \b），三处全部改为“原文匹配+逐段转义”（原来先 escapeHTML 再匹配，' 变 &#39; 后边界判断全乱），词内空格按 \s+ 匹配（跨行短语填空卡不再露答案）；8) loadProject 旧版工程也清字幕 1/2/3 输入框；9) #edt-info 窄屏格式缩短（#100 123.45~128.90 (5.45s)）；10) edTuneWheel 校验失败不再白排一次 15s 缓存同步。sw.js 缓存名升 shadow_v101_offline_v21（无 SW 逻辑改动）；exportProject/全量备份 version 101；版本号统一到 V101 -->
 <!-- V100 | build:20261118 | 用户 3 条新需求 + 外部审查 10 项（含 3 项高优先级 Bug）全部落地。用户1·生词本翻面读句可关 + 听原句链路根修：1) 翻卡设置行新增「翻面读句 开/关」（shadow_v100_rv_read，自动翻牌后面——用户指定位置，并入全量备份；关=翻面不出声，想听点背面例句/「▶ 听原句」，例句填空模式正面播原音不受影响）。2) 「明明加载了语音和字幕却用 TTS 读整句、双语字幕先读中文再读英文」根因＝听原句 Level 2 走 prepareAudioFromBlob——decodeAudioData 把整首音频解码只为拿 objectUrl，两次 await 后 iOS 手势已丢，el.play() 被拒掉进 catch 退 TTS 读例句（整句读，双语最惨）。修法四件套：a) Level 1 判定从严格字符串相等改 fixUrl 模糊比对（同一音频换过 URL 写法也命中主音频直放）；b) Level 2 不再解码——重建带 MIME 的 Blob 直接出 objectURL（几百微秒），且在手势内同步解锁 _hearEl（第一次听原句时静音 0.05s WAV play 一次，_buildSilentWavUri 确定性构造，之后 async 链的 el.play() 不再被无手势自动播放拦截）；c) 先等 loadedmetadata 再设 currentTime（readyState=0 时 Safari 忽略赋值、从 0 起播）；d) 代数 token——close()/点别的词时旧异步链作废（原会关面板后出声+写回 _hearUrls 泄漏）；另 hearSentence/speak 补 clearTimeout(_speakTmr)（原只 speechSynthesis.cancel，60ms 延时里的 TTS 会叠在原音上）、Level 2/3 也补 engine.stopAll（原只 Level 1 停，主音频与直放混音）。用户2·"练过"重定义（强制规则）：唯一标准=本音频预习逐句把全部句子过完一遍（previewedCount≥句数）。V99 原来还看「点过🎧返回正式跟读」(lib_meta.skip) 和「练习页播过句子」(idx>0)——按用户拍板全部删掉：不能因为点过跟读或重点句就违反"没预习完→进预习"，用户随时可点跟读/重点句退出；skip 标记仍在写（数据保留）但不参与判定；抽屉选项文案与说明、setAfterLoad toast 同步改写；「▶ 继续上次」仍永远跟读（用户显式动作）。用户3·进预习自动播第一句 + 提示/按钮文字修正：V99 自动进预习不播第一句且提示"点句子开始播放"但点句子根本不播（句子框点击是入生词/复制）。现在 start() 进入即自动播当前句（含第一句）：被 iOS 无手势首播拦截时失败回调把提示改为"自动播放被拦，点下方「▶ 播放」开始"、按钮文字从「🔄 再听一次」切「▶ 播放」（_playedOnce 会话级标记，点过一次元素解锁，第二句起恢复全自动播、文字回「再听一次」——用户给的方案）；顺带修一个实测抓到的 Bug：#btn-preview-replay 原来只有 class 没有 id，_syncReplayLabel 查不到元素、按钮文字永远不切（补 id）；音频未就绪时提示落地（原 hint 停在"正在播放"）。外审高优先级：1) tabReview 补 Tab 高亮切换（原切到翻卡后高亮停在「📋 列表」）；2) 听原句 iOS 链（见用户1）；3) 预习误导提示（见用户3）。外审中优先级：4) 切音频未重置平移会话——新增 app._resetShiftForNewAudio()（清 _shiftHist/_shiftLast/_shiftRenderTmr/_shiftListenTmr/快照+刷行），接进 cacheUI.load、loadFromUrl 缓存命中、本地导入 audio-file、restoreProgress 四条原漏掉的路；不把 A 音频的累计值当 B 的"套用上次"（那只属于同一音频换字幕）；5) _fetchSubsIfMissing 的 applyResults 补"字幕1 有链接却失败→整体放弃"（原只有 refreshSubs 有，字幕2 会悄悄顶成主字幕写进缓存，hasSubs=true 后永不再补拉）；6) 高亮/挖空正则加词边界+g（_wordRe 共用拼装器：首尾字母数字加 \b——短词 in/he/a 不再把 Spr__ing 挖成残废、同句多处全处理，_hlWord/_hlBlank/_plainBlank 三处一致）；7) 生词本快捷键不再劫持 <select> 方向键（表单控件先 return，Escape 仍可关面板）；8) 平移三处边界——_syncShiftRow 提到同步（原在 300ms 防抖里，头 300ms 撤销/归零还 disabled 连点失效）、400ms 试听前查 main-audio.src（纯导入字幕不再报播放失败）和 editor-view 可见性、switchView 离开编辑页/换字幕清试听定时器（_clearShiftTimers 统一收口）；9) 窄屏两处——生词本工具栏 flex-wrap+字号 12px（4 按钮不再裁掉「🗑 清空」）、.sub-btn nowrap+gap 6→4+⏳ 倒计时 13→12px（行首变宽不折行）；10) Toast 排队接力（<1.2s 的新提示进 _toastQ，当前条 1.2s 让位，最多 3 条——补拉 6 秒超时提示不再 0ms 被"已进入预习模式"顶掉）+ fetchCommon 支持 quiet（补拉后台请求不再改加载按钮文案永久滞留）。低优先级：填空模式 R 键改重听原句（原直接屏蔽；不剧透拼写，与正面自动播原音一致）。顺手：#shift-sel/#after-load-sel/#rv-mode-sel/#rv-flip-sel/#rv-read-sel 补非 iOS change 后 blur（焦点不再滞留 select 吃快捷键）；「🎧 返回正式跟读」tooltip 去掉"记住不再需要预习"（判定已不看 skip）；sw.js 缓存名升 shadow_v100_offline_v20（无 SW 逻辑改动）；exportProject/全量备份 version 100（新增 localStorage 键 shadow_v100_rv_read）；版本号统一到 V100 -->
 <!-- V99 | build:20261118 | 外部审查必修 3+1 项 + 三大功能（加载后自动进预习/跟读、字幕整体平移、生词本点读/翻卡升级）+ 顺手 5 项。必修（数据完整性）：1) 加载按钮卡死根除——setLoadBtnText 非 default 分支原用 textContent 整按钮覆写把 #url-spinner 一起删掉，之后 loadFromUrl 再碰 spin.style 抛错、按钮永久禁用列表空白；文案拆进独立 #load-btn-label 只写 label，spinner 永存（null 崩溃从根上消失），V98 两条新路径（缓存补拉/↻ 下载）不再各自复位也不崩（仍补复位让文案不滞留）。2) 跨音频字幕污染两扇门同锁——cacheUI.load 回填输入框"缓存没有则保留现值"（V98）+refreshSubs 回退输入框（V98）都会把上一个音频的字幕链接当成本条目的来源：A 的字幕被拉给 B 并永久写进 B 的缓存；两处都先判 fixUrl(输入框音频链接)===fixUrl(本条目音频) 才允许沿用现值。3) 补拉节流+超时+保护——同一条缓存 1 小时只自动试一次（失败也计入；↻ 刷新字幕不走节流可强制重试）、最多等 6 秒（弱网直连+两代理最坏 45s 拖死秒开），超时先放弃后台继续拉、结果只回写缓存不动内存（下次加载直接命中不再重试）；手敲字幕保护（缓存 segments 有非空文本不自动替换）；字幕1 填了链接却下载失败整体放弃（防字幕2 悄悄顶成主字幕）；↻ 下载成功把 text+url 回写缓存 srts（原只更新 segments，"恢复原始"会退回旧文本）。功能一·加载后自动进预习/跟读（用户拍板"自动"）：新音频→预习（不自动播第一句，规避 iOS 无手势自动播放拦截），"练过"→跟读；练过=预习逐句听全部句子过完一遍（previewedCount≥总句数，用户定义）或在预习页点过「🎧 返回正式跟读」（lib_meta 记 skip 标记，previewMode.exit(markSkip) 仅该按钮传 true）或在练习页实际播过句子（lib_meta.idx>0，防刷新字幕后被拽回预习重走）；「▶ 继续上次」永远进跟读（cacheUI.load 加 resume 参）；抽屉加三态开关"加载完成后进入：自动/预习/跟读"（shadow_v99_after_load，并入全量备份）；三条 switchView('practice') 落点换 app._enterAfterLoad。功能二·⏱ 整体平移（仅本音频，用户拍板"直接改时间戳可还原"）：编辑页联动开关下方新增一行——滚轮 -2.00~+2.00s 步进 0.05s（负=整体提前，修"整条时间轴晚了零点几秒：开头吞字/结尾读到下一句"）、↩ 撤销上一步、↺ 归零；直接改写本工程全部句子起止时间（练习/预习/重点句/AI/编辑/导出自动一致），_os/_oe 与本音频生词 st/en 同步平移；首次平移前把全句+生词时间快照存 localStorage（单槽 shadow_v99_shift_snap，随音频切换作废），归零=快照精确还原零漂移（无快照时退化为按累计值反向平移并提示被夹句子可能差几十毫秒）；滚轮为绝对目标值幂等（iOS 每过一档触发不累计）；转动后防抖 400ms 用精确窗口（不含扩边）自动试听当前句；边界：句首≥0/句尾≤音频时长/句长≥0.3s，触界句数 toast 说明；换字幕/重新下载/重新断句/导入字幕/导入工程=新时间轴，累计值清零并出「套用上次 ±X.XXs」一键重套（不自动重套，防固化后的 SRT 传回服务器被二次平移）；累计值按音频存 shadow_v99_shift_total（并入全量备份，快照不入——太大且会话性）。功能三·生词本交互（用户拍板"翻面只播原音"+采纳建议 1/3/4/5/6）：1) 列表页点单词=读音、点例句=听原声，整行小按钮删除，底部提示同步，读音与原声互斥。2) 「听原句」三级兜底——当前工程匹配→主音频直放（原行为）；不匹配但出处音频在离线缓存→专用 audio 元素从 IDB Blob 直放窗口（prepareAudioFromBlob 重建 MIME，不切工程、离线可用、objectURL 按 id 缓存关面板回收）；都没有→TTS 读例句。生词本跨音频共用，复习别的音频的词不再"先加载"半残。3) 翻卡升级——翻面只播原音（正面 TTS 被 cancel；填空模式正面已播过不重复）；卡面三模式：词→句（原有）/例句填空（正面挖空+自动播原音，想出词再翻面；🔊 读音钮与 R 键在此模式屏蔽防剧透）/听音辨词（正面只有声音不显示拼写），翻卡 Tab 顶部设置行（shadow_v99_rv_mode）；自动翻牌默认 3s（关/2/3/4/5/8/10s，shadow_v99_rv_flip），手动翻/判卡/切 Tab/关面板全清定时器+token 防过期触发，不用 TTS onend（iOS 不可靠）；键盘快捷键：空格/回车=翻牌、←=不认识、→=认识、R=重听。4) 毕业机制——连续 3 次"认识"移出默认复习池（列表带 🎓 不删；"不认识"清零连击、已毕业回池），战报显示本轮毕业数，全部毕业有专门界面+「重练全部」。5) Anki 导出——CSV：正面=挖空例句、背面=单词、完整例句、翻译、标签=出处音频名（无 HTML，逗号分隔）。6) 中文翻译——入本时存当句另一份字幕（tr），背面/列表灰字显示，老词条加载同音频时按 st 就近（±1.5s）回填（_backfillVocabTr 挂在 _enterAfterLoad）；例句中目标词加粗（先 escapeHTML 再替换，防注入）。另：speak() 统一 cancel 后延 60ms 再 speak（iOS 连续 cancel+speak 有吞音现象，连点清前一个定时器防叠读）。顺手 5 项：a) 耳机/锁屏"下一曲"在预习逐句听阶段改纯跳句 skipSentence（原走 markKnow——AirPods 双击一下就把那句标"我会了"悄悄移出重点句）；b) loadProject 有 mp3 时字幕 1/2/3 输入框照工程数据回填或清空（原只在有值时回填，残留上一个音频的链接）；c) sw.js 5xx 且无缓存提示改"服务器暂不可用或已离线"（原只说离线误导排查方向）；d) 启动"继续上次"不再 getAll 整库扫描（每条含几十 MB 音频 Blob 全进内存，库大启动慢）——改按 lib_meta.opened 排序逐条 get 校验（V94 前的老缓存无 lib_meta 记录不再当目标，那些本来就不是"最近使用"）；e) 上轮遗留的 edTuneWheel 联动不一致经核为信息过期（V97 已统一走 updateSeg，两页同源），未动。不采纳：读音声音可选（用户确认听感没问题）；槽位级补拉（有字幕1后来才传字幕2/3 的场景自动整轴替换风险大于收益，走 ↻ 手动足够）。sw.js 缓存名升 shadow_v99_offline_v19（5xx 提示文案为逻辑改动）；exportProject/全量备份 version 99（新增 localStorage 键：shadow_v99_after_load/shadow_v99_rv_flip/shadow_v99_rv_mode/shadow_v99_shift_total；shadow_v99_subs_checked 为瞬态节流标记不进备份）；版本号统一到 V99 -->
@@ -46,7 +47,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V101</title>
+<title>影子跟读 Pro V102</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -584,7 +585,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <!-- V94(审7): SW 新版本就绪提示条（updatefound 触发显示，点击刷新页面） -->
 <div id="sw-update-bar" onclick="location.reload()">🆕 新版本已就绪，点击刷新<span id="sw-update-close" onclick="event.stopPropagation(); this.parentNode.style.display='none';" title="暂不刷新">✕</span></div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V101</div>
+    <div class="nav-title">🎧 影子跟读 V102</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -1102,7 +1103,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <option value="audio">听音辨词</option>
             </select>
             <span style="font-weight:700;margin-left:6px;">自动翻牌</span>
-            <select id="rv-flip-sel" onchange="vocabBook.setRvFlip(this.value); if(!_isIOSDevice()) this.blur()" title="正面出现后 N 秒自动翻面（手动翻面/判定会取消；自动翻牌不会自动判定）">
+            <select id="rv-flip-sel" onchange="vocabBook.setRvFlip(this.value); if(!_isIOSDevice()) this.blur()" title="读音结束后 N 秒自动翻面（手动翻面/判定会取消；自动翻牌不会自动判定）">
                 <option value="0">关</option>
                 <option value="2">2 秒</option>
                 <option value="3">3 秒</option>
@@ -2251,7 +2252,7 @@ const engine = {
             document.getElementById('main-audio').pause();
             this.mode = 'IDLE';
             ui.resetButtons();
-        }, () => { if (this.mode === 'PLAY_ONCE') { this.mode = 'IDLE'; ui.resetButtons(); } }); // V84.1r2: 播放被拒时复位按钮，防卡 active
+        }, (e) => { if (this.mode === 'PLAY_ONCE') { this.mode = 'IDLE'; ui.resetButtons(); } if (e && e.name === 'NotAllowedError') ui.toast('自动播放被拦，请再点一次播放按钮'); }); // V84.1r2: 播放被拒时复位按钮，防卡 active；V102(外审一6): 锁屏控制等非手势路径被拦时补轻提示——按钮不再无声弹回熄灭
     },
     toggleLoop() {
         if (aiMode.active && !aiMode.manualPracticeMode) aiMode.stop();
@@ -2281,7 +2282,7 @@ const engine = {
                 if (this.mode !== 'LOOP_ONE') return;
                 this._loopOneCycle();
             }, gapMs);
-        }, () => { if (this.mode === 'LOOP_ONE') this.stopAll(); }); // V84.1r2: 播放被拒时停循环，防按钮卡"循环中"
+        }, (e) => { if (this.mode === 'LOOP_ONE') this.stopAll(); if (e && e.name === 'NotAllowedError') ui.toast('自动播放被拦，请再点一次播放按钮'); }); // V84.1r2: 播放被拒时停循环，防按钮卡"循环中"；V102(外审一6): 同 playOnce 补轻提示
     },
     toggleRangeLoop() {
         if (aiMode.active) aiMode.stop();
@@ -2835,7 +2836,7 @@ const ui = {
         } else if (state.permBlurMode === 'show') {
             // 永显：已临时藏→再点显回来；还亮着→临时藏当前句
             state._revealIdx = (state._revealIdx === state.currIndex) ? -1 : state.currIndex;
-            state.userBlurState = (state._revealIdx !== state.currIndex);
+            state.userBlurState = (state._revealIdx === state.currIndex); // V102(外审一4): 永显分支原来照抄了永隐的判断——临时藏起当前句（_revealIdx===currIndex）时 userBlurState 应为 true（模糊）；当前显示不受影响（updatePractice 直接看 _revealIdx），但 AI 模式存 _prevUserBlurState/排查状态时会拿到反值
         } else {
             state.permBlurMode = 'none';
             state.userBlurState = !state.userBlurState;
@@ -4546,6 +4547,7 @@ const app = {
                     ui.toast("重新分析完成");
                 }
                 state._loopInitialized = false; // 重新断句后重置循环区间默认值
+                state._revealIdx = -1; // V102(外审一5): 新时间轴——永隐下临时点亮的旧句号不再命中新句直接亮原文
                 try { app._resetShiftForNewTimeline(); } catch(eSh) {} // V99(功能二): 重新断句=新时间轴
                 ui.renderEditor();
                 ui.updatePractice(0);
@@ -4683,9 +4685,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 101, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V101: 100→101（导出文件名同步，防看着乱）
+        const data = { version: 102, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V102: 101→102（导出文件名同步，防看着乱）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v101.json'; document.body.appendChild(a); a.click(); a.remove();
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v102.json'; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
     // V83: 一键全量备份（跨端）——打包 localStorage 轻量数据（不含音频 Blob）
@@ -4708,7 +4710,7 @@ const app = {
                 'shadow_v99_after_load', 'shadow_v99_rv_flip', 'shadow_v99_rv_mode', 'shadow_v99_shift_total', // V99: 加载后进入/翻卡设置/整体平移累计值（subs_checked 为瞬态节流标记不进备份）
                 'shadow_v100_rv_read' // V100: 翻面读句开关
             ];
-            var data = { type: 'shadow_full_backup', version: 101, exportedAt: new Date().toISOString(), items: {} }; // V101: 版本号 100→101（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 102, exportedAt: new Date().toISOString(), items: {} }; // V102: 版本号 101→102（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -4850,6 +4852,8 @@ const app = {
                 ui.toast('工程加载成功（旧版工程，请手动填入音频链接）');
             }
             state._loopInitialized = false; // 新工程：重新初始化循环区间默认值
+            state.subFileNames = {1:'', 2:'', 3:''}; // V102(外审三10): 新工程不沿用上一个本地字幕的文件名（导出 SRT 用它命名）
+            state._revealIdx = -1; // V102(外审一5): 新时间轴——“临时看/藏一句”的句号作废
             // 切换工程时清除当前预习内存状态（badge 会显示 0，进预习模式时按新 URL 重新读）
             previewMode.clearForNewAudio((d.inputs && d.inputs.mp3) || '');
             // V81: 重新加载该音频已有的预习重点句（防角标假失踪）
@@ -4886,6 +4890,7 @@ const app = {
                 previewMode.saveToStorage();
                 previewMode.updateBadge();
                 state._loopInitialized = false;
+                state._revealIdx = -1; // V102(外审一5): 换主字幕=新时间轴——“临时看/藏一句”的句号作废
                 try { app._resetShiftForNewTimeline(); } catch(eSh) {} // V99(功能二): 主字幕整个替换=新时间轴
             } else app.mergeSub(n, k===1?'text2':'text3');
             state.subFileNames[k+1] = f.name;
@@ -5050,7 +5055,7 @@ const previewMode = {
         if (mixed.length) {
             // 单行“英文 中文”混合——提取尾部连续中文段（含中文标点）；提不到就保留原行
             const parts = mixed.map(l => {
-                const m = l.match(/[\u4e00-\u9fff][\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\s]*$/);
+                const m = l.match(/[\u4e00-\u9fff][\u4e00-\u9fff0-9\u3000-\u303f\uff00-\uffef\s%.,!?:;\-]*$/); // V102(外审三8): 允许夹杂数字/百分号/半角标点——“It costs $5. 花了5美元。”提取“花了5美元。”而不是“美元。”
                 return (m && m[0].trim()) ? m[0].trim() : l;
             });
             return parts.join(' ');
@@ -5079,6 +5084,7 @@ const previewMode = {
         if (!document.getElementById('main-audio').src) return ui.toast('音频未就绪');
         engine.stopAll(); aiMode.active && aiMode.stop();
         try { app._edBarHide(); } catch(e0) {} // V94: 进预习收起编辑页微调工具条
+        state._revealIdx = -1; // V102(外审一5): 进预习作废练习页“临时看/藏一句”——回练习时句号相同（如都在第 1 句）不再沿用旧临时显隐
         this._buildTuneWheels(); // V89: 首次进入时生成句首/句尾滚轮选项（幂等）
         this.loadFromStorage(); this._updateEarlyBtn();
         this.updateBadge(); // loadFromStorage 重新读了数据后刷新 badge 显示
@@ -5107,6 +5113,7 @@ const previewMode = {
         const pv = document.getElementById('practice-view'); pv.style.display = 'flex'; pv.classList.add('active');
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.onclick.toString().includes('practice')));
         ui.updatePractice(state.currIndex);
+        app.saveIndex(); // V102(外审一2): 预习逐句听切句只更新内存 currIndex+预习存储——中途退出后直接关页面，INDEX/lib_meta 还是旧句号，「▶ 继续上次」回不到所见句（完成弹窗/重点句完成路径走 switchView→loadItem 已写盘，唯 exit 漏）
     },
     _showListenPhase() {
         document.getElementById('preview-listen-phase').style.display = 'flex';
@@ -6266,7 +6273,7 @@ const vocabBook = {
     },
     // ============ V94: 🔊 读单词；V99: 统一走 _speakText（cancel 后延 60ms 再 speak——iOS 上连续 cancel+speak
     // 有否第二句现象；连点清前一个定时器防叠读）============
-    speak(i) {
+    speak(i, onEnd) { // V102(用户1): 增可选 onEnd——读音结束时回调（自动翻牌倒计时从读音结束后起算）
         const v = this.list()[i];
         const w = (v && v.w) || '';
         if (!w) return;
@@ -6274,9 +6281,9 @@ const vocabBook = {
         this._hearTk = (this._hearTk || 0) + 1; // V100: 作废在途的缓存直放链（读音与原声互斥）
         this._stopHear(); // 读音与原声互斥
         this._stopMainHear(); // V101(外审一3): Level 1 主音频直放中点读音——原来不停，读音与上一张的原音叠在一起
-        this._speakText(w);
+        this._speakText(w, onEnd);
     },
-    _speakText(t) {
+    _speakText(t, onEnd) {
         t = String(t || '').trim();
         if (!t) return;
         try { speechSynthesis.cancel(); } catch(e) {}
@@ -6286,6 +6293,10 @@ const vocabBook = {
                 const u = new SpeechSynthesisUtterance(t);
                 u.lang = /[\u4e00-\u9fff]/.test(t) ? 'zh-CN' : 'en-US';
                 u.rate = 0.9;
+                if (typeof onEnd === 'function') { // V102(用户1): 读完/读失败都回调——调用方从读音结束后起算；只作提前信号不作唯一信号（iOS onend 不可靠，调用方另有估算兜底）
+                    const f = function() { try { onEnd(); } catch(e1) {} };
+                    u.onend = f; u.onerror = f;
+                }
                 speechSynthesis.speak(u);
             } catch(e) {}
         }, 60);
@@ -6303,6 +6314,14 @@ const vocabBook = {
             try { engine.stopAll(); } catch(e) {}
         }
     },
+    // V102(外审一3): 翻卡界面音频统一停——判完最后一张进战报 / 放音途中切回列表 / 关面板 三处共用
+    // （原来战报与列表不清——上一张卡的原音/TTS 会一直播完甚至与弹出的界面重叠）
+    _stopAllAudio() {
+        this._stopHear(); // 缓存直放（Level 2）
+        this._stopMainHear(); // 主音频直放（Level 1）
+        clearTimeout(this._speakTmr); // 60ms 延时里还没出声的 TTS
+        try { speechSynthesis.cancel(); } catch(e) {}
+    },
     // ============ V94: ▶ 听原句；V99: 三级兑底；V100(外审2+用户1) iOS 手势链根修 ============
     // 1) 当前工程匹配（V99 是严格字符串相等，同一音频换过 URL 写法就掉链——改为 fixUrl 模糊比对）
     //    → 主音频直放（原行为，小扩边与练习听感一致）。
@@ -6314,7 +6333,7 @@ const vocabBook = {
     //    赋值、从 0 起播）；代数 token 防 close()/切卡后旧链继续出声或写回 _hearUrls。
     // 3) 都没有 → TTS 读例句（整句读，双语字幕会“先读中文再读英文”——翻面读句=关 可拦掉）。
     // 生词本跨音频共用，复习别的音频的词不再"先加载"半残 ============
-    hearSentence(i) {
+    hearSentence(i, onEnd) { // V102(用户1): 增可选 onEnd——原音播放链结束时回调（三级兑底哪级成功哪级回调；自动翻牌倒计时从读音结束后起算）
         const v = this.list()[i];
         if (!v) return;
         this._hearTk = (this._hearTk || 0) + 1; // V100: 代数——close()/点别的词时旧异步链全部作废
@@ -6337,18 +6356,19 @@ const vocabBook = {
                 if (en - st >= 0.1) {
                     this._hearMain = true; // V101(外审一3): Level 1 在播标记——speak()/close()/点判定 能停掉它
                     engine._playSegmentTimed({ start: st, end: en },
-                        () => { this._hearMain = false; try { a.pause(); } catch(e) {} },
+                        () => { this._hearMain = false; try { a.pause(); } catch(e) {} if (onEnd) { try { onEnd(); } catch(e3) {} } }, // V102(用户1): 段落播完即读音链结束
                         // V101(外审一2): Level 1 失败（被拦/未就绪）不再只弹“播放失败”——降级缓存直放
-                        () => { this._hearMain = false; this._hearFallback(v, tk); });
+                        () => { this._hearMain = false; this._hearFallback(v, tk, onEnd); });
                     return;
                 }
             }
         }
         // 2/3) 缓存直放 或 TTS 读例句（V101(外审一2): 抽出成 _hearFallback——Level 1 失败也能降级到这里）
-        this._hearFallback(v, tk);
+        this._hearFallback(v, tk, onEnd);
     },
     // V101(外审一2/外审二1): Level 2/3 兑底链独立函数——tk 代数随调方传入（旧链被作废时自动中断）
-    _hearFallback(v, tk) {
+    // V102(用户1): 增 onEnd——Level 2 停止定时器到点 / Level 3 TTS 读完时回调
+    _hearFallback(v, tk, onEnd) {
         if (!v) return;
         if (tk == null) tk = this._hearTk;
         if (!this._hearEl) this._hearEl = new Audio();
@@ -6388,14 +6408,18 @@ const vocabBook = {
                 const en2 = v.en + 0.2;
                 try { el.currentTime = st2; } catch(e) {}
                 await el.play();
+                this._hearUnlocked = true; // V102(外审一1/用户2): 真音频 play 成功也置解锁——open() 的解锁 Promise 未落、缓存命中已换 src 的竞态下，解锁标记不再卡 false（之后自动翻牌听原句不再退 TTS）
                 if (tk !== this._hearTk) { try { el.pause(); } catch(e) {} return; }
                 clearTimeout(this._hearStopTmr);
-                this._hearStopTmr = setTimeout(function() { try { el.pause(); } catch(e) {} }, Math.max(250, (en2 - st2) * 1000 + 250));
+                this._hearStopTmr = setTimeout(function() {
+                    try { el.pause(); } catch(e) {}
+                    if (onEnd) { try { onEnd(); } catch(e2) {} } // V102(用户1): 停止即读音链结束（自动翻牌从这起算）
+                }, Math.max(250, (en2 - st2) * 1000 + 100)); // V102(外审一7): +250→+100——原句尾（en+0.2）再叠 0.25s 共多出 0.45s，快语速对话常把紧随其后的下一句开头一两个音带出来
             } catch(e) {
                 if (tk !== this._hearTk) return;
                 // V101(外审一建议2): TTS 兑底只读英文行——双语字幕整句读会“先中文后英文”且中文声音读英文很难听
                 const en = String(v.s || '').split(/\n+/).map(function(l) { return l.trim(); }).filter(function(l) { return l && !/[\u4e00-\u9fff]/.test(l); }).join(' ');
-                this._speakText(en || v.s || v.w || ''); // 3) 都不行 → TTS 读例句（纯中文句照旧读全文）
+                this._speakText(en || v.s || v.w || '', onEnd); // 3) 都不行 → TTS 读例句（纯中文句照旧读全文）；V102(用户1): 读完回调
             }
         })();
     },
@@ -6409,6 +6433,10 @@ const vocabBook = {
     //   src 已被真音频换掉时不去 pause 刚起播的原句（并发竞态会把新播放打断）；
     //   d) open()/tabReview()/reviewMark() 在真手势里提前解锁——面板一打开元素就解锁，
     //   自动翻牌再触发 hearSentence 时早已解锁，不依赖“翻面那一刻”有手势
+    // V102(外审一1/用户2) 静音解锁再根修：去掉 el.muted = true——静音 WAV 采样值全 0 物理无声，
+    //   无需再叠 muted；而部分 iOS WebKit 对“静音播放”不计入手势解锁，muted 播过的元素在异步
+    //   回调里改 muted=false 再 play() 仍会被判“未在手势内执行过有声播放”而拒绝——这就是
+    //   “单词卡还是放不出原音”的残余根因。另 _hearFallback 里真音频 play 成功也置解锁（双保险）
     _unlockHearEl() {
         if (this._hearUnlocked) return;
         if (this._hearUnlockTry && Date.now() - this._hearUnlockTry < 1000) return; // 1 秒重入保护
@@ -6419,8 +6447,8 @@ const vocabBook = {
             if (!this._silentWav) this._silentWav = _buildSilentWavUri();
             if (!this._silentWav) return;
             el.src = this._silentWav;
-            el.muted = true;
-            const fin = () => { try { if (el.src === this._silentWav) el.pause(); } catch(e2) {} el.muted = false; };
+            // V102(外审一1): 不再 el.muted = true——解锁全程非静音播放（WAV 本身全 0 无声，听得见才算真解锁）
+            const fin = () => { try { if (el.src === this._silentWav) el.pause(); } catch(e2) {} };
             const p = el.play();
             if (p && p.then) p.then(() => { this._hearUnlocked = true; fin(); }, fin); // resolve 才算解锁；被拦保持 false 待重试
             else { this._hearUnlocked = true; fin(); }
@@ -6433,6 +6461,7 @@ const vocabBook = {
     tabList() {
         this._rv = null;
         this._rvFlipClear(); // V99: 离开翻卡 Tab 清自动翻牌定时器
+        this._stopAllAudio(); // V102(外审一3): 翻卡放音途中切回列表——上一张卡的原音/TTS 立即停，不再播完甚至叠到列表上
         document.getElementById('vocab-list').style.display = '';
         document.getElementById('vocab-review').style.display = 'none';
         try { document.getElementById('rv-settings').style.display = 'none'; } catch(e) {}
@@ -6477,23 +6506,44 @@ const vocabBook = {
     },
     // V98(用户3): 翻卡默认读音——每张新卡正面出现自动读/播一遍（按卡面模式分流见 _rvShowCard）。
     // 读音本身没改：lang 按中英字符、rate 0.9（V94 起），听感变化来自系统 TTS 声音的选择，非本应用改动
-    _rvSpeak() {
+    _rvSpeak(onEnd) { // V102(用户1): 透传读音结束回调（自动翻牌从读音后起算）
         if (!this._rv || this._rv.done) return;
         const cur = this._rv.queue[this._rv.pos];
         if (cur === undefined) return;
-        try { this.speak(cur); } catch(e) {}
+        try { this.speak(cur, onEnd); } catch(e) {}
     },
     // V99: 新卡正面出现的统一入口——渲染 + 按模式自动读/播 + 上自动翻牌定时器
+    // V102(用户1): 自动翻牌倒计时改从「读音结束后」起算——原来从第一个音起播就开始计，词/词组
+    //   稍长或例句填空整句原音没读完 N 秒就先翻面。读音链结束（TTS onend / 听原句播放链 onEnd）
+    //   先到先起算；同时按词长/句长挂估算兜底定时器——iOS TTS onend 不可靠不作唯一信号、听原句
+    //   三级兑底哪级成时长不定，兜底只晚不早；先到方起算后 _rvReadTk 已被顶替，晚到方自动作废
     _rvShowCard() {
         this.reviewRender();
-        if (this._rv && !this._rv.done) {
-            const cur = this._rv.queue[this._rv.pos];
-            if (cur !== undefined) {
-                if (this._rvMode() === 'blank') { try { this.hearSentence(cur); } catch(e) {} } // 填空：正面播原音（听音补全）
-                else this._rvSpeak();
-            }
+        if (!this._rv || this._rv.done) return;
+        const cur = this._rv.queue[this._rv.pos];
+        if (cur === undefined) return;
+        const flipOn = (this._rvFlipSec() > 0); // 自动翻牌关：照常读音，不起算
+        const tk = (this._rvReadTk = (this._rvReadTk || 0) + 1); // 读音结束代数：新卡/翻面/切 Tab/关面板全作废旧回调
+        const arm = () => { // 读音结束 → 开始 N 秒翻面倒计时
+            if (tk !== this._rvReadTk) return;
+            this._rvReadTk = (this._rvReadTk || 0) + 1; // 去重（onend 与估算兜底可能先后都到）
+            if (this._rvReadTmr) { clearTimeout(this._rvReadTmr); this._rvReadTmr = null; }
             this._rvFlipArm();
+        };
+        const v = this.list()[cur];
+        let estMs = 1200; // 兜底：回调不回头（TTS 被吞/链路中断）时至少等这么久
+        if (this._rvMode() === 'blank') {
+            // 填空：正面播原音（听音补全）——按句长估算（含扩边+起播余量），hearSentence 的 onEnd 精确回调先到先起算
+            if (v && isFinite(v.en - v.st)) estMs = Math.max(1200, (v.en - v.st + 0.6) * 1000);
+            try { this.hearSentence(cur, flipOn ? arm : null); } catch(e) {}
+        } else {
+            // 词面/听音：正面 TTS 读词——_speakText 的 onend 先到先起算，字符数估算兜底
+            const w = String((v && v.w) || '');
+            const cjk = (w.match(/[\u4e00-\u9fff]/g) || []).length;
+            estMs = Math.max(900, 650 + cjk * 320 + Math.max(0, w.length - cjk) * 100); // 650≈引擎启动；中文≈320ms/字、英文≈100ms/字符（rate 0.9）
+            this._rvSpeak(flipOn ? arm : null);
         }
+        if (flipOn) this._rvReadTmr = setTimeout(arm, estMs);
     },
     _rvMode() { const v = localStorage.getItem('shadow_v99_rv_mode'); return (v === 'blank' || v === 'audio') ? v : 'word'; },
     _rvFlipSec() { const s = parseFloat(localStorage.getItem('shadow_v99_rv_flip')); return isFinite(s) ? s : 3; },
@@ -6518,8 +6568,9 @@ const vocabBook = {
         try { const f = document.getElementById('rv-flip-sel'); if (f) f.value = String(this._rvFlipSec()); } catch(e) {}
         try { const r = document.getElementById('rv-read-sel'); if (r) r.value = this._rvRead() ? '1' : '0'; } catch(e) {}
     },
-    // V99: 自动翻牌——正面出现起 N 秒（默认 3s）自动翻面；手动翻/判卡/切 Tab/关面板全清；token 防过期触发；
-    // 不用 TTS onend（iOS 不可靠）。自动翻牌不会自动判定——认识/不认识仍由用户点
+    // V99: 自动翻牌——默认 3s 自动翻面；手动翻/判卡/切 Tab/关面板全清；token 防过期触发。
+    // V102(用户1): 倒计时起点从「正面出现」改为「正面读音结束后」（读音链 onEnd 与估算兜底先到
+    // 先起算，见 _rvShowCard），本函数只负责真正的 N 秒倒计时。自动翻牌不会自动判定——认识/不认识仍由用户点
     _rvFlipArm() {
         this._rvFlipClear();
         const s = this._rvFlipSec();
@@ -6534,7 +6585,9 @@ const vocabBook = {
     },
     _rvFlipClear() {
         if (this._rvFlipTmr) { clearTimeout(this._rvFlipTmr); this._rvFlipTmr = null; }
+        if (this._rvReadTmr) { clearTimeout(this._rvReadTmr); this._rvReadTmr = null; } // V102(用户1): 读音等待兜底定时器一并清
         this._rvFlipTk = (this._rvFlipTk || 0) + 1;
+        this._rvReadTk = (this._rvReadTk || 0) + 1; // V102(用户1): 读音结束回调代数同步作废——onend 晚到不再起算
     },
     // ok=true 认识出队；false 不认识放队尾本轮再看（记录进 unknownRound）
     reviewMark(ok) {
@@ -6558,7 +6611,7 @@ const vocabBook = {
         }
         rv.pos++;
         rv.flipped = false;
-        if (rv.pos >= rv.queue.length) { rv.done = true; this._rvFlipClear(); }
+        if (rv.pos >= rv.queue.length) { rv.done = true; this._rvFlipClear(); this._stopAllAudio(); } // V102(外审一3): 最后一张判完进战报——上一张卡在播的原音/TTS 立即停，不再叠到战报上
         this._rvShowCard();
     },
     reviewRestart(onlyUnknown) {
@@ -6642,7 +6695,9 @@ const vocabBook = {
         try {
             w = String(w || '');
             if (!w) return null;
-            let pat = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+            let pat = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                .replace(/\s+/g, '\\s+') // V102(外审三9): / /g→/\s+/g——词内换行等任意空白统一按 \s+ 匹配
+                .replace(/['\u2019]/g, "['\\u2019']"); // V102(外审三9): 直/弯撇号互通——词条存 it's、字幕写 it's（或反之）也能命中高亮/挖空
             if (this._wordBndOk === undefined) {
                 try { new RegExp("(?<![A-Za-z0-9'\\u2019])x"); this._wordBndOk = true; } catch(e0) { this._wordBndOk = false; }
             }
@@ -6703,11 +6758,8 @@ const vocabBook = {
     close() {
         document.getElementById('vocab-modal').classList.remove('show');
         this._rvFlipClear(); // V99: 自动翻牌定时器
-        this._stopHear(); // V99: 停缓存直放
-        this._stopMainHear(); // V101(外审一3): Level 1 主音频直放也停（原来关面板后原句还在播）
+        this._stopAllAudio(); // V99/V100/V101: 停缓存直放+Level 1 主音频+TTS（V102(外审一3) 统一收口，原四行散写并入）
         this._hearTk = (this._hearTk || 0) + 1; // V100: 在途 Level 2 异步链作废（不再关面板后出声/写回 _hearUrls）
-        clearTimeout(this._speakTmr); // V100(外审2): 60ms 延时里的 TTS 不再叠出来
-        try { speechSynthesis.cancel(); } catch(e) {}
         if (this._hearUrls) { this._hearUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch(e) {} }); this._hearUrls.clear(); } // V99: 回收直放 objectURL
     },
     render() {
