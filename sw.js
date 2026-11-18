@@ -29,7 +29,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v100_offline_v20';
+var CACHE_NAME = 'shadow_v101_offline_v21';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
