@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V112 | build:20261119 | 第十份外部审查 9 项代码修复 + 生词本 AI 闭环便捷化 5 项全部落地（导出范围/弹层交互按工程化判断修正两处）。修复1·xlsx 导入解析重写：XML 解析改原生 DOMParser（NS 不敏感 getElementsByTagNameNS——容忍命名空间前缀；textContent 原生解码十/十六进制实体）+ 旧正则路径保命兜底（DOMParser 不可用/parsererror/无 row 时退回，双路径永不比 V111 差）；sharedStrings 与 inlineStr 均排除 <rPh> 拼音/注音节点的 <t>（Excel「拼音指南」自动嵌入的注音不再混进正文）；兼容自闭合 <t/>/<c/>/<row/>、无 r 属性按出现顺序、t=s/inlineStr/str/数值四类；_xmlUnesc 补十六进制实体 &#x2019;（弯撇号等）；_xmlEsc 导出前剔除 XML 1.0 非法控制字符 \x00-\x08\x0B\x0C\x0E-\x1F（特殊字幕不再让 Excel 报「文件已损坏」）；_rowsToVocab 表头不再死锁 rows[0]——扫描前 5 行定位「单词」列（首行空行/AI 说明行不再让整个导入判失败）；_vocabColMap 别名扩充（词条/词汇/phonetics/ipa/中文/意思/含义/meaning/example/context/例句译文/translation/备注/notes/来源/source/audio）。修复2·翻卡复习 UI 三处：V110 重构 reviewRender 漏挂 .rv-card 类——卡面米黄底/边框/圆角全丢成白板，现视觉并入 .rv-face（背景 #FFFDE7+2px 边框+16px 圆角+内边距+text-align:center），新增 .rv-face-in 包裹层用 margin:auto 0 实现溢出安全垂直居中（justify-content:center 在 flex 溢出时顶部被裁且滚不到顶）；#vocab-review 补 display:flex+column（原是普通块，.rv-wrap 的 flex:1 不生效只剩 min-height:320px 硬下限，iPhone 小屏把底部操作栏顶出面板），.rv-wrap min-height 320→0——纵向 flex 链 review→wrap→cardbox→face 打通，底栏钉底卡内滚动；.rv-detail .rv-row 移除 data-fit（原被 _fitCard 的 TXT=[24,20,16,14] 阶梯放大到 24px，13px 紧凑排版才是设计）；背面 .rv-w 绑 speak 点读（blank 模式底部只有「🔊 重听」播原句，翻面后单点听单词原无入口）；配套：tabReview 时隐藏数据工具栏、tabList 恢复——7 钮在 375px 占两行 100px 会把卡面挤到 46px 高（导入/导出/复制/粘贴是列表态操作，翻卡用不到；拖放导入绑 #vocab-modal 不受影响；375px 卡面实测 46→146px，底栏仍在视口内）。修复3·vocabBook.add() 与 _mergeVocab 双主键统一：add 原按词面全局判重（跨课学习第 10 课无法收录第 1 课记过的词，与导入合并/「当前音频」筛选/⭐ 判定互相矛盾），现改【同词且同音频】判重（norm 小写+空白折叠；有加载音频结合 _isCurrentAudio 判定，无音频信息退回词面判重）——四处口径完全一致，重复提示改「已在生词本（当前音频）」。修复4·iOS 划选 0.5s 自动入本与拖选柄冲突三重修法：touchstart（目标不在 #pv-sel-add/#pr-sel-add 内）立即作废挂起的 _selAutoTmr/_prAutoTmr——手指摸向蓝色选柄的瞬间绝不再中途抢触发；touchend 防抖 500→1200ms（伸手拖柄要 0.6~1.5s；鼠标保持 500ms，点浮条「＋」仍立即入本）；mouseup/touchend 事件目标限定字幕容器内（Safari 点外部按钮选区不塌，原会误武装定时器到点误入本）。修复5·预习长译文压扁主文本：.preview-sentence-text2 补 max-height:16vh+overflow-y:auto+flex-shrink:1+min-height:0（长译文自身可滚可收缩，不再把主英文压扁至不可见或被外盒 overflow:hidden 裁掉）；.preview-sentence-text 补 min-height:48px 保底两行；resize 触发 _fitPreviewText 增判 #preview-focus-phase 未激活（重点句阶段主文本 clientHeight=0，自校正缩字一路缩到 14px 下限，转屏回逐句听字号被无端改小）。修复6·_isCurrentAudio 跨形态匹配同步到全部链路：hearSentence Level 1 直放判定（原 cur===want||fixUrl 相等，本地导入↔网络加载切换时必失配退 Level 2/3、缓存无记录进一步退 TTS）、app._backfillVocabTr、app.applyShift、app._ensureShiftSnap、app._restoreShiftSnap 四处全改 vocabBook._isCurrentAudio(v)（编码差异/本地在线切换/老词条缺 v.a 均不再漏同步）。修复7·mergeSeg 副字幕空值丢失与 _mergeBiText 边界：text2/text3 判断加 ||（第 i 句无副字幕、第 i+1 句有时原来直接丢掉 i+1 的副字幕）；行分类升级三档——含 CJK 文字→中文块；无 CJK 文字但含全角标点且无任何字母数字（含全角）→中文块（「……」「——」「？！」纯标点行不再粘到英文块末尾）；其余→英文块。修复8·小修六件：_dictFillEntry 的 v.def 改已有不覆盖（!v.def，与 ph 同规——AI 填过/导入值优先）；cacheUI.load 删重复 ui.updatePractice(0)（两行后就是 updatePractice(currIndex)）；删 _filterAudioKey() 死代码；_clearGlobal 加 confirm 二次确认（弹层红框误触一次清光全局几百词不可恢复，confirm 报真实词数）；recorder.toggle 解锁改 _buildSilentWavUri() 且去 r.muted=true（对齐 V102 _unlockHearEl 修法——静音 WAV 物理无声无需 muted，部分 iOS WebKit 对 muted 播放不计入手势解锁）；parseSRT idle 直遇时间行也进解析（无序号行/WEBVTT 头文件原整篇解析为空）。修复9·sw.js 三处：install 预缓存 './' 弃 cache.add()——301/302 会存 redirected:true 响应、respondWith 在部分引擎报 network error，改手动 fetch（非 ok 跳过——add 原会缓存 404 页）+ redirected 时重建干净 Response 再 put（缓存键保持同款 Request './'，兜底查找链零变化）；fetch 竞速 network 先归时 clearTimeout（3s 后不再白跑一次 fromCache）；index.html 注册加 updateViaCache:'none'（SW 脚本更新检查绕过 HTTP 缓存，旧浏览器忽略）。AI闭环1·📋 复制AI+📋 粘贴更新剪贴板闭环（核心）：工具行新增两钮（现有 5 文件钮全保留）；复制侧弹范围选择层（按当前筛选 N 词/仅待补全 K 词缺音标或中文意思——最省 Token/全部 M 词），生成 Markdown 表格+情境化提示词复制到剪贴板（复用 copyTextToClipboard 的 clipboard API+execCommand 双兜底）；粘贴侧轻量弹层（textarea 长按粘贴+「📋 读取剪贴板」一键读取——iOS 权限被拒不堵路，引导手动粘贴），解析器四格式自动识别：JSON（数组/shadow_vocab_backup/全量备份提取）→Markdown 表格（AI 最常输出——只取 | 开头行、忽略 |---| 对齐行、去 **粗体**/`代码` 轻修饰且不动音标斜杠、保护 \| 转义）→TSV（Numbers/Excel 全选复制）→CSV（RFC 4180 复用），统一 _rowsToVocab→_mergeVocab 双主键合并，SRS 进度与音频时间戳不丢。AI闭环2·iOS/iPadOS 原生分享：_download 增 navigator.share 分支——canShare({files}) 支持 File 时直接拉起系统分享面板（发送到 ChatGPT/豆包/Numbers/存储到文件），同步手势栈内发起（无 await 断链）、AbortError 用户取消静默、非取消失败回退 <a download>、桌面（非 iOS）零变化。AI闭环3·iPad 分屏拖放导入：#vocab-modal 绑 dragenter/dragover/drop（计数器管理高亮防子元素闪烁），拖 .xlsx/.csv/.json 松手即走 _processVocabFile 合并更新，拖入时面板虚线高亮+「松手导入生词表文件」提示。AI闭环4·导出跟随筛选（工程化修正）：Excel/CSV 按当前筛选+搜索范围导出（列表所见即所得，文件名带 _N词，toast 提示切换方法；无筛选时=全量行为不变）；📤 JSON 保持全量（备份语义——按筛选导出会静默丢词，此为对审查建议的修正）。AI闭环5·导入引导：工具行「📥 合并」改「📥 导入/更新」（触屏无悬停也看得懂）；tip 文案补 AI 闭环指引；accept 扩 .tsv/.txt+MIME 类型（iOS 文件选择器兼容）。升版：sw.js 缓存名 shadow_v112_offline_v32；exportProject 下载名 shadow_v110.json→shadow_v112.json（V111 曾漏改）+version 112；全量备份/生词本 JSON version 112；版本号统一到 V112 -->
 <!-- V111 | build:20261119 | 用户 3 项落地（双语合并改道 / 清空两级选项必齐 / 预习字幕区加大缩字下探）。用户1·编辑页「🖇️ 合并」双语字幕错行：V110 前三路文本一律空格首尾直连，双语句（中文行\n英文行）合并后变成「中文\n英文 中文\n英文」——下一句的中文粘到上一句英文行尾、第三行才是下一句英文。新增 app._mergeBiText(a,b)：按行拆开、以“行内是否含汉字”分中文/英文两块，中文行与中文行、英文行与英文行分别以一个空格相连，块序跟随第一句（第一句首行是中文→合并后中文块在上）；两侧同为单语（同为纯英文/纯中文）自动退化为原空格直连（保留第一句内部换行，单语字幕零行为变化）；一侧纯英文一侧纯中文（字幕结构不齐）按两块竖排不丢行；文字行判定为广义 CJK（汉字基本区+扩展A+兼容区+日文假名+谚文）——中英双语场景即中文行，日韩语字幕行也归同一块不会插进英文行之间。text/text2/text3 三路同规则；时间轴/重点句/进度/微调原始值等既有合并逻辑零改动。用户2·生词本 🗑 清空“只有全部音频可以选”（用户实测）：V110 在当前音频 0 词或未加载音频时整个隐藏「仅清当前音频」按钮——从编辑页导航栏 📔 打开面板、或刚刷新页面音频还没恢复时，弹层只剩全局+取消，两级选择名存实亡。现在：生词本非空就始终显示两个选项——已加载音频显示真实词数；未加载音频按钮标注「（未加载音频）」、点击 toast「请先在主界面加载音频」；当前音频 0 词点击 toast「当前音频暂无生词」不再静默隐藏。配套修 _isCurrentAudio 跨形态兜底：同一文件先本地导入（a='local://文件名_大小'）后从服务器 URL 加载（或反向）时 fixUrl 比对必失配、该文件词条全部不算“当前音频”——仅当一侧是 local:// 时按文件名兜底（local 剥尾部 _大小、http 取最后路径段，大小写不敏感），两侧都是 http 不同目录同名仍不匹配（V104 误命中保护原样保留）。用户3·预习字幕区加大+缩字下探：字幕盒上限 40vh→46vh（iPhone 多出约 40px）且 flex-shrink 1→0——原盒子被练习阶段容器压扁到 40vh 以下，极端长内容（长英文+长译文）最后一行被裁；现在盒子不被压缩、最多撑到 46vh，塞不下时预习页整体滚动（按钮滚下去仍可达），字幕优先完整显示；主文本 CSS 兜底 max-height 34vh→40vh；_fitPreviewText 重写为自校正缩字——先清 maxHeight 让 flex 压出文本元素真实可用高度（clientHeight＝可用、scrollHeight＝内容），逐号缩字直到塞得进，下限 26px→14px（≈五号字），触底仍溢出才钉 maxHeight 卡内滚动兜底；不再预测预算（原“-36”粗略扣减败在译文行 margin/盒 padding 没算准，精确测量版又败在“先测量后压缩”的循环依赖——文本一缩、盒子/译文/提示行跟着回流，预测值即刻过期，长英文+长译文时最后一行仍被裁，即用户说的“上下移动”）；自校正直接读布局结果，译文有无/换行/提示行变化全部自动适应，绝大多数长句一屏完整显示。sw.js 缓存名升 shadow_v111_offline_v31（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 110→111；版本号统一到 V111 -->
 <!-- V110 | build:20261119 | 生词本与「点词/划词入本」交互系统级重构（用户规格 12 组全落地）。A·数据模型：词条新增 ph（音标）/cn（中文释义）/def（内置英释）三字段——add() 初始化空串、旧词条缺字段按空兼容、JSON 往返自动携带（向下兼容）。B·Excel 8 列 AI 闭环：列序严格=序号|单词|音标|中文意思|例句|例句翻译|笔记|出处音频；第 5 列例句用 OpenXML 富文本 inlineStr（<r><rPr><b/></rPr><t>…</t></r>）把目标词/短语原生加粗（新增 _sentRuns 复用 _wordRe 词边界口径全命中加粗，无命中退子串、再无退纯文本，Excel/WPS/Numbers 打开都是原生粗体）；表底空 1 行后 A:H 合并写整段 AI 提示词（新样式 xf3=无边框+wrapText+顶对齐，行高 64）——导出给 AI 填音标/释义/翻译/笔记再「📥 合并」导回。C·合并导入双主键：norm(w)+':::'+norm(src) 联合键查重——导入有出处时只精确匹配同音频同词，绝不误伤其它音频的同名词（未命中按新词追加）；导入缺出处时本地仅 1 个同名词容错直配，多个同名词时比对例句文本（先全等后互含，比对不上按新词）；ph/cn/note/tr 导入非空覆盖/空则补全，st/en/a/src/s 仍只补缺不覆盖，SRS 进度照旧 ivl 取大/due 取早/ok 取大/grad 取或。D·导入格式扩容：「📥 合并」新增 Excel(.xlsx)/CSV 支持——零依赖 ZIP 读取（central directory，method 0 store 直切）+ 内置 raw DEFLATE inflate 约 150 行（Excel 存的 .xlsx 是 DEFLATE 压缩、自家导出是 store 直存，两路都通）+ 单元格四类解析（t="s" sharedStrings / inlineStr 含富文本 run 拼接 / t="str" / 数值）+ 表头名映射（兼容新 8 列与旧 5 列『所在句子/出处』口径）；AI 提示词行与空行因单词列空被校验自然跳过；accept 扩 .json,.xlsx,.csv。E·面板三行重组：Tab 行——左 [📋 列表][🎴 翻卡复习]，右 [⏰ 只练到期]（从翻卡设置行挪出、按钮化 .on 高亮，shadow_v107_rv_due 键与语义不变）紧挨独立 [🗑 清空]；筛选行——搜索框定宽 110px+音频下拉 flex:1 占满（长文件名不再截断）；数据工具行 5 钮 [📥 Excel][📄 CSV][🎒 Anki][📤 JSON][📥 合并]；iPad/PC（≥700px）面板放宽 96%/max-540px/88vh；open() 强制默认筛选=当前音频（无音频回退全部音频，覆盖旧记忆值）。F·两级安全清空：🗑 弹独立确认层（#vocab-clear-pop）——首选默认「🗑 仅清空当前音频生词 (共 N 词)」（按 _isCurrentAudio 计数），次选「⚠️ 清空全局所有生词 (共 M 词)」+ 取消；Esc 关闭；当前音频 0 词时首选隐藏只留全局+取消。G·翻卡复习重排：卡框 .rv-cardbox flex 撑满中段、外框绝对固定不随文本形变；新增 _fitCard 阶梯缩字号（大字 data-fit="big" 34→28→22→16 / 正文 data-fit 24→20→16→14 同步降档）塞不下只许卡内纵向滚动（.rv-face overflow-y:auto）；底端固定操作栏 [🔊 读音|😅 不认识|😀 认识] 移出卡外（.rv-ops-fix）正反同位零跳动——例句填空模式 🔊=重播挖空例句原音（不剧透单词拼读），词面/听音模式=TTS 读词（与 R 键同口径 _rvHearBtn）；背面层级=①词+音标 ②中文释义（大字加粗高亮，点可 prompt 改 cn——新 editCn）③完整例句（生词加粗+灰小 🔉，点重放原音）+ 折叠胶囊「展开详情 (句译·英释·笔记) ▾」内含 ④例句翻译 ⑤内置英释(v.def) ⑥笔记（点可编辑）+ 横排快捷行 [✏️ 笔记][📖 查词][有道][剑桥]（去掉 ▶ 听原句，重听收归底部固定栏）；刚编辑过笔记或拉取英释自动展开（_rv.detailOpen）；.vocab-tip 情境化——翻卡显示「点例句或卡片可重听原音 · 空格/回车翻面 · ←不认识 · →认识」。H·列表页去冗余：筛选非「全部音频」时彻底隐藏 🎧 出处标签（不再全页刷屏）；行结构=第一行 单词+音标+高亮中文释义（点释义改 cn）行尾 [✏️][✕]，第二行完整例句，第三行（句译/笔记/英释混排）仅有内容才渲染；搜索范围并入 ph/cn。I·查词系统升级：📖 查词命中后静默回填——首个音标补进 v.ph（已有不覆盖），首条精简英释（词性. 定义，截 160 字）落盘 v.def，界面自动展开详情并就地刷新；有道/剑桥链接换新口径（dict.youdao.com/w/、dictionary.cambridge.org/dictionary/english-chinese-simplified/）。J·交互平台拉齐：桌面 Chrome 轻点 .pw 单词 span 直接入本并点亮 .pw-in（onBoxTap 去掉 _lastTouchAt 触屏 800ms 门槛，桌面=iPad 同规则，点空白/标点仍复制整句）；划选短语松手（mouseup/touchend）起 0.5s 防抖自动入本——期间点浮条「＋」立即加入、点「✕」或点击选区外（selectionchange 清表）取消，到点自动入本走既有反馈链（预习页撤销条 2 秒/练习页 toast）；_selAutoTmr/_prAutoTmr 预习/练习两页同规则。K·SRS 收敛：维持 V108/V109 修正口径——毕业只看走完 1→3→7→15 天间隔链（ivl>=5 第 5 次到期“认识”）；规格中「或连认 3 次」与「避免中途提前跳档」互斥（连认 3 次提前毕业正是 V108 外审修掉的死代码 bug），按「避免提前跳档」从后者执行。L·iPadOS 读音：_initVoices/_pickVoice 显式 u.voice 锁声机制零改动。sw.js 缓存名升 shadow_v110_offline_v30（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 109→110；版本号统一到 V110 -->
 <!-- V109 | build:20261118 | 用户问题 2 项 + 第九份外部审查 6 项 + 拍板项 1 项全部落地。用户1·预习「✅ 我会了」不再把含生词句子的 ⭐ 摘掉：V108 起点词入本已自动标 ⭐，但预习里点「我会了」进下一句又把 ⭐ 移除——重点句在预习流程里永远留不住；markKnow 现在先查本句还有没有“未毕业的当前音频生词”（新增 _liveVocabInSentence：点词/划词入本记的 st 落在本句区间 + 老词条无时间戳退词面词边界匹配，毕业词不算不绑架重点句），有则保留 ⭐ 并 toast「本句还有 N 个生词未毕业，⭐ 重点句已保留」，生词毕业/删除后再点「我会了」正常移出。用户2·练习页速率滚轮 375px 被挤成独占一行很难看：从入口行（预习模式/⭐N句/⭐生词句/📔生词本来就挤）挪到下方连读设置行「先慢后快」后面与播放设置作伴（滚轮 id 不变，预习页/重点句页/☰ 菜单同步照旧），折行时被挤下去的是灰色小注释而不是孤零零一个控件。外审1(中)·_fetchSubsIfMissing 开头“有字幕”判断改为“有文本且已有句子”（hasSubs && cs0.length）——批量缓存时字幕1 下载失败（V108 外审6 把 segments 留空指望这里补拉）但字幕2/3 下下来了：srts 有文本、segments 空，原判断直接 return 永不补拉，缓存条目句子为空进不了练习页、「↻ 刷新字幕」也拒绝工作只能删缓存重来；segments 为空照样补拉（V99 节流 1 小时一次）。外审2(中)·_restoreShiftSnap 归零快照还原：快照之后才入本的生词不在快照 voc 里，句子还原了它们还留在“平移后”的位置，「▶ 听原句」偏掉整个平移量——还原前先留一份当前（已平移）句首表，新词按它就近找所在句（-0.5s 容差/±1.5s 最近起点，V103 重映射同口径）把整句还原到快照值（快照后没再动滚轮时正好精确），找不到退算术回补 -(curT-snapT)，调用方随后的 applyShift(-snapT) 再补 -snapT 合计正好 -curT。外审3(中)·SRS 间隔链被“提前复习”刷穿：reviewMark 先记 wasDue 再改词——未到期提前刷到的只记连击，不推进档位不改 due；把「只练到期」关掉或「练全部（含未到期）」每天认识一遍不再 5 天走完 1→3→7→15 天整条链毕业。外审4(低)·「📍 第 N 句」标签只在 renderEditor 里刷，练习页换句再切回编辑页显示旧句号：抽 app._syncEdJumpCur()，renderEditor 末尾 + switchView('editor') 两处调用。外审5(低)·查词弹层开着时 Esc 只关生词本（弹层残留）、空格/←/→ 还会操作下面的翻卡：keydown 生词本分支最前面拦截（Esc 只关弹层、其余不透传），vocabBook.close() 补 this.closeDict()。外审6(低)·「⭐ 生词句」按钮在 375px 入口行必折两行：找句逻辑抽成 _vocabSentIdx(v, cheap)（cheap=true 只走时间戳两步不跑正则，高频调用不卡），按钮改为“还有生词句没标 ⭐”才显示——V108 起入本已自动标 ⭐，正常状态不出现，手动取消过 ⭐/老词才显示补标完自然消失；previewMode.updateBadge 末尾补调 _syncVocabStarBtn（自动标 ⭐ 后按钮跟着消失）；没时间戳的老词按钮常显的边界接受（点了走正则兜底）。拍板项·重点句退出分流：_showFocusPhase(fromPractice) 进入瞬间记 _focusBackIdx=state.currIndex 与来路（必须在 _jumpToFocusSentence 改写 currIndex 之前）——练习页「⭐ N 句」进来的（enterFocusPhase 传 true）「✅ 完成重点练习」/✕ 退出都回原句 toast「已回到第 N 句」，不再被拉回第 1 句覆盖进度；预习流程（完成弹窗/提前结束）进来的保持 V101“从第 1 句开始”；逐句听退出不动 currIndex（原行为）。sw.js 缓存名升 shadow_v109_offline_v29（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 108→109；版本号统一到 V109 -->
@@ -56,7 +57,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V111</title>
+<title>影子跟读 Pro V112</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -121,13 +122,13 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .pv-trans-btn { border: 1px solid var(--preview-border); background: #fff; color: var(--preview); border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .pv-trans-btn:active { background: var(--preview); color: #fff; }
 /* V84: 主文本——26px 起自动缩小到 16px（fitPreviewText，同练习页 fitText 机制），缩不住内部滚动 */
-.preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 40vh; margin: 10px 0 0 0; } /* V111(用户3): CSS 兜底 34vh→40vh（实际由 _fitPreviewText 动态设）；缩字下限 16→14px 见 _fitPreviewText */
+.preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 40vh; min-height: 48px; margin: 10px 0 0 0; } /* V111(用户3): CSS 兜底 34vh→40vh（实际由 _fitPreviewText 动态设）；缩字下限 16→14px 见 _fitPreviewText；V112(外审5): min-height 48px——长译文把主英文压扁到不可见时保底可见两行 */
 .preview-sentence-text .pw { border-radius: 4px; padding: 0 1px; }
 /* V86: 去掉 .pw 的 user-select:none（原触摸设备禁选锁死 iOS 系统选词手柄——长按划选短语弹不出来）；
    轻点=click 入生词本 与 长按拖选=selectionchange 浮条入本 互不冲突（onBoxTap 开头已有划选兜底） */
 .preview-sentence-text .pw:active { background: var(--preview-light); }
 /* V84: 有鼠标的设备（电脑）恢复可划选——触摸设备现已一并开放（见 .pw 注释） */
-.preview-sentence-text2 { font-size: 16px; color: #555; text-align: center; margin-top: 8px; line-height: 1.5; cursor: pointer; }
+.preview-sentence-text2 { font-size: 16px; color: #555; text-align: center; margin-top: 8px; line-height: 1.5; cursor: pointer; max-height: 16vh; overflow-y: auto; flex-shrink: 1; min-height: 0; -webkit-overflow-scrolling: touch; } /* V112(外审5): 长译文自身限高可滚可收缩——原来无约束时把主英文压扁至不可见、或被外盒 overflow:hidden 裁掉无法滚动 */
 .preview-sentence-text2:active { opacity: 0.6; }
 .preview-play-hint { font-size: 13px; color: #999; margin-top: 10px; flex-shrink: 0; }
 /* V84: 主操作按钮加大（≥54px，苹果最低触控标准 44px 起步）防误点 */
@@ -601,8 +602,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .vocab-due-btn { border: 1px solid #DADCE0; background: #F1F3F4; color: #5F6368; border-radius: 10px; padding: 8px 9px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; } /* V110: 只练到期按钮化（原在翻卡设置行的下拉框，shadow_v107_rv_due 键不变） */
 .vocab-due-btn.on { background: #E8F0FE; border-color: var(--primary); color: var(--primary); }
 .vocab-clear-btn { border: 1.5px solid #ffb3b3; background: #fff0f0; color: #c5221f; border-radius: 10px; padding: 8px 9px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; } /* V110: 清空挪到 Tab 行（两级确认弹层 #vocab-clear-pop） */
-/* V96(外审4): 翻卡区原无 flex/overflow——小屏长例句把「不认识/认识」挤出面板被裁掉；现吃剩余空间且自身可滚 */
-#vocab-review { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; -webkit-overflow-scrolling: touch; }
+/* V96(外审4): 翻卡区原无 flex/overflow——小屏长例句把「不认识/认识」挤出面板被裁掉；现吃剩余空间且自身可滚
+   V112(外审2): 补 display:flex + column——原是普通块，.rv-wrap 的 flex:1 不生效只剩 min-height:320px 硬下限，
+   iPhone 小屏/横屏时 320px 超过面板可用高度，把底部操作栏 .rv-ops-fix 顶出可视区要滚动才见；
+   现在纵向 flex 链打通（review→wrap→cardbox→face），操作栏钉在可视区底端，卡内滚动 */
+#vocab-review { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; }
 .vocab-item-ops { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .vocab-item-op { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
 /* V99: 生词本点读/点听 + 翻卡设置行 */
@@ -610,9 +614,11 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .vocab-item-sent b, .rv-sent b { color: #202124; }
 #rv-settings select { padding: 4px 6px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; font-family: inherit; background: #fff; max-width: 110px; }
 .vocab-item-op.op-listen { color: var(--primary); border-color: #C5D9F2; background: #F4F9FF; }
-.rv-wrap { flex: 1 1 auto; min-height: 320px; display: flex; flex-direction: column; justify-content: center; } /* V110: 撞满 #vocab-review（flex 容器）——底栏钉在可视区底部；空态居中保留 */
-.rv-cardbox { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; } /* V110: 卡框外层绝对固定——不随文本长短形变 */
-.rv-face { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; } /* V110: fitText 塞不下的极端超长只许卡内纵向滚动，卡框不变形 */
+.rv-wrap { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; } /* V110: 撞满 #vocab-review（flex 容器）——底栏钉在可视区底部；空态居中保留；V112(外审2): min-height 320px→0——320px 硬下限在小屏把底栏顶出面板 */
+.rv-cardbox { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; } /* V110: 卡框外层绝对固定——不随文本长短形变 */
+.rv-face { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 20px 14px; text-align: center; } /* V110: fitText 塞不下的极端超长只许卡内纵向滚动，卡框不变形；V112(外审2): .rv-card 视觉并入——V110 重构时 reviewRender 漏挂 .rv-card 类，米黄底/边框/圆角全丢成了白板 */
+.rv-face:active { background: #FFF8E1; }
+.rv-face-in { margin: auto 0; width: 100%; min-height: 0; } /* V112(外审2): 溢出安全的垂直居中——不用 justify-content:center（flex 溢出时顶部被裁且滚不到顶），margin:auto 在空间不足时自动归零退回顶部对齐 */
 .rv-head { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .rv-w { font-size: 34px; font-weight: 800; color: #202124; line-height: 1.3; word-break: break-word; } /* V110: 词面大字（data-fit=big 阶梯 34→28→22→16） */
 .rv-ph { font-size: 16px; color: #1a73e8; font-weight: 600; }
@@ -628,10 +634,8 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .rv-quick { display: flex; gap: 8px; margin-top: 12px; justify-content: center; flex-wrap: wrap; } /* V110: 背面横排快捷行 [✏️ 笔记][📖 查词][有道][剑桥]（去掉 ▶ 听原句——重听收归底部固定栏） */
 .rv-quick > * { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; -webkit-appearance: none; appearance: none; font-family: inherit; }
 .rv-quick > :active { background: #F1F3F4; }
-.rv-ops-fix { display: flex; gap: 8px; margin: 12px 0 0; } /* V110: 底端固定操作栏 [🔊 读音|😅 不认识|😀 认识]——移出卡外，正反同位零跳动 */
-.rv-card { background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 24px 16px; text-align: center; cursor: pointer; }
-.rv-card:active { background: #FFF8E1; }
-.rv-word { font-size: 34px; font-weight: 800; color: #202124; line-height: 1.3; word-break: break-word; }
+.rv-ops-fix { display: flex; gap: 8px; margin: 12px 0 0; flex-shrink: 0; } /* V110: 底端固定操作栏 [🔊 读音|😅 不认识|😀 认识]——移出卡外，正反同位零跳动；V112: flex-shrink:0 防被压缩 */
+.rv-w-click { cursor: pointer; } /* V112(外审2): 背面词面可点读音 */
 .rv-sent { font-size: 16px; color: #444; margin-top: 12px; line-height: 1.5; }
 .rv-src { font-size: 12px; color: #999; margin-top: 8px; }
 .rv-ops { display: flex; gap: 8px; margin-top: 14px; }
@@ -667,6 +671,27 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 /* V110: 两级安全清空确认层——高于生词本面板(7500)/查词弹层(7600) */
 #vocab-clear-pop { display: none; position: fixed; inset: 0; z-index: 7700; background: rgba(0,0,0,0.45); align-items: center; justify-content: center; padding: 20px; }
 #vocab-clear-pop.show { display: flex; }
+/* V112(AI闭环1): 复制范围选择弹层——与 #vocab-clear-pop 同构 */
+#vocab-copy-pop { display: none; position: fixed; inset: 0; z-index: 7700; background: rgba(0,0,0,0.45); align-items: center; justify-content: center; padding: 20px; }
+#vocab-copy-pop.show { display: flex; }
+.vc-copy { background: #1a73e8; color: #fff; } /* 复制弹层首选：蓝底 */
+.vc-copy2 { background: #fff; color: #1a73e8; border: 2px solid #1a73e8; } /* 次选：待补全 */
+/* V112(AI闭环1): 粘贴更新弹层 */
+#vocab-paste-pop { display: none; position: fixed; inset: 0; z-index: 7750; background: rgba(0,0,0,0.45); align-items: center; justify-content: center; padding: 20px; }
+#vocab-paste-pop.show { display: flex; }
+#vp-card { background: #fff; border-radius: 14px; max-width: 460px; width: 100%; max-height: 82vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+#vp-body { padding: 14px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#vp-text { width: 100%; box-sizing: border-box; border: 1px solid #DADCE0; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-family: inherit; line-height: 1.5; min-height: 140px; max-height: 40vh; resize: vertical; }
+#vp-text:focus { outline: none; border-color: #1a73e8; }
+.vp-hint { font-size: 11px; color: #999; margin-top: 8px; line-height: 1.6; }
+.vp-ops { display: flex; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid #f0f0f0; flex-shrink: 0; }
+.vp-ops > button { flex: 1; border-radius: 12px; padding: 12px 6px; font-size: 14px; font-weight: 800; cursor: pointer; border: none; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.vp-ok { background: #E6F4EA; color: #137333; border: 2px solid #34A853 !important; }
+.vp-read { background: #E8F0FE; color: #1a73e8; border: 2px solid #1a73e8 !important; }
+.vp-cancel { background: #F1F3F4; color: #5F6368; }
+/* V112(AI闭环3): iPad 分屏拖放导入高亮 */
+#vocab-modal.drop-hover { outline: 3px dashed #1a73e8; outline-offset: -6px; }
+#vocab-modal.drop-hover::after { content: '松手导入生词表文件'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(26,115,232,.08); color: #1a73e8; font-size: 16px; font-weight: 800; pointer-events: none; border-radius: inherit; }
 .vc-card { background: #fff; border-radius: 14px; max-width: 340px; width: 100%; padding: 18px 16px 14px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
 .vc-title { font-size: 16px; font-weight: 800; color: #202124; text-align: center; margin-bottom: 4px; }
 .vc-sub { font-size: 12px; color: #999; text-align: center; margin-bottom: 14px; }
@@ -688,7 +713,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
      点主体立即备份，✕ 今天不再提醒；备份成功即写 shadow_last_backup_at 并收起 -->
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V111</div>
+    <div class="nav-title">🎧 影子跟读 V112</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -1266,11 +1291,13 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             </select>
         </div>
         <div class="vocab-toolbar">
-            <button class="vocab-tool" onclick="vocabBook.exportExcel()" title="导出 Excel（.xlsx）8 列：序号/单词/音标/中文意思/例句（生词原生加粗）/例句翻译/笔记/出处音频；表底带 AI 批处理提示词——交给 AI 填空后用「📥 合并」导回">📥 Excel</button>
-            <button class="vocab-tool" onclick="vocabBook.exportCSV()" title="导出 CSV（UTF-8 BOM，8 列同 Excel，Excel 可直开）">📄 CSV</button>
+            <button class="vocab-tool" onclick="vocabBook.exportExcel()" title="导出 Excel（.xlsx）8 列：序号/单词/音标/中文意思/例句（生词原生加粗）/例句翻译/笔记/出处音频；表底带 AI 批处理提示词——交给 AI 填空后用「📥 导入/更新」导回；筛选状态下只导当前筛选的词">📥 Excel</button>
+            <button class="vocab-tool" onclick="vocabBook.exportCSV()" title="导出 CSV（UTF-8 BOM，8 列同 Excel，Excel 可直开）；筛选状态下只导当前筛选的词">📄 CSV</button>
             <button class="vocab-tool" onclick="vocabBook.exportAnki()" title="导出 Anki 专用 CSV（无表头行，直接导入）：正面=挖空例句，背面=单词/完整例句/翻译；Anki 导入时字段分隔符选逗号、允许 HTML 不勾">🎒 Anki</button>
-            <button class="vocab-tool" onclick="vocabBook.exportJSON()" title="导出纯生词本 JSON（另一台设备用「📥 合并」导入，按【单词+出处音频】双主键合并保留最完整数据，不覆盖其他设置）">📤 JSON</button>
-            <button class="vocab-tool" onclick="vocabBook.importJSON()" title="导入并合并到当前生词本：支持 Excel(.xlsx) / CSV / JSON（本应用导出 / 全量备份只取生词本部分 / 纯数组）——按【单词+出处音频】双主键查重，不误伤其它音频的同名词">📥 合并</button>
+            <button class="vocab-tool" onclick="vocabBook.exportJSON()" title="导出纯生词本 JSON（全量；另一台设备用「📥 导入/更新」导入，按【单词+出处音频】双主键合并保留最完整数据，不覆盖其他设置）">📤 JSON</button>
+            <button class="vocab-tool" onclick="vocabBook.copyForAI()" title="复制生词表 Markdown + AI 提示词到剪贴板——粘给 ChatGPT/豆包等 AI 填音标/释义/翻译，再用「📋 粘贴更新」导回；可选按当前筛选或只复制待补全词，省 Token">📋 复制AI</button>
+            <button class="vocab-tool" onclick="vocabBook.showPastePop()" title="粘贴 AI 回填的表格文本导回生词本：支持 Markdown 表格 / 制表符 TSV / CSV / JSON 四种格式，按【单词+出处音频】双主键合并">📋 粘贴更新</button>
+            <button class="vocab-tool" onclick="vocabBook.importJSON()" title="导入并合并到当前生词本：支持 Excel(.xlsx) / CSV / JSON（本应用导出 / 全量备份只取生词本部分 / 纯数组）——按【单词+出处音频】双主键查重，不误伤其它音频的同名词；iPad 分屏可直接拖文件到本面板">📥 导入/更新</button>
         </div>
         <div class="vocab-list" id="vocab-list"></div>
         <!-- V99: 翻卡设置行（卡面模式 + 自动翻牌），仅翻卡 Tab 显示。
@@ -1308,7 +1335,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
             <!-- V110: 「只练到期」已挪到 Tab 行右侧按钮化（#rv-due-btn）；本行只留 卡面/自动翻牌/翻面读句 -->
         </div>
         <div id="vocab-review" style="display:none;"></div>
-        <div class="vocab-tip" id="vocab-tip">💡 点词/划选入本（手机长按划短语，划好松手 0.5s 自动入本），所在句自动标 ⭐ · 点单词读音、点例句听原声、点中文释义可修改 · 📖 查词自动回填音标/英释 · 生词本跨音频共用</div>
+        <div class="vocab-tip" id="vocab-tip">💡 点词/划选入本（手机长按划短语，划好松手片刻自动入本），所在句自动标 ⭐ · 点单词读音、点例句听原声、点中文释义可修改 · 📖 查词自动回填音标/英释 · 📋 复制AI→粘贴更新 一键词表 AI 补全 · 生词本跨音频共用</div>
     </div>
 </div>
 
@@ -1329,6 +1356,34 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
         <button class="vc-btn vc-cur" id="vc-cur-btn" onclick="vocabBook._clearCurAudio()"></button>
         <button class="vc-btn vc-all" id="vc-all-btn" onclick="vocabBook._clearGlobal()"></button>
         <button class="vc-btn vc-cancel" onclick="vocabBook._hideClearPop()">取消</button>
+    </div>
+</div>
+
+<!-- V112(AI闭环1): 📋 复制AI——范围选择弹层（当前筛选 / 仅待补全 / 全部） -->
+<div id="vocab-copy-pop" onclick="if(event.target===this) vocabBook._hideCopyPop()">
+    <div class="vc-card" onclick="event.stopPropagation()">
+        <div class="vc-title">📋 复制给 AI</div>
+        <div class="vc-sub">Markdown 表格 + AI 提示词 → 粘给 AI 填空后「📋 粘贴更新」导回</div>
+        <button class="vc-btn vc-copy" id="vcopy-filter-btn" onclick="vocabBook._copyRange('filter')"></button>
+        <button class="vc-btn vc-copy2" id="vcopy-miss-btn" onclick="vocabBook._copyRange('miss')"></button>
+        <button class="vc-btn vc-copy2" id="vcopy-all-btn" onclick="vocabBook._copyRange('all')"></button>
+        <button class="vc-btn vc-cancel" onclick="vocabBook._hideCopyPop()">取消</button>
+    </div>
+</div>
+
+<!-- V112(AI闭环1): 📋 粘贴更新弹层——长按粘贴或一键读剪贴板；Markdown/TSV/CSV/JSON 四格式自动识别 -->
+<div id="vocab-paste-pop" onclick="if(event.target===this) vocabBook._hidePastePop()">
+    <div id="vp-card" onclick="event.stopPropagation()">
+        <div id="dict-head" style="border-bottom:1px solid #eee;flex-shrink:0;"><span style="font-size:16px;font-weight:800;">📋 粘贴更新生词本</span><button id="dict-close" onclick="vocabBook._hidePastePop()" title="关闭">✕</button></div>
+        <div id="vp-body">
+            <textarea id="vp-text" placeholder="把 AI 回复的表格（Markdown 表格 / 制表符文本 / CSV / JSON 都行）粘贴到这里…&#10;&#10;也可以点下方「📋 读取剪贴板」自动填入"></textarea>
+            <div class="vp-hint">支持 4 种格式自动识别：Markdown 表格（AI 最常输出，自动忽略 |---| 对齐行）、制表符 TSV（Numbers/Excel 直接全选复制）、CSV、JSON。按【单词+出处音频】双主键合并，不丢 SRS 进度。</div>
+        </div>
+        <div class="vp-ops">
+            <button class="vp-cancel" onclick="vocabBook._hidePastePop()">取消</button>
+            <button class="vp-read" onclick="vocabBook._readClipboard()">📋 读取剪贴板</button>
+            <button class="vp-ok" onclick="vocabBook._doPasteUpdate()">✅ 解析并合并</button>
+        </div>
     </div>
 </div>
 
@@ -1430,7 +1485,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
 <input type="file" id="bsFileInput" accept=".json" style="display:none">
 <input type="file" id="fullBackupInput" accept=".json" style="display:none">
-<input type="file" id="vocabJsonInput" accept=".json,.xlsx,.xlsm,.csv" style="display:none"> <!-- V103(需求二): 生词本导入/合并；V110: 扩容 Excel(.xlsx)/CSV——按【单词+出处音频】双主键合并 -->
+<input type="file" id="vocabJsonInput" accept=".json,.xlsx,.xlsm,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json" style="display:none"> <!-- V103(需求二): 生词本导入/合并；V110: 扩容 Excel(.xlsx)/CSV；V112: accept 扩 .tsv/.txt 与 MIME 类型——提高 iOS 文件选择器兼容性 -->
 
 <script>
 // ============================================================
@@ -1839,7 +1894,7 @@ const cacheUI = {
             ui.renderEditor();
             ui.updateAudioStatus();
             app.save();
-            ui.updatePractice(0);
+            // V112(外审8): 删重复的 ui.updatePractice(0)——两行之后就是 ui.updatePractice(state.currIndex)（恢复后的句号），先 0 再 currIndex 纯属多此一举还闪一下
             // 加载成功：revoke 旧音频 objectURL（避免内存泄漏，commitAudioSwap 模式）
             if (backupAudioObjectUrl && backupAudioObjectUrl !== state._audioObjectUrl) { try { URL.revokeObjectURL(backupAudioObjectUrl); } catch(e) {} }
             ui.updatePractice(state.currIndex); // V94: 用恢复后的句号刷新练习页（原固定 0）
@@ -4848,7 +4903,9 @@ const app = {
             if (!url || !state.segments.length) return;
             let changed = false;
             vocabBook.list().forEach(v => {
-                if (v.a !== url || v.tr || !isFinite(v.st)) return;
+                // V112(外审6): 改用 _isCurrentAudio（含 local://↔http 跨形态兜底）——原来 v.a === url
+                // 在编码差异/本地与在线切换时漏同步；老词条缺 v.a 但出处名匹配的现在也能回填
+                if (!vocabBook._isCurrentAudio(v) || v.tr || !isFinite(v.st)) return;
                 let best = null, bd = 1.5;
                 state.segments.forEach(g => { const d = Math.abs(g.start - v.st); if (d < bd) { bd = d; best = g; } });
                 if (best) { const tr = previewMode._pickTr(best); if (tr) { v.tr = tr; changed = true; } } // V101(外审一建议1): 同 markWord——挑纯中文行
@@ -4878,8 +4935,8 @@ const app = {
         if (s0 && s0.k === k && Array.isArray(s0.segs) && s0.segs.length === state.segments.length) return true;
         let voc = [];
         try {
-            const url = String(state._loadedAudioUrl || '');
-            if (url) voc = vocabBook.list().filter(v => v.a === url).map(v => [v.w, v.st, v.en]);
+            // V112(外审6): _isCurrentAudio 统一口径（原 v.a === url 在本地/在线切换时漏词）
+            if (state._loadedAudioUrl) voc = vocabBook.list().filter(v => vocabBook._isCurrentAudio(v)).map(v => [v.w, v.st, v.en]);
         } catch(e) {}
         try {
             safeSetItem('shadow_v99_shift_snap', JSON.stringify({
@@ -4911,7 +4968,7 @@ const app = {
             const url = String(state._loadedAudioUrl || '');
             if (url) {
                 vocabBook.list().forEach(v => {
-                    if (v.a !== url) return;
+                    if (!vocabBook._isCurrentAudio(v)) return; // V112(外审6): 统一 _isCurrentAudio 口径
                     const m = (s.voc || []).find(x => x[0] === v.w);
                     if (m) { v.st = m[1]; v.en = m[2]; return; } // 快照里有的词：按快照精确还原
                     if (!isFinite(v.st) || !isFinite(v.en)) return;
@@ -4956,7 +5013,7 @@ const app = {
         try {
             const url = String(state._loadedAudioUrl || '');
             if (url) {
-                vocabBook.list().forEach(v => { if (v.a === url && isFinite(v.st) && isFinite(v.en)) { v.st = Math.max(0, Math.round((v.st + delta) * 1000) / 1000); v.en = Math.round((v.en + delta) * 1000) / 1000; } });
+                vocabBook.list().forEach(v => { if (vocabBook._isCurrentAudio(v) && isFinite(v.st) && isFinite(v.en)) { v.st = Math.max(0, Math.round((v.st + delta) * 1000) / 1000); v.en = Math.round((v.en + delta) * 1000) / 1000; } }); // V112(外审6): _isCurrentAudio 统一口径
                 vocabBook._persist();
             }
         } catch(e) {}
@@ -5346,9 +5403,16 @@ const app = {
         b = String(b == null ? '' : b).trim();
         if (!a) return b;
         if (!b) return a;
-        const isCJK = t => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(t); // 广义CJK文字行：汉字（基本区+扩展A+兼容区）+日文假名+谚文——中英双语场景即“中文行”；日韩语字幕行也归同一块，不会插进英文行之间
+        // V112(外审7): 行分类升级三档——①含 CJK 文字→中文块；②无 CJK 文字但含全角标点且无任何
+        // 字母数字（含全角字母数字）→中文块（“……”“——”“？！”这类纯标点行归中文，不再粘到英文块末尾）；
+        // ③其余→英文块。块归类（cls）仍按行内是否含 CJK 文字分；块序判定（isCJK）升为行级三档
+        const CJK_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
+        const CJK_PUNC_RE = /[\u3000-\u303f\uff01-\uff60\u2014\u2026\u2018\u2019\u201c\u201d]/; // 全角标点/弯引号/省略号/破折号（\uff00-\uffef 里的全角字母数字不算标点）
+        const ALNUM_RE = /[A-Za-z0-9\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]/;
+        const lineIsCJ = l => CJK_RE.test(l) || (!ALNUM_RE.test(l) && CJK_PUNC_RE.test(l));
+        const isCJK = t => { const ls = t.split('\n').map(x => x.trim()).filter(Boolean); return ls.length > 0 && ls.every(lineIsCJ); };
         const cls = t => t.split('\n').map(x => x.trim()).filter(Boolean)
-            .reduce((acc, l) => { (isCJK(l) ? acc.cj : acc.en).push(l); return acc; }, { cj: [], en: [] });
+            .reduce((acc, l) => { (lineIsCJ(l) ? acc.cj : acc.en).push(l); return acc; }, { cj: [], en: [] }); // V112(外审7): 行分类同步三档——"……"纯标点行归中文块（单测抓出 cls 原来仍按 CJK_RE 二档、省略号行粘英文块末尾）
         const A = cls(a), B = cls(b);
         const aMixed = A.cj.length > 0 && A.en.length > 0;
         const bMixed = B.cj.length > 0 && B.en.length > 0;
@@ -5373,8 +5437,11 @@ const app = {
                 state.segments[i].text = this._mergeBiText(state.segments[i].text, state.segments[i+1].text);
             }
             // 修复：用 !== undefined 判断而非真值判断，避免空字符串跳过导致翻译丢失
-            if (state.segments[i].text2 !== undefined) state.segments[i].text2 = this._mergeBiText(state.segments[i].text2, state.segments[i+1].text2);
-            if (state.segments[i].text3 !== undefined) state.segments[i].text3 = this._mergeBiText(state.segments[i].text3, state.segments[i+1].text3);
+            // V112(外审7): 加 || 判断——第 i 句无副字幕、第 i+1 句有时原来直接丢掉第 i+1 句的副字幕
+            // （undefined 不触发赋值，splice 掉 i+1 后其 text2/text3 没了）；_mergeBiText 对 undefined
+            // 侧返回另一侧原文，语义正确
+            if (state.segments[i].text2 !== undefined || state.segments[i+1].text2 !== undefined) state.segments[i].text2 = this._mergeBiText(state.segments[i].text2, state.segments[i+1].text2);
+            if (state.segments[i].text3 !== undefined || state.segments[i+1].text3 !== undefined) state.segments[i].text3 = this._mergeBiText(state.segments[i].text3, state.segments[i+1].text3);
             state.segments.splice(i+1,1);
             try { this._dropShiftSnap(); } catch(eSn) {} // V101(外审二4): 合并改变结构——平移快照作废
             // P1-2: 修正 currIndex——合并后若当前句是被合并的下一句，挪到 i；若被合并的下一句在当前句之前，索引前移
@@ -5593,9 +5660,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 111, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V111: 110→111（版本随轮递增）
+        const data = { version: 112, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V112: 111→112（版本随轮递增）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v110.json'; // V110: 109→110（V105 外审2 惯例：下载名随版本）
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v112.json'; // V112: 110→112（V105 外审2 惯例：下载名随版本；V111 曾漏改停在 110）
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -5624,7 +5691,7 @@ const app = {
                 'shadow_v106_seq_blind', 'shadow_v106_seq_slowfirst', // V106: 连读末遍显字/先慢后快（功能3）
                 'shadow_v107_rv_due' // V107(提案5): 翻卡只练到期开关。注：shadow_last_backup_at / shadow_v107_backup_snooze 不进备份——每台设备各自追踪自己的备份行为与提醒状态，恢复旧备份不应把新设备的提醒节奏带回旧时间点
             ];
-            var data = { type: 'shadow_full_backup', version: 111, exportedAt: new Date().toISOString(), items: {} }; // V111: 版本号 110→111（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 112, exportedAt: new Date().toISOString(), items: {} }; // V112: 版本号 111→112（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -5878,11 +5945,12 @@ const recorder = {
             // 后续 playCmp 里的 r.play() 在 setTimeout 里（脱离手势上下文）会被 iOS 拒绝
             // 这里先用静音 WAV 解锁元素，之后延时 play() 会被允许
             const r = document.getElementById('record-audio');
+            // V112(外审8): 解锁改 _buildSilentWavUri() 且去掉 r.muted = true——对齐 V102 _unlockHearEl
+            // 修法：静音 WAV 采样值全 0 物理无声无需再叠 muted，部分 iOS WebKit 对"静音播放"不计入
+            // 手势解锁，muted 播过的元素异步改 muted=false 再 play() 仍会被拒（录音对比播放被拦的根因）
             try {
-                r.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-                r.muted = true;
+                r.src = _buildSilentWavUri();
                 r.play().then(() => { try { r.pause(); } catch(e){} }).catch(() => {});
-                r.muted = false;
             } catch(e) {}
             try {
                 this.stream = await navigator.mediaDevices.getUserMedia({audio:true});
@@ -6826,7 +6894,7 @@ const previewMode = {
     // 点「＋」立即加入（addFromSelection 顺带清表）
     // ============================================================
     _selAutoTmr: null, _selAutoTxt: '',
-    _armSelAuto() {
+    _armSelAuto(ms) { // V112(外审4): 时长参数化——触屏 1200ms（伸手拖选柄的余量）/ 鼠标 500ms
         this._clearSelAuto();
         this._selAutoTxt = this._mainTextSelection() || this._pendingSel || '';
         this._selAutoTmr = setTimeout(() => {
@@ -6834,7 +6902,7 @@ const previewMode = {
             const txt = this._mainTextSelection() || this._pendingSel;
             if (!txt) return;
             try { vocabBook.addFromSelection(); } catch(e) {}
-        }, 500);
+        }, (ms === 1200) ? 1200 : 500);
     },
     _clearSelAuto() {
         if (this._selAutoTmr) { clearTimeout(this._selAutoTmr); this._selAutoTmr = null; }
@@ -7178,7 +7246,10 @@ function _crc32(bytes) {
     return (c ^ 0xFFFFFFFF) >>> 0;
 }
 function _xmlEsc(s) {
+    // V112(外审1): 先剔除 XML 1.0 非法控制字符（\x00-\x08 \x0B \x0C \x0E-\x1F）——
+    // 特殊字幕把这些带进 .xlsx 后 Excel/WPS 打开报“文件已损坏”；\t(09) \n(0A) \r(0D) 合法保留
     return String(s == null ? '' : s)
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
@@ -7416,8 +7487,15 @@ const vocabBook = {
         if (!word) return { ok: false, reason: '空' };
         if (word.length > 60) return { ok: false, reason: '太长' };
         const list = this.list();
-        const dup = list.some(v => (v.w || '').toLowerCase() === word.toLowerCase());
-        if (dup) { ui.toast('「' + (word.length > 16 ? word.substring(0, 16) + '…' : word) + '」已在生词本'); return { ok: false, reason: '重复' }; }
+        // V112(外审3): 查重口径与 _mergeVocab 双主键统一——【同词且同音频】才算重复：
+        // 有加载音频时，当前音频已收过该词 → 重复；其它音频的同名词不算（跨课学习第 10 课仍可收第 1 课
+        // 记过的词，与导入合并/「当前音频」筛选/⭐ 判定四处口径一致）；无音频信息时退回词面判重（保守）
+        const nw = word.toLowerCase().replace(/\s+/g, ' ');
+        const hasAudio = !!(time && time.a) || !!state._loadedAudioUrl;
+        const dup = hasAudio
+            ? list.some(v => (String(v.w || '').toLowerCase().replace(/\s+/g, ' ') === nw) && this._isCurrentAudio(v))
+            : list.some(v => (String(v.w || '').toLowerCase().replace(/\s+/g, ' ') === nw));
+        if (dup) { ui.toast('「' + (word.length > 16 ? word.substring(0, 16) + '…' : word) + '」已在生词本（当前音频）'); return { ok: false, reason: '重复' }; }
         const entry = { w: word, ph: '', cn: '', s: String(sentence || '').trim(), src: String(src || '').trim(), t: Date.now() }; // V110(规格一·1): 数据模型扩展——ph 音标/cn 中文释义（📖 查词或 AI 合并回填；旧词条缺字段按空兼容）
         if (time && isFinite(time.st) && isFinite(time.en) && time.en > time.st) { entry.st = time.st; entry.en = time.en; }
         if (time && time.a) entry.a = time.a;
@@ -7531,6 +7609,10 @@ const vocabBook = {
         ui.toast('🗑 已清空当前音频生词 ' + n + ' 词（其它音频保留）');
     },
     _clearGlobal() {
+        // V112(外审8): 二次确认——两级弹层之上再防一次误触（红框按钮在弹层里，手指滑动误触
+        // 直接清空全局几百词不可恢复）；confirm 报出真实词数
+        const n = this.list().length;
+        if (!confirm('确认清空全局所有生词（共 ' + n + ' 词，跨音频，不可恢复）？')) return;
         this._list = []; this._lastAddIdx = null;
         this._rv = null; // V97(外审2): 翻卡 Tab 下清空——旧队列全指向已删词条，reviewMark 连点会翻完全队列弹"本轮认识 X/X"假战报
         this._hideClearPop();
@@ -7680,7 +7762,8 @@ const vocabBook = {
         if (d0 && d0.definition) def = ((m0.partOfSpeech ? m0.partOfSpeech + '. ' : '') + String(d0.definition)).replace(/\s+/g, ' ').trim().slice(0, 160);
         let ch = false;
         if (ph && !v.ph) { v.ph = ph; ch = true; }
-        if (def && def !== v.def) { v.def = def; ch = true; }
+        // V112(外审8): def 与 ph 同规——已有不覆盖（AI 合并回填/导入值优先，自动查词不反复冲刷）
+        if (def && !v.def) { v.def = def; ch = true; }
         if (!ch) return;
         this._persist();
         if (this._rv && !this._rv.done) this._rv.detailOpen = true; // V110(规格二·3): 拉取英释后默认自动展开
@@ -7755,7 +7838,8 @@ const vocabBook = {
     },
     // ============ V103(功能B): 按音频筛选 + 搜索（列表跟随筛选+搜索；翻卡只跟随音频筛选——搜索是列表找词工具，
     // 逐键重建卡组会很吵，不参与复习池） ============
-    _filterAudioKey() { try { return localStorage.getItem('shadow_v103_vocab_filter') || 'all'; } catch(e) { return 'all'; } },
+    // V112(外审8): 删 _filterAudioKey()——V110 open() 改为强制默认筛选后已成死代码（无任何调用），
+    // 实际读写部走 this._filterAudio / shadow_v103_vocab_filter 键（setFilterAudio）
     // 当前音频判定：v.a 与已加载音频 fixUrl 比对（主路径），老词条缺 a 时退 v.src 与当前出处名比对
     _isCurrentAudio(v) {
         // V104(外审9): a) 没加载音频就没有"当前音频"——原会掉到 v.src 兜底，currentSourceName() 回落读
@@ -7847,7 +7931,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 111, exportedAt: new Date().toISOString(), vocab: list }; // V111: 110→111（ph/cn/def 随词条对象整体携带）
+        const data = { type: 'shadow_vocab_backup', version: 112, exportedAt: new Date().toISOString(), vocab: list }; // V112: 111→112（ph/cn/def 随词条对象整体携带）
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
@@ -7915,6 +7999,7 @@ const vocabBook = {
     },
     // ---------- V110: Excel/CSV 导入底层（零依赖） ----------
     // 表头名→列下标映射（兼容新 8 列与旧版 5 列『所在句子/出处』口径；表头匹配忽略大小写与空白）
+    // V112(外审8/AI闭环5): 常见别名扩充——AI 自拟表头/用户手写表头也能映射上
     _vocabColMap(header) {
         const norm = function(x) { return String(x == null ? '' : x).replace(/\s+/g, '').toLowerCase(); };
         const find = function(names) {
@@ -7923,24 +8008,30 @@ const vocabBook = {
             }
             return -1;
         };
-        const w = find(['单词', 'word']);
+        const w = find(['单词', 'word', '词条', '词汇']);
         if (w < 0) return null;
         return {
             w: w,
-            ph: find(['音标', 'phonetic']),
-            cn: find(['中文意思', '中文释义', '释义', 'cn']),
-            s: find(['例句', '所在句子', '句子', 'sentence']),
-            tr: find(['例句翻译', '翻译', 'tr']),
-            note: find(['笔记', 'note']),
-            src: find(['出处音频', '出处', '音频', 'src'])
+            ph: find(['音标', 'phonetic', 'phonetics', 'ipa']),
+            cn: find(['中文意思', '中文释义', '中文', '释义', '意思', '含义', 'cn', 'meaning']),
+            s: find(['例句', '所在句子', '句子', 'sentence', 'example', 'context']),
+            tr: find(['例句翻译', '例句译文', '翻译', '译文', 'tr', 'translation']),
+            note: find(['笔记', '备注', 'note', 'notes']),
+            src: find(['出处音频', '出处', '音频', '来源', 'src', 'source', 'audio'])
         };
     },
     _rowsToVocab(rows) { // 行数组（含表头）→ 词条对象数组；空行/AI 提示词行（单词列空）在 w 校验处自然跳过
         if (!rows || !rows.length) return null;
-        const map = this._vocabColMap(rows[0]);
-        if (!map) return null;
+        // V112(外审1): 表头行定位容错——不再死锁 rows[0]：扫描前 5 行找第一个能映射出「单词」列的
+        // 非空行作表头（Excel 首行空行/AI 回复开头的说明行不再让整个导入判“找不到单词列”）
+        let hi = -1, map = null;
+        for (let i = 0; i < Math.min(5, rows.length); i++) {
+            const m0 = this._vocabColMap(rows[i]);
+            if (m0) { hi = i; map = m0; break; }
+        }
+        if (hi < 0) return null;
         const out = [];
-        for (let ri = 1; ri < rows.length; ri++) {
+        for (let ri = hi + 1; ri < rows.length; ri++) {
             const r = rows[ri] || [];
             const get = function(ci) { return (ci >= 0 && ci < r.length) ? String(r[ci] == null ? '' : r[ci]).trim() : ''; };
             const w = get(map.w);
@@ -7974,9 +8065,12 @@ const vocabBook = {
         return this._rowsToVocab(rows);
     },
     _xmlUnesc(s) { // XML 实体反转义（amp 最后解——&amp;lt; 应得字面 &lt;）
+        // V112(外审1): 补十六进制字符引用（&#x2019; 弯撇号等——十进制早支持，十六进制漏了）；
+        // DOMParser 主路径下此函数仅作 CSV/正则兜底路径用
         return String(s == null ? '' : s)
             .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+            .replace(/&#x([0-9a-fA-F]+);/g, function(m, h) { try { return String.fromCodePoint(parseInt(h, 16)); } catch(e) { return m; } })
             .replace(/&#(\d+);/g, function(m, d) { try { return String.fromCodePoint(parseInt(d, 10)); } catch(e) { return m; } })
             .replace(/&amp;/g, '&');
     },
@@ -8142,27 +8236,108 @@ const vocabBook = {
         }
         return files;
     },
-    _parseVocabXlsx(ab) { // .xlsx → 行数组 → _rowsToVocab；四类单元格：sharedStrings / inlineStr(含富文本 run 拼接) / str / 数值
+    // .xlsx → 行数组 → _rowsToVocab；四类单元格：sharedStrings / inlineStr(含富文本 run 拼接) / str / 数值
+    // V112(外审1): XML 解析改用原生 DOMParser（NS 不敏感匹配，容忍带命名空间前缀的文件）——
+    // 旧正则提标签在 <rPh> 注音节点（Excel 拼音指南自动嵌入）上会把注音 <t> 也拼进正文、
+    // 且十六进制实体不解码；DOMParser 的 textContent 原生解码全部实体。DOMParser 不可用或
+    // 整篇解析失败（parsererror，如文件里混入非法字符引用）时，退回 V111 正则路径兜底——双路径保命
+    _parseVocabXlsx(ab) {
         const files = this._zipRead(ab);
         const dec = new TextDecoder('utf-8');
         let sheetName = files.has('xl/worksheets/sheet1.xml') ? 'xl/worksheets/sheet1.xml' : '';
         if (!sheetName) { for (const k of files.keys()) { if (/^xl\/worksheets\/sheet\d*\.xml$/.test(k)) { sheetName = k; break; } } }
         if (!sheetName) return null;
-        const xml = dec.decode(files.get(sheetName));
         let shared = null; // Excel 常用 sharedStrings；自导出 inlineStr 没有
         if (files.has('xl/sharedStrings.xml')) {
             shared = [];
             const ss = dec.decode(files.get('xl/sharedStrings.xml'));
-            const siRe = /<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g;
-            let m;
-            while ((m = siRe.exec(ss)) !== null) {
-                let s = '';
-                const tRe = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;
-                let t;
-                while ((t = tRe.exec(m[1])) !== null) s += this._xmlUnesc(t[1]);
-                shared.push(s);
+            try {
+                const doc = new DOMParser().parseFromString(ss, 'text/xml');
+                if (doc.getElementsByTagName('parsererror').length) throw new Error('parsererror');
+                const sis = doc.getElementsByTagNameNS('*', 'si');
+                if (!sis.length) throw new Error('no si');
+                for (let i = 0; i < sis.length; i++) {
+                    // 只拼正文 <t>——排除 <rPh><t>拼音/注音</t></rPh>（Excel 输入法「拼音指南」自动嵌入）；
+                    // 富文本 <r><t>…</t></r> 多段与裸 <t> 单段都覆盖（NS 不敏感：任意前缀都能取到）
+                    const ts = sis[i].getElementsByTagNameNS('*', 't');
+                    let s = '';
+                    for (let j = 0; j < ts.length; j++) {
+                        const pn = ts[j].parentNode;
+                        if (pn && pn.localName === 'rPh') continue;
+                        s += ts[j].textContent || '';
+                    }
+                    shared.push(s);
+                }
+            } catch(eD) {
+                // 兜底：旧正则路径（与 V111 行为一致）
+                shared = [];
+                const siRe = /<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g;
+                let m;
+                while ((m = siRe.exec(ss)) !== null) {
+                    let s = '';
+                    const tRe = /<(?:rPh[^>]*\/>|rPh(?:\s[^>]*)?>[\s\S]*?<\/rPh>)/g; // 注音块整段跳过
+                    let body = m[1].replace(tRe, '');
+                    const tRe2 = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;
+                    let t;
+                    while ((t = tRe2.exec(body)) !== null) s += this._xmlUnesc(t[1]);
+                    shared.push(s);
+                }
             }
         }
+        const xml = dec.decode(files.get(sheetName));
+        let rows = this._xlsxRowsDom(xml, shared);
+        if (!rows) rows = this._xlsxRowsRe(xml, shared); // DOMParser 失败退回正则路径
+        return this._rowsToVocab(rows);
+    },
+    // DOMParser 主路径：工作表 → 行数组；返回 null 表示解析不可用（调用方退正则兜底）
+    _xlsxRowsDom(xml, shared) {
+        try {
+            const doc = new DOMParser().parseFromString(xml, 'text/xml');
+            if (doc.getElementsByTagName('parsererror').length) return null;
+            const rowEls = doc.getElementsByTagNameNS('*', 'row');
+            if (!rowEls.length) return null;
+            const colOf = function(ref) { // "B7" → 1（0 基）；非法/缺失 → -1
+                const m = /^([A-Za-z]+)\d+$/.exec(String(ref || ''));
+                if (!m) return -1;
+                let col = 0;
+                for (const ch of m[1].toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
+                return col - 1;
+            };
+            const rows = [];
+            for (let ri = 0; ri < rowEls.length; ri++) {
+                const cells = [];
+                const cEls = rowEls[ri].getElementsByTagNameNS('*', 'c');
+                for (let ci = 0; ci < cEls.length; ci++) {
+                    const c = cEls[ci];
+                    const col = colOf(c.getAttribute('r'));
+                    const idx = col >= 0 ? col : cells.length; // 无 r 属性：按出现顺序
+                    const tt = (c.getAttribute('t') || '').toLowerCase(); // V112 修正：toLowerCase 后必须比全小写 'inlinestr'（初版笔误比 'inlineStr' 导致 DOMParser 路径 inlineStr 全走数值分支被清空，浏览器实测抓出）
+                    let val = '';
+                    if (tt === 'inlinestr') {
+                        // 富文本：拼接全部正文 <t>（加粗信息导入侧不需要）；<is> 包裹或裸 <t> 都容忍
+                        const ts = c.getElementsByTagNameNS('*', 't');
+                        for (let j = 0; j < ts.length; j++) val += ts[j].textContent || '';
+                    } else if (tt === 's') {
+                        const vs = c.getElementsByTagNameNS('*', 'v');
+                        if (vs.length && shared) {
+                            const n = parseInt(vs[0].textContent, 10);
+                            val = (isFinite(n) && n >= 0 && n < shared.length) ? shared[n] : '';
+                        }
+                    } else {
+                        // t="str"（公式串）与数值共用 <v>；textContent 原生解码十/十六进制实体
+                        const vs = c.getElementsByTagNameNS('*', 'v');
+                        val = vs.length ? (vs[0].textContent || '') : '';
+                    }
+                    while (cells.length < idx) cells.push(''); // 补空格对齐列位
+                    cells[idx] = val;
+                }
+                rows.push(cells);
+            }
+            return rows;
+        } catch(e) { return null; }
+    },
+    // 正则兜底路径（V111 原实现，DOMParser 不可用/整篇失败时保命）
+    _xlsxRowsRe(xml, shared) {
         const rows = [];
         // 行/单元格标签不允许自锚误吃：属性段排除 '/'（自闭合 <row .../> <c .../> 交给 |/ 分支）
         const rowRe = /<row(?:\s[^>/]*)?>([\s\S]*?)<\/row>|<row(?:\s[^>/]*)?\/>/g;
@@ -8179,12 +8354,12 @@ const vocabBook = {
                 let col = 0;
                 if (rAttr) { for (const ch of rAttr[1]) col = col * 26 + (ch.charCodeAt(0) - 64); col -= 1; }
                 else col = cells.length; // 无 r 属性：按出现顺序
-                const tType = /\st="([a-zA-Z]+)"/.exec(cFull); // V110 修正：inlineStr 的 S 是大写——[a-z]+ 会漏配（类型识别失效全走数值分支）
-                const tt = tType ? tType[1] : '';
+                const tType = /\st="([a-zA-Z]+)"/.exec(cFull);
+                const tt = tType ? tType[1].toLowerCase() : ''; // inlineStr 大小写都认
                 let val = '';
-                if (tt === 'inlineStr') { // 富文本：拼接全部 <t>（加粗信息导入侧不需要，取整句文本）
+                if (tt === 'inlinestr') { // 富文本：拼接全部正文 <t>（跳过 rPh 注音块）
                     const isMatch = /<is(?:\s[^>]*)?>([\s\S]*?)<\/is>/.exec(body);
-                    const isBody = isMatch ? isMatch[1] : body;
+                    const isBody = isMatch ? isMatch[1].replace(/<rPh[^>]*\/>|<rPh(?:\s[^>]*)?>[\s\S]*?<\/rPh>/g, '') : body;
                     const tR = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;
                     let t2;
                     while ((t2 = tR.exec(isBody)) !== null) val += this._xmlUnesc(t2[1]);
@@ -8203,7 +8378,7 @@ const vocabBook = {
             }
             rows.push(cells);
         }
-        return this._rowsToVocab(rows);
+        return rows;
     },
     // 合并与去重：V110(规格一·3) 改【单词+出处音频】双主键——norm(w)+':::'+norm(src)：
     //   a) 导入有出处：只精确匹配同音频同词（绝不误伤其它音频的同名词），未命中按新词追加；
@@ -8505,9 +8680,11 @@ const vocabBook = {
         try { engine.stopAll(); } catch(e) {} // V100(外审2): 原来只有 Level 1 停主音频，2/3 会让直放声与主音频混音
         const tk = this._hearTk;
         const cur = String(state._loadedAudioUrl || '');
-        const want = String(v.a || '');
         // 1) 当前工程匹配 → 主音频直放（V94 原行为）
-        if (want && cur && (cur === want || net.fixUrl(cur) === net.fixUrl(want)) && v.st != null && v.en != null) {
+        // V112(外审6): 判定改用 _isCurrentAudio（含 V111 的 local://↔http 跨形态文件名兑底）——
+        // 同一文件从本地导入切到网络/缓存加载（或反向）时原来 fixUrl 比对必失配退 Level 2/3，
+        // 缓存无此 URL 记录时进一步退 TTS；现在仍能直放主音频。st/en 仍需齐备才能定位区间
+        if (cur && this._isCurrentAudio(v) && v.st != null && v.en != null) {
             const a = document.getElementById('main-audio');
             if (a && a.src && engine && typeof engine._playSegmentTimed === 'function') {
                 const st = Math.max(0, v.st - 0.12);
@@ -8624,6 +8801,7 @@ const vocabBook = {
         this._stopAllAudio(); // V102(外审一3): 翻卡放音途中切回列表——上一张卡的原音/TTS 立即停，不再播完甚至叠到列表上
         document.getElementById('vocab-list').style.display = '';
         document.getElementById('vocab-review').style.display = 'none';
+        try { document.querySelector('.vocab-toolbar').style.display = ''; } catch(e) {} // V112: 翻卡态隐藏的工具栏恢复（数据导入/导出是列表页操作）
         try { document.getElementById('rv-settings').style.display = 'none'; } catch(e) {}
         document.getElementById('vocab-tab-list').classList.add('active');
         document.getElementById('vocab-tab-review').classList.remove('active');
@@ -8638,6 +8816,7 @@ const vocabBook = {
         document.getElementById('vocab-tab-review').classList.add('active');
         document.getElementById('vocab-list').style.display = 'none';
         document.getElementById('vocab-review').style.display = 'flex'; // V110: flex 容器——.rv-wrap 撞满高度，底部固定操作栏正反同位零跳动
+        try { document.querySelector('.vocab-toolbar').style.display = 'none'; } catch(e) {} // V112: 翻卡态隐藏数据工具栏（7 钮 375px 两行占 100px，把卡面挤到 46px 高；导入/导出/复制/粘贴是列表态操作，翻卡用不到；拖放导入绑在 #vocab-modal 不受影响）
         try { document.getElementById('rv-settings').style.display = 'flex'; } catch(e) {}
         try { const tEl = document.getElementById('vocab-tip'); if (tEl) tEl.innerText = '💡 点例句或卡片可重听原音 · 快捷键：空格/回车翻面 · ←不认识 · →认识'; } catch(e) {} // V110(规格二·3): .vocab-tip 情境化——翻卡态（规格原文）
         this._syncRvSettings();
@@ -8924,13 +9103,18 @@ const vocabBook = {
                 ? '<div class="rv-cn" data-fit onclick="vocabBook.editCn(' + idx + ')" title="点修改中文释义">' + ui.escapeHTML(v.cn) + '</div>'
                 : '<div class="rv-cn rv-cn-empty" onclick="vocabBook.editCn(' + idx + ')" title="点补充中文释义（AI 合并回填也会进来）">＋ 点此补充中文释义</div>';
             let detailRows = '';
-            if (v.tr) detailRows += '<div class="rv-row" data-fit><span class="rv-lbl">译</span>' + ui.escapeHTML(v.tr) + '</div>';
-            if (v.def) detailRows += '<div class="rv-row" data-fit style="color:#5F6368;"><span class="rv-lbl">英释</span>' + ui.escapeHTML(v.def) + '</div>';
+            // V112(外审2): 详情行去掉 data-fit——原被 _fitCard 的 TXT=[24,20,16,14] 阶梯放大到 24px
+            // （设计是 13px 紧凑排版），展开详情时句译/英释/笔记字大得喧宾夺主；保持 .rv-detail 的 13px
+            if (v.tr) detailRows += '<div class="rv-row"><span class="rv-lbl">译</span>' + ui.escapeHTML(v.tr) + '</div>';
+            if (v.def) detailRows += '<div class="rv-row" style="color:#5F6368;"><span class="rv-lbl">英释</span>' + ui.escapeHTML(v.def) + '</div>';
             if (v.note) detailRows += '<div class="rv-row rv-note-row" onclick="vocabBook.editNote(' + idx + ')" title="点编辑笔记"><span class="rv-lbl">📝</span>' + ui.escapeHTML(v.note) + '</div>';
             if (!detailRows) detailRows = '<div style="color:#bbb;">暂无句译/英释/笔记——点下方 ✏️ 补笔记、📖 查词拉英释；AI 合并回填也会进来</div>';
             face = '<div class="rv-face">' +
+                '<div class="rv-face-in">' + // V112(外审2): 内容包裹层——margin:auto 0 溢出安全垂直居中
                 '<div class="rv-head">' +
-                    '<span class="rv-w" data-fit="big">' + ui.escapeHTML(v.w || '') + '</span>' + ph + chip +
+                    // V112(外审2): 背面词面可点读音——blank 模式底部固定栏只有「🔊 重听」（播原句），
+                    // 翻面后想单独听单词发音原来没有入口；背面无翻面 onclick 不会冒泡误触
+                    '<span class="rv-w rv-w-click" data-fit="big" onclick="vocabBook.speak(' + idx + ')" title="点我读单词">' + ui.escapeHTML(v.w || '') + '</span>' + ph + chip +
                 '</div>' +
                 cnHtml +
                 (v.s ? '<div class="rv-sent" data-fit style="cursor:pointer;" onclick="vocabBook.hearSentence(' + idx + ')" title="点例句重放原音">' + this._hlWord(v.s, v.w) + '<span class="rv-spk">🔊</span></div>' : '') +
@@ -8942,7 +9126,7 @@ const vocabBook = {
                     '<a href="https://dict.youdao.com/w/' + encodeURIComponent(v.w || '') + '" target="_blank" rel="noopener" title="有道词典网页版/可唤醒有道 App">有道</a>' +
                     '<a href="https://dictionary.cambridge.org/dictionary/english-chinese-simplified/' + encodeURIComponent(v.w || '') + '" target="_blank" rel="noopener" title="剑桥英汉双解词典">剑桥</a>' +
                 '</div>' +
-                '</div>';
+                '</div></div>';
         } else {
             // ============ 正面：三模式（V110：卡框固定 + fitText 阶梯缩字） ============
             let frontInner = '';
@@ -8959,7 +9143,7 @@ const vocabBook = {
                     (v.grad ? '<span class="rv-chip" style="color:#137333;">🎓</span>' : (this._isDue(v) ? '<span class="rv-chip" style="color:#E65100;">⏰</span>' : '')) + '</div>' +
                     '<div style="font-size:12px;color:#999;margin-top:10px;">点卡片看中文释义/例句</div>';
             }
-            face = '<div class="rv-face" onclick="vocabBook.reviewFlip()" style="cursor:pointer;" title="点卡片翻面">' + frontInner + '</div>';
+            face = '<div class="rv-face" onclick="vocabBook.reviewFlip()" style="cursor:pointer;" title="点卡片翻面"><div class="rv-face-in">' + frontInner + '</div></div>';
         }
         el.innerHTML = '<div class="rv-wrap">' +
             '<div class="rv-cardbox">' + face + '</div>' +
@@ -9074,6 +9258,7 @@ const vocabBook = {
         this._filterAudio = (state._loadedAudioUrl || '') ? '__cur__' : 'all';
         try { safeSetItem('shadow_v103_vocab_filter', this._filterAudio); } catch(eF) {}
         this._syncDueBtn(); // V110: 只练到期按钮态随面板打开同步
+        this._initDropImport(); // V112(AI闭环3): iPad 分屏拖放导入（幂等——只绑一次）
         document.getElementById('vocab-modal').classList.add('show'); this.tabList();
     },
     close() {
@@ -9087,7 +9272,7 @@ const vocabBook = {
     render() {
         const listEl = document.getElementById('vocab-list');
         if (!listEl) return;
-        try { const tEl = document.getElementById('vocab-tip'); if (tEl) tEl.innerText = '💡 点词/划选入本（手机长按划短语，划好松手 0.5s 自动入本），所在句自动标 ⭐ · 点单词读音、点例句听原声、点中文释义可修改 · 📖 查词自动回填音标/英释 · 生词本跨音频共用'; } catch(e) {} // V110(规格二·3): 情境化提示——列表态
+        try { const tEl = document.getElementById('vocab-tip'); if (tEl) tEl.innerText = '💡 点词/划选入本（手机长按划短语，划好松手片刻自动入本），所在句自动标 ⭐ · 点单词读音、点例句听原声、点中文释义可修改 · 📖 查词自动回填音标/英释 · 📋 复制AI→粘贴更新 一键词表 AI 补全 · 生词本跨音频共用'; } catch(e) {} // V110(规格二·3): 情境化提示——列表态；V112: 补 AI 闭环入口
         listEl.innerHTML = '';
         const list = this.list();
         this._updateBadge();
@@ -9193,12 +9378,227 @@ const vocabBook = {
     },
     _download(bytes, mime, filename, okMsg) {
         const blob = new Blob([bytes], { type: mime });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function() { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000);
-        ui.toast(okMsg);
+        // V112(AI闭环2): iOS/iPadOS 原生分享——Safari 的 <a download> 对 .xlsx/.json 往往只能预览乱码，
+        // navigator.share 可直接拉起系统分享面板（发送到 ChatGPT/豆包/Numbers/存储到文件）。
+        // 关键约束：①必须在点击事件同步调用栈内发起（无 await 断手势）——本函数由 onclick 同步链调进；
+        // ②用户取消抛 AbortError 静默（不回退不报错）；③仅不支持/非取消失败时回退锚点下载；
+        // ④桌面（非 iOS 设备）零变化走原锚点路径
+        if (_isIOSDevice() && navigator.canShare) {
+            try {
+                const file = new File([blob], filename, { type: mime });
+                if (navigator.canShare({ files: [file] })) {
+                    navigator.share({ files: [file], title: filename }).then(function() {
+                        ui.toast(okMsg);
+                    }, function(err) {
+                        if (err && err.name === 'AbortError') return; // 用户取消——静默
+                        _dlAnchor(blob); // 非取消类失败：回退锚点（此时手势可能已过期，iOS 上可能只弹预览，但至少有出口）
+                    });
+                    return;
+                }
+            } catch(e0) {}
+        }
+        _dlAnchor(blob);
+        function _dlAnchor(b) {
+            const url = URL.createObjectURL(b);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(function() { try { URL.revokeObjectURL(url); } catch(e) {} }, 1000);
+            ui.toast(okMsg);
+        }
+    },
+    // ============================================================
+    //  V112(AI闭环1): 📋 复制给 AI —— Markdown 表格 + 提示词到剪贴板
+    // 手机/iPad 在 AI App 与浏览器之间传文件麻烦（下载→分享→再导回），剪贴板文本闭环最顺手：
+    // 复制 → 粘给 ChatGPT/豆包 → AI 填音标/释义/翻译/笔记 → 「📋 粘贴更新」粘回来合并
+    // ============================================================
+    copyForAI() {
+        const list = this.list();
+        if (!list.length) return ui.toast('生词本是空的，没有可复制');
+        const pop = document.getElementById('vocab-copy-pop');
+        if (!pop) return;
+        const scope = this._exportScope();
+        const missN = list.filter(function(v) { return !String(v.ph || '').trim() || !String(v.cn || '').trim(); }).length;
+        const fBtn = document.getElementById('vcopy-filter-btn');
+        const mBtn = document.getElementById('vcopy-miss-btn');
+        const aBtn = document.getElementById('vcopy-all-btn');
+        if (fBtn) {
+            fBtn.innerText = scope.scoped
+                ? ('📋 按当前筛选复制（' + scope.n + ' 词）')
+                : ('📋 复制全部（' + list.length + ' 词）——先筛选某期音频可只复制该期');
+            fBtn.style.display = '';
+        }
+        if (mBtn) {
+            mBtn.innerText = '🎯 仅复制待补全词（' + missN + ' 词，缺音标或中文意思）——最省 Token';
+            mBtn.style.display = '';
+        }
+        if (aBtn) aBtn.innerText = '📋 复制全部（' + list.length + ' 词）';
+        // 无筛选范围时隐藏“按当前筛选”（与全部重复）；待补全为 0 也隐藏
+        if (fBtn && !scope.scoped) fBtn.style.display = 'none';
+        if (mBtn && !missN) mBtn.style.display = 'none';
+        pop.classList.add('show');
+    },
+    _hideCopyPop() {
+        const pop = document.getElementById('vocab-copy-pop');
+        if (pop) pop.classList.remove('show');
+    },
+    _copyRange(which) {
+        const list = this.list();
+        let sub = null, label = '';
+        if (which === 'filter') {
+            const scope = this._exportScope();
+            if (!scope.n) { this._hideCopyPop(); return ui.toast('当前筛选下没有生词，先切回「全部音频」或换筛选'); }
+            sub = scope.list; label = scope.scoped ? '当前筛选' : '全部';
+        } else if (which === 'miss') {
+            sub = list.filter(function(v) { return !String(v.ph || '').trim() || !String(v.cn || '').trim(); });
+            label = '待补全';
+            if (!sub.length) { this._hideCopyPop(); return ui.toast('所有词的音标和中文意思都已完整，无需 AI 补全'); }
+        } else {
+            sub = list; label = '全部';
+        }
+        this._hideCopyPop();
+        // Markdown 表格：列序与 Excel 8 列一致；单元格转义 | 和换行（音标斜杠 /…/ 原样保留）
+        const esc = function(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' '); };
+        let md = '| 序号 | 单词 | 音标 | 中文意思 | 例句 | 例句翻译 | 笔记 | 出处音频 |\n' +
+                 '|---|---|---|---|---|---|---|---|\n';
+        sub.forEach(function(v, i) {
+            md += '| ' + (i + 1) + ' | ' + esc(v.w) + ' | ' + esc(v.ph) + ' | ' + esc(v.cn) + ' | ' + esc(v.s) + ' | ' + esc(v.tr) + ' | ' + esc(v.note) + ' | ' + esc(v.src) + ' |\n';
+        });
+        const prompt = (which === 'miss'
+            ? '这是我英语跟读的生词表（Markdown 表格），只包含待补全的词。请在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译，「笔记」列如有易混点或巧记法请帮我补充；保持其他列内容与表格结构不变，输出完整表格。'
+            : '这是我英语跟读的生词表（Markdown 表格）。请在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译，「笔记」列如有易混点或巧记法请帮我补充；已填好的保持不变，保持表格结构不变，输出完整表格。');
+        copyTextToClipboard(prompt + '\n\n' + md,
+            '📋 已复制' + label + ' ' + sub.length + ' 词 + AI 提示词——粘给 AI，填好后用「📋 粘贴更新」导回');
+    },
+    // ============================================================
+    //  V112(AI闭环1): 📋 粘贴更新——四格式自动识别（Markdown 表格 / TSV / CSV / JSON）
+    //  统一走 _rowsToVocab → _mergeVocab 双主键合并（SRS 进度/音频时间戳不丢）
+    // ============================================================
+    showPastePop() {
+        const pop = document.getElementById('vocab-paste-pop');
+        if (!pop) return;
+        const ta = document.getElementById('vp-text');
+        if (ta) ta.value = ''; // 每次清空——连续两轮粘贴不串台
+        pop.classList.add('show');
+    },
+    _hidePastePop() {
+        const pop = document.getElementById('vocab-paste-pop');
+        if (pop) pop.classList.remove('show');
+    },
+    _readClipboard() {
+        // iOS Safari 的 readText 会弹权限询问（用户手势内才弹）；拒绝/不支持时引导手动长按粘贴——总有路走
+        const ta = document.getElementById('vp-text');
+        try {
+            if (!(navigator.clipboard && navigator.clipboard.readText)) throw 0;
+            navigator.clipboard.readText().then(function(t) {
+                if (ta) ta.value = String(t || '');
+                ui.toast(t ? '✅ 已读入剪贴板内容（' + String(t).length + ' 字符）' : '剪贴板是空的');
+            }, function() {
+                ui.toast('无法自动读取剪贴板——请在文本框里长按 → 粘贴');
+            });
+        } catch(e) { ui.toast('此浏览器不支持一键读取——请在文本框里长按 → 粘贴'); }
+    },
+    _doPasteUpdate() {
+        const ta = document.getElementById('vp-text');
+        const text = ta ? String(ta.value || '') : '';
+        if (!text.trim()) return ui.toast('请先粘贴内容（或点「📋 读取剪贴板」）');
+        let entries = null;
+        try { entries = this._parsePastedVocab(text); }
+        catch(e1) { return ui.toast('❌ 解析失败：' + (e1.message || e1)); }
+        if (!entries || !entries.length) {
+            return ui.toast('❌ 没能从粘贴内容里识别出生词表——支持 Markdown 表格 / 制表符文本 / CSV / JSON（需含「单词」列表头）');
+        }
+        try {
+            this._hidePastePop();
+            this._mergeVocab(entries);
+        } catch(e2) { ui.toast('❌ 合并失败：' + (e2.message || e2)); }
+    },
+    // 粘贴文本 → 词条数组（或 null=识别失败）。格式优先级：JSON → Markdown 表格 → TSV → CSV
+    _parsePastedVocab(text) {
+        text = String(text == null ? '' : text).replace(/^\uFEFF/, '').trim();
+        if (!text) return null;
+        // 1) JSON（数组 / 本应用导出 shadow_vocab_backup / 全量备份只取生词本部分）
+        if (text.charAt(0) === '{' || text.charAt(0) === '[') {
+            try {
+                const data = safeParse(text, null);
+                let inc = null;
+                if (Array.isArray(data)) inc = data;
+                else if (data && typeof data === 'object') {
+                    if (data.type === 'shadow_vocab_backup' && Array.isArray(data.vocab)) inc = data.vocab;
+                    else if (data.type === 'shadow_full_backup' && data.items && typeof data.items === 'object') {
+                        const raw = data.items['shadow_v84_vocab'];
+                        if (typeof raw === 'string') { const arr = safeParse(raw, null); if (Array.isArray(arr)) inc = arr; }
+                        else if (Array.isArray(raw)) inc = raw;
+                    }
+                }
+                if (inc && inc.length) return inc;
+            } catch(e0) {}
+        }
+        // 2) Markdown 表格（AI 最常输出）：只取以 | 开头的行；忽略 |---|---| 对齐行；
+        //    单元格去首尾空白与 **粗体**/`代码` 轻修饰（音标 /…/ 的斜杠不是修饰符，原样保留）
+        const mdLines = text.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.charAt(0) === '|'; });
+        if (mdLines.length >= 2) {
+            const rows = [];
+            for (let li = 0; li < mdLines.length; li++) {
+                let core = mdLines[li].replace(/^\|/, '').replace(/\|$/, '');
+                core = core.replace(/\\\|/g, '\u0001'); // 保护转义管道 \|（单元格内合法的 | 字符）
+                const cells = core.split('|').map(function(c) {
+                    c = c.trim();
+                    c = c.replace(/^\*\*([\s\S]*)\*\*$/, '$1').replace(/\*\*/g, ''); // 整格或残留的粗体星号
+                    c = c.replace(/^__([\s\S]*)__$/, '$1').replace(/__/g, '');
+                    c = c.replace(/^`([\s\S]*)`$/, '$1'); // 行内代码
+                    return c.replace(/\u0001/g, '|');
+                });
+                if (cells.every(function(c) { return /^[-:\s]*$/.test(c); })) continue; // |---|---| 分隔行
+                rows.push(cells);
+            }
+            if (rows.length >= 2) {
+                const e2 = this._rowsToVocab(rows); // 表头扫描自动跳过 AI 的说明行（无 | 开头已被过滤）
+                if (e2 && e2.length) return e2;
+            }
+        }
+        // 3) TSV（iPad Numbers / Excel 全选复制——制表符分隔）
+        if (text.indexOf('\t') >= 0) {
+            const rows = text.split(/\r?\n/).map(function(l) { return l.split('\t'); })
+                .filter(function(r) { return r.some(function(c) { return String(c).trim(); }); });
+            const e3 = this._rowsToVocab(rows);
+            if (e3 && e3.length) return e3;
+        }
+        // 4) CSV（复用 RFC 4180 解析器）
+        const e4 = this._parseVocabCsv(text);
+        if (e4 && e4.length) return e4;
+        return null;
+    },
+    // ============================================================
+    //  V112(AI闭环3): iPad 分屏拖放导入——从「文件」/Numbers/浏览器拖 .xlsx/.csv/.json 到生词本面板
+    //  dragenter/dragover 计数器管理高亮（子元素切换不闪烁）；drop 取首个文件走 _processVocabFile
+    // ============================================================
+    _dropBound: false, _dropDepth: 0,
+    _initDropImport() {
+        if (this._dropBound) return;
+        const modal = document.getElementById('vocab-modal');
+        if (!modal) return;
+        this._dropBound = true;
+        const self = this;
+        modal.addEventListener('dragenter', function(e) {
+            if (!e.dataTransfer) return;
+            try { if (Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') < 0) return; } catch(eT) {}
+            e.preventDefault();
+            self._dropDepth++;
+            modal.classList.add('drop-hover');
+        });
+        modal.addEventListener('dragover', function(e) { e.preventDefault(); }); // 必须 preventDefault 才能触发 drop
+        modal.addEventListener('dragleave', function(e) {
+            self._dropDepth = Math.max(0, self._dropDepth - 1);
+            if (!self._dropDepth) modal.classList.remove('drop-hover');
+        });
+        modal.addEventListener('drop', function(e) {
+            e.preventDefault();
+            self._dropDepth = 0;
+            modal.classList.remove('drop-hover');
+            const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f) { try { self._processVocabFile(f); } catch(eP) { ui.toast('❌ 导入失败：' + (eP.message || eP)); } }
+        });
     },
     // V110(规格一·2): 例句富文本切分——目标词/短语原生加粗（_wordRe 词边界口径全命中加粗；
     // 无命中退大小写不敏感子串；再无退纯文本）——buildXlsx 里包成 <r><rPr><b/></rPr><t>…</t></r>
@@ -9233,9 +9633,20 @@ const vocabBook = {
     // V110(规格一·2): Excel 8 列 AI 批处理闭环——序号|单词|音标|中文意思|例句(生词原生加粗)|例句翻译|笔记|出处音频；
     // 表底空 1 行后 A:H 合并写整段 AI 提示词——交给 AI 填音标/释义/翻译/笔记，
     // 再用「📥 合并」按【单词+出处音频】双主键导回
-    exportExcel() {
+    // V112(AI闭环4): 导出范围跟随当前筛选+搜索——列表显示什么就导什么（AI 闭环场景：只学一课
+    // 只导一课，不再几百词全量发给 AI 被截断）；筛选=全部且无搜索时即全量（行为与旧版一致）。
+    // 📤 JSON 不跟随（备份语义，按筛选导出会静默丢词）；Anki 不变
+    _exportScope() {
+        const idxs = this._filteredIdx(false);
         const list = this.list();
-        if (!list.length) return ui.toast('生词本是空的，没有可导出');
+        const scoped = (this._filterAudio !== 'all' && this._filterAudio !== undefined) || (this._filterQ || '').trim();
+        if (!scoped) return { list: list, n: list.length, scoped: false, idxs: null };
+        return { list: idxs.map(function(i) { return list[i]; }), n: idxs.length, scoped: true, idxs: idxs };
+    },
+    exportExcel() {
+        const scope = this._exportScope();
+        const list = scope.list;
+        if (!list.length) return ui.toast((scope.scoped ? '当前筛选下' : '') + '生词本是空的，没有可导出');
         try {
             const rows = [['序号', '单词', '音标', '中文意思', '例句', '例句翻译', '笔记', '出处音频']];
             list.forEach((v, i) => { // V110: 箭头函数——_sentRuns 需要 this
@@ -9248,16 +9659,19 @@ const vocabBook = {
                 aiPrompt: '这是我英语跟读的生词表，请在第 3 列（音标）填入国际音标，在第 4 列（中文意思）结合第 5 列例句语境和我提供的完整文档上下文（如有）填入精准简明地道的中文释义，第六列也结合上下文翻译下，第 7 列（笔记）如果有易混点或巧记法请帮我补充，保持其他列内容及表格结构不变输出给我。'
             });
             this._download(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                this._exportBaseName() + '.xlsx', '✅ 已导出 Excel（' + list.length + ' 词，8 列；例句生词原生加粗，表底带 AI 批处理提示词）');
+                this._exportBaseName() + (scope.scoped ? '_' + scope.n + '词' : '') + '.xlsx',
+                '✅ 已导出 Excel（' + scope.n + ' 词，8 列' + (scope.scoped ? '，按当前筛选——切回「全部音频」可全量导出' : '') + '；表底带 AI 批处理提示词）');
         } catch(e) {
             ui.toast('❌ 导出失败：' + (e.message || e));
         }
     },
     // V110: CSV 8 列同 Excel（无加粗——CSV 纯文本带不进格式）；UTF-8 BOM（Excel 直开不乱码）；RFC 4180 转义
     // 适合导入 Anki/Quizlet 等背词软件；文件名 V91 起同 Excel 导出（见 _exportBaseName）
+    // V112(AI闭环4): 范围跟随当前筛选+搜索（与 Excel 导出同口径）
     exportCSV() {
-        const list = this.list();
-        if (!list.length) return ui.toast('生词本是空的，没有可导出');
+        const scope = this._exportScope();
+        const list = scope.list;
+        if (!list.length) return ui.toast((scope.scoped ? '当前筛选下' : '') + '生词本是空的，没有可导出');
         function cell(s) {
             s = String(s == null ? '' : s);
             if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
@@ -9267,8 +9681,8 @@ const vocabBook = {
         list.forEach(function(v, i) { rows.push([i + 1, v.w || '', v.ph || '', v.cn || '', v.s || '', v.tr || '', v.note || '', v.src || '']); });
         const content = '\uFEFF' + rows.map(function(r) { return r.map(cell).join(','); }).join('\r\n');
         try {
-            this._download([content], 'text/csv;charset=utf-8', this._exportBaseName() + '.csv',
-                '✅ 已导出 CSV（' + list.length + ' 词，8 列）');
+            this._download([content], 'text/csv;charset=utf-8', this._exportBaseName() + (scope.scoped ? '_' + scope.n + '词' : '') + '.csv',
+                '✅ 已导出 CSV（' + scope.n + ' 词，8 列' + (scope.scoped ? '，按当前筛选' : '') + '）');
         } catch(e) {
             ui.toast('❌ 导出失败：' + (e.message || e));
         }
@@ -9445,7 +9859,7 @@ const vocabBook = {
     // 练习页浮条「＋入生词本」——实时选区优先、暂存值兜底（V87 同款），词条落当前句（state.currIndex）
     // V110(规格四·2): 同预习页 0.5s 防抖——_prAutoTmr 到点自动入本（练习页入词反馈走 toast）
     _prAutoTmr: null, _prAutoTxt: '',
-    _armPrAuto() {
+    _armPrAuto(ms) { // V112(外审4): 时长参数化——触屏 1200ms / 鼠标 500ms（与 _armSelAuto 同规）
         this._clearPrAuto();
         this._prAutoTxt = this._practiceSelection() || this._prPendingSel || '';
         this._prAutoTmr = setTimeout(() => {
@@ -9453,7 +9867,7 @@ const vocabBook = {
             const txt = this._practiceSelection() || this._prPendingSel;
             if (!txt) return;
             try { this.addFromPracticeSelection(); } catch(e) {}
-        }, 500);
+        }, (ms === 1200) ? 1200 : 500);
     },
     _clearPrAuto() {
         if (this._prAutoTmr) { clearTimeout(this._prAutoTmr); this._prAutoTmr = null; }
@@ -10098,9 +10512,15 @@ function parseSRT(raw) {
     const timeRe = /(\d{1,2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{3})/;
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (phase === 'idle') { if (/^\d+$/.test(line)) { phase = 'time'; } }
-        else if (phase === 'time') { const m = timeRe.exec(line); if (m) { cur = { start: pt(m[1]), end: pt(m[2]), text: '' }; phase = 'text'; } else { phase = 'idle'; } }
-        else if (phase === 'text') { if (line === '') { if (cur) { cur.text = cur.text.trim(); result.push(cur); cur = null; } phase = 'idle'; } else { cur.text += (cur.text ? '\n' : '') + line.replace(/<[^>]+>/g, ''); } }
+        if (phase === 'text') { if (line === '') { if (cur) { cur.text = cur.text.trim(); result.push(cur); cur = null; } phase = 'idle'; } else { cur.text += (cur.text ? '\n' : '') + line.replace(/<[^>]+>/g, ''); } }
+        else { // idle 与 time 相统一处理
+            const m = timeRe.exec(line);
+            if (m) { cur = { start: pt(m[1]), end: pt(m[2]), text: '' }; phase = 'text'; }
+            // V112(外审8): idle 直遇时间行也允许进入解析——兼容无序号行或带 WEBVTT 头的文件
+            // （原来 phase='idle' 只认纯数字序号行，时间行开头/WEBVTT 头的文件整篇解析为空）；
+            // 纯数字行照旧只作序号跳过；其他行（WEBVTT/NOTE/Kind:/Language: 等）原样忽略
+            else if (phase === 'time') phase = 'idle';
+        }
     }
     if (cur) { cur.text = cur.text.trim(); result.push(cur); }
     return result;
@@ -11102,24 +11522,58 @@ document.addEventListener('selectionchange', function() {
 // 起表：松手时选区仍在（拖选已完成）；清表：选区塌掉（点选区外/点 ✕）或文本变化（重新拖）时由
 // checkSelBar/checkPrSelBar/dismiss*Bar 顺带作废；点浮条「＋」立即加入（addFrom*Selection 顺带清表）；
 // 到点自动入本走既有反馈链（预习页撤销条 2 秒/练习页 toast，见 _showUndo 分流）
-function _selAutoRouter() {
+function _selAutoRouter(ev) {
+    // V112(外审4): iOS 划选 0.5s 自动入本与"拖选柄扩展短语"冲突的三重修法——
+    // ① 触屏抬手后用户还要伸手按住蓝色选柄拖动扩展（0.6~1.5s），0.5s 倒计时会抢先入本并清空选区：
+    //    touchend 防抖放宽到 1200ms（鼠标保持 500ms——桌面拖选完即松手即意愿明确）；
+    //    用户仍可随时点浮条「＋」立即入本 / 点「✕」/点空白取消。
+    // ② 事件目标限定在字幕容器内——Safari 点外部 <button>（如练习页 ⭐）不塌缩选区，原 mouseup
+    //    会让选区"仍有效"而误武装定时器，到点误自动入本；现在目标不在字幕区一律清表。
+    // ③ document touchstart 见下方监听——手指开始任何新动作（含摸选柄）立即作废挂起的定时器，
+    //    确保拖选柄过程中绝不中途抢触发（拖完抬手 touchend 会重新武装新一轮 1200ms）。
+    const isTouch = !!(ev && ev.type === 'touchend');
+    const inPreviewText = function(t) {
+        try {
+            const el = document.getElementById('preview-sentence-text');
+            return !!(el && t && el.contains(t));
+        } catch(e) { return false; }
+    };
+    const inPracticeText = function(t) {
+        try {
+            const el = document.getElementById('practice-text-display');
+            return !!(el && t && el.contains(t));
+        } catch(e) { return false; }
+    };
+    const tgt = (ev && ev.target) || null;
     try {
         const pvw = document.getElementById('preview-view');
         if (pvw && pvw.classList.contains('active') && !document.getElementById('preview-focus-phase').classList.contains('active')) {
-            if (previewMode._mainTextSelection()) previewMode._armSelAuto();
+            if (previewMode._mainTextSelection() && (inPreviewText(tgt) || !isTouch && tgt && tgt.closest && tgt.closest('#pv-sel-add'))) previewMode._armSelAuto(isTouch ? 1200 : 500);
             else previewMode._clearSelAuto();
             return;
         }
     } catch(e) {}
     try {
         if (document.getElementById('practice-view').classList.contains('active')) {
-            if (vocabBook._practiceSelection()) vocabBook._armPrAuto();
+            if (vocabBook._practiceSelection() && (inPracticeText(tgt) || !isTouch && tgt && tgt.closest && tgt.closest('#pr-sel-add'))) vocabBook._armPrAuto(isTouch ? 1200 : 500);
             else vocabBook._clearPrAuto();
         }
     } catch(e) {}
 }
 document.addEventListener('mouseup', _selAutoRouter);
 document.addEventListener('touchend', _selAutoRouter, { passive: true });
+// V112(外审4): 触屏新手势立即作废挂起的自动入本——iOS 长按选定第一个词抬手后，用户伸手按住
+// 蓝色选柄准备拖动扩展：touchstart 一落地就清 _selAutoTmr/_prAutoTmr（目标在两个浮条内除外——
+// 那是点「＋/✕」的前奏，按钮自己的 click/touchend 直达路径会处理），拖柄中途绝不被 0.5s/1.2s 抢触发
+document.addEventListener('touchstart', function(ev) {
+    const t = ev && ev.target;
+    try {
+        if (!(t && t.closest && (t.closest('#pv-sel-add') || t.closest('#pr-sel-add')))) previewMode._clearSelAuto();
+    } catch(e) {}
+    try {
+        if (!(t && t.closest && (t.closest('#pv-sel-add') || t.closest('#pr-sel-add')))) vocabBook._clearPrAuto();
+    } catch(e) {}
+}, { passive: true });
 // V85: iOS/iPad 页码输入框点按即清空（免手动删数字），留空失焦时还原旧值；Windows 保持原样
 (function() {
     if (!_isIOSDevice()) return;
@@ -11138,7 +11592,9 @@ window.addEventListener('resize', function() {
     _pvResizeTimer = setTimeout(function() {
         try {
             const pvw = document.getElementById('preview-view');
-            if (pvw && pvw.classList.contains('active')) previewMode._fitPreviewText();
+            // V112(外审5): 排除重点句阶段——#preview-listen-phase 隐藏时主文本 clientHeight=0，
+            // _fitPreviewText 的自校正缩字会一路缩到 14px 下限，转屏回逐句听字号被无端改小
+            if (pvw && pvw.classList.contains('active') && !document.getElementById('preview-focus-phase').classList.contains('active')) previewMode._fitPreviewText();
         } catch(e) {}
         try { vocabBook._fitCard(); } catch(e2) {} // V110(规格二·3): 转屏后卡面字号重算
     }, 150);
@@ -11205,7 +11661,9 @@ engine._syncSeqToggles(); // V106(功能3): 连读两个小开关（末遍显字
         // V94(审7): 监听 updatefound——新版本装好后顶部弹"🆕 新版本已就绪，点击刷新"，
         // 迭代节奏快，用户升级不再靠手动清缓存；同一次页面会话只提示一次
         var swReady = function() {
-            navigator.serviceWorker.register('./sw.js').then(function(r) {
+            // V112(外审9): updateViaCache:'none'——SW 脚本本身的更新检查绕过 HTTP 缓存
+            // （某些主机对 .js 设长 max-age，新版本 SW 迟迟不被发现；不支持的旧浏览器忽略该参数）
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function(r) {
                 try {
                     r.addEventListener('updatefound', function() {
                         var nw = r.installing;
