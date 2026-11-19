@@ -80,11 +80,20 @@
 //      always offers both scopes - current-audio button no longer hides at zero words or with no audio
 //      loaded, with toast exits, and _isCurrentAudio gains a local://-vs-http filename fallback;
 //      preview sentence box ceiling 40vh->46vh with fitText floor 16px->14px). No SW logic change.
+// V112: 1) Install precache of './' no longer uses cache.add(): a 301/302 redirect would store a
+//         response with redirected:true, and respondWith() on some browsers then fails with a network
+//         error. Now fetch() manually, skip non-ok responses, and when resp.redirected rebuild a clean
+//         Response (same body/status/headers) before cache.put(). Cache key stays the same Request './'
+//         so the existing fallback lookup chain is untouched.
+//      2) Fetch race: when the network settles before the 3s timer fires, clearTimeout now cancels the
+//         pending fromCache() lookup instead of running it pointlessly after the race is over.
+//      3) Cache name bumped to v32. Registration in index.html passes updateViaCache:'none' (the SW
+//         script update check bypasses HTTP cache; older browsers ignore the option).
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v111_offline_v31';
+var CACHE_NAME = 'shadow_v112_offline_v32';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -124,10 +133,24 @@ self.addEventListener('install', function(event) {
             // V89: use cache:'reload' to bypass HTTP cache and force the freshest page (the original add('./')
             // would store stale HTML if the host set max-age; since we now fall back after 3s, stale pages
             // are even more likely to be opened).
-            // If Request constructor throws on very old browsers, fall back to plain add (still silent on fail).
+            // V112: do NOT use cache.add() - a 301/302 redirect (e.g. './' -> './index.html' or a language
+            // gate) stores a response with redirected:true, and respondWith() with such a response is
+            // rejected as a network error on some engines, breaking offline fallback. Instead: fetch
+            // manually, skip non-ok responses (cache.add() would have cached 404/5xx pages), and when the
+            // response was redirected, rebuild a clean Response with the same body/status/headers.
+            // The cache key stays the same Request './' object, so the fallback match('./') lookup chain
+            // and the V86 migration behavior are unchanged.
             var homeReq = './';
             try { homeReq = new Request('./', { cache: 'reload' }); } catch(e) {}
-            return fresh.add(homeReq).catch(function() {});
+            return fetch(homeReq).then(function(resp) {
+                if (!resp || !resp.ok) return null;
+                if (!resp.redirected) return fresh.put(homeReq, resp);
+                return fresh.put(homeReq, new Response(resp.body, {
+                    status: resp.status,
+                    statusText: resp.statusText,
+                    headers: resp.headers
+                }));
+            }).catch(function() {});
         }).then(function() {
             return self.skipWaiting();
         })
@@ -208,13 +231,22 @@ self.addEventListener('fetch', function(event) {
         // by the network later is still written to the cache; network failure is swallowed (the race's
         // catch handles the fallback).
         try { event.waitUntil(network.then(function() { return putTask; }, function() {})); } catch(e) {}
+        var tid = null; // V112: timer handle - cleared when the network settles first, so the pending
+        // fromCache() lookup does not run pointlessly after the race is already over
         var timeout = new Promise(function(resolve) {
-            setTimeout(function() { fromCache().then(resolve, function() { resolve(null); }); }, 3000);
+            tid = setTimeout(function() { fromCache().then(resolve, function() { resolve(null); }); }, 3000);
+        });
+        var netEarly = network.then(function(r) {
+            try { if (tid) clearTimeout(tid); } catch(e0) {}
+            return r;
+        }, function(e) {
+            try { if (tid) clearTimeout(tid); } catch(e0) {}
+            throw e;
         });
         event.respondWith(
             // Network wins: return normally; 3s fires first: use cache if available (r non-null), else
             // (r null) keep waiting for network.
-            Promise.race([network, timeout]).then(function(r) { return r || network; })
+            Promise.race([netEarly, timeout]).then(function(r) { return r || network; })
             .catch(function() {
                 // Offline and no cache either: return a 503 text hint instead of the browser error page.
                 return fromCache().then(function(c) {
