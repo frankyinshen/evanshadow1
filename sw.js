@@ -75,11 +75,16 @@
 //      backfills v.ph/v.def; list rows show phonetic + highlighted cn with smart src-tag hiding;
 //      desktop click-to-add on .pw spans; selection release arms a 0.5s auto-add debounce). No SW logic
 //      change - cache bump forces refresh only.
+// V111: Cache name bumped to v31 with V111 (editor merge of bilingual subtitle lines now groups Chinese
+//      with Chinese and English with English, one space apart, via app._mergeBiText; vocab clear dialog
+//      always offers both scopes - current-audio button no longer hides at zero words or with no audio
+//      loaded, with toast exits, and _isCurrentAudio gains a local://-vs-http filename fallback;
+//      preview sentence box ceiling 40vh->46vh with fitText floor 16px->14px). No SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v110_offline_v30';
+var CACHE_NAME = 'shadow_v111_offline_v31';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
