@@ -63,11 +63,23 @@
 //      shortcut-key handling; vocab-star button only shows while some vocab sentence is unstarred, with
 //      _vocabSentIdx(v, cheap) shared locator; focus-phase exit returns to the pre-entry practice sentence
 //      when entered from the practice page). No SW logic change.
+// V110: Cache name bumped to v30 with V110 (vocabulary module system-level rebuild: entry model adds
+//      ph/cn/def fields; Excel export becomes the 8-column AI loop with Rich-Text-InlineStrings bold for
+//      the target word and an AI prompt row merged A:H below the data; merge import switches to the
+//      word+source dual primary key with sentence-text disambiguation for source-less rows; import now
+//      accepts Excel/CSV/JSON via a built-in ZIP reader + raw DEFLATE inflater; panel re-grouped into
+//      tabs/due-toggle/clear row, filter row (110px search + flex audio select) and data toolbar, sized
+//      96%/540px/88vh on iPad and desktop; open() defaults the audio filter to the current audio;
+//      two-level clear dialog (current-audio-first); flashcards rebuilt with fixed bottom action bar,
+//      fitText ladders, back-side hierarchy with collapsible details and quick links; lookup silently
+//      backfills v.ph/v.def; list rows show phonetic + highlighted cn with smart src-tag hiding;
+//      desktop click-to-add on .pw spans; selection release arms a 0.5s auto-add debounce). No SW logic
+//      change - cache bump forces refresh only.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v109_offline_v29';
+var CACHE_NAME = 'shadow_v110_offline_v30';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
