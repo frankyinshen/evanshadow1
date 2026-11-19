@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V111 | build:20261119 | 用户 3 项落地（双语合并改道 / 清空两级选项必齐 / 预习字幕区加大缩字下探）。用户1·编辑页「🖇️ 合并」双语字幕错行：V110 前三路文本一律空格首尾直连，双语句（中文行\n英文行）合并后变成「中文\n英文 中文\n英文」——下一句的中文粘到上一句英文行尾、第三行才是下一句英文。新增 app._mergeBiText(a,b)：按行拆开、以“行内是否含汉字”分中文/英文两块，中文行与中文行、英文行与英文行分别以一个空格相连，块序跟随第一句（第一句首行是中文→合并后中文块在上）；两侧同为单语（同为纯英文/纯中文）自动退化为原空格直连（保留第一句内部换行，单语字幕零行为变化）；一侧纯英文一侧纯中文（字幕结构不齐）按两块竖排不丢行；文字行判定为广义 CJK（汉字基本区+扩展A+兼容区+日文假名+谚文）——中英双语场景即中文行，日韩语字幕行也归同一块不会插进英文行之间。text/text2/text3 三路同规则；时间轴/重点句/进度/微调原始值等既有合并逻辑零改动。用户2·生词本 🗑 清空“只有全部音频可以选”（用户实测）：V110 在当前音频 0 词或未加载音频时整个隐藏「仅清当前音频」按钮——从编辑页导航栏 📔 打开面板、或刚刷新页面音频还没恢复时，弹层只剩全局+取消，两级选择名存实亡。现在：生词本非空就始终显示两个选项——已加载音频显示真实词数；未加载音频按钮标注「（未加载音频）」、点击 toast「请先在主界面加载音频」；当前音频 0 词点击 toast「当前音频暂无生词」不再静默隐藏。配套修 _isCurrentAudio 跨形态兜底：同一文件先本地导入（a='local://文件名_大小'）后从服务器 URL 加载（或反向）时 fixUrl 比对必失配、该文件词条全部不算“当前音频”——仅当一侧是 local:// 时按文件名兜底（local 剥尾部 _大小、http 取最后路径段，大小写不敏感），两侧都是 http 不同目录同名仍不匹配（V104 误命中保护原样保留）。用户3·预习字幕区加大+缩字下探：字幕盒上限 40vh→46vh（iPhone 多出约 40px）且 flex-shrink 1→0——原盒子被练习阶段容器压扁到 40vh 以下，极端长内容（长英文+长译文）最后一行被裁；现在盒子不被压缩、最多撑到 46vh，塞不下时预习页整体滚动（按钮滚下去仍可达），字幕优先完整显示；主文本 CSS 兜底 max-height 34vh→40vh；_fitPreviewText 重写为自校正缩字——先清 maxHeight 让 flex 压出文本元素真实可用高度（clientHeight＝可用、scrollHeight＝内容），逐号缩字直到塞得进，下限 26px→14px（≈五号字），触底仍溢出才钉 maxHeight 卡内滚动兜底；不再预测预算（原“-36”粗略扣减败在译文行 margin/盒 padding 没算准，精确测量版又败在“先测量后压缩”的循环依赖——文本一缩、盒子/译文/提示行跟着回流，预测值即刻过期，长英文+长译文时最后一行仍被裁，即用户说的“上下移动”）；自校正直接读布局结果，译文有无/换行/提示行变化全部自动适应，绝大多数长句一屏完整显示。sw.js 缓存名升 shadow_v111_offline_v31（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 110→111；版本号统一到 V111 -->
 <!-- V110 | build:20261119 | 生词本与「点词/划词入本」交互系统级重构（用户规格 12 组全落地）。A·数据模型：词条新增 ph（音标）/cn（中文释义）/def（内置英释）三字段——add() 初始化空串、旧词条缺字段按空兼容、JSON 往返自动携带（向下兼容）。B·Excel 8 列 AI 闭环：列序严格=序号|单词|音标|中文意思|例句|例句翻译|笔记|出处音频；第 5 列例句用 OpenXML 富文本 inlineStr（<r><rPr><b/></rPr><t>…</t></r>）把目标词/短语原生加粗（新增 _sentRuns 复用 _wordRe 词边界口径全命中加粗，无命中退子串、再无退纯文本，Excel/WPS/Numbers 打开都是原生粗体）；表底空 1 行后 A:H 合并写整段 AI 提示词（新样式 xf3=无边框+wrapText+顶对齐，行高 64）——导出给 AI 填音标/释义/翻译/笔记再「📥 合并」导回。C·合并导入双主键：norm(w)+':::'+norm(src) 联合键查重——导入有出处时只精确匹配同音频同词，绝不误伤其它音频的同名词（未命中按新词追加）；导入缺出处时本地仅 1 个同名词容错直配，多个同名词时比对例句文本（先全等后互含，比对不上按新词）；ph/cn/note/tr 导入非空覆盖/空则补全，st/en/a/src/s 仍只补缺不覆盖，SRS 进度照旧 ivl 取大/due 取早/ok 取大/grad 取或。D·导入格式扩容：「📥 合并」新增 Excel(.xlsx)/CSV 支持——零依赖 ZIP 读取（central directory，method 0 store 直切）+ 内置 raw DEFLATE inflate 约 150 行（Excel 存的 .xlsx 是 DEFLATE 压缩、自家导出是 store 直存，两路都通）+ 单元格四类解析（t="s" sharedStrings / inlineStr 含富文本 run 拼接 / t="str" / 数值）+ 表头名映射（兼容新 8 列与旧 5 列『所在句子/出处』口径）；AI 提示词行与空行因单词列空被校验自然跳过；accept 扩 .json,.xlsx,.csv。E·面板三行重组：Tab 行——左 [📋 列表][🎴 翻卡复习]，右 [⏰ 只练到期]（从翻卡设置行挪出、按钮化 .on 高亮，shadow_v107_rv_due 键与语义不变）紧挨独立 [🗑 清空]；筛选行——搜索框定宽 110px+音频下拉 flex:1 占满（长文件名不再截断）；数据工具行 5 钮 [📥 Excel][📄 CSV][🎒 Anki][📤 JSON][📥 合并]；iPad/PC（≥700px）面板放宽 96%/max-540px/88vh；open() 强制默认筛选=当前音频（无音频回退全部音频，覆盖旧记忆值）。F·两级安全清空：🗑 弹独立确认层（#vocab-clear-pop）——首选默认「🗑 仅清空当前音频生词 (共 N 词)」（按 _isCurrentAudio 计数），次选「⚠️ 清空全局所有生词 (共 M 词)」+ 取消；Esc 关闭；当前音频 0 词时首选隐藏只留全局+取消。G·翻卡复习重排：卡框 .rv-cardbox flex 撑满中段、外框绝对固定不随文本形变；新增 _fitCard 阶梯缩字号（大字 data-fit="big" 34→28→22→16 / 正文 data-fit 24→20→16→14 同步降档）塞不下只许卡内纵向滚动（.rv-face overflow-y:auto）；底端固定操作栏 [🔊 读音|😅 不认识|😀 认识] 移出卡外（.rv-ops-fix）正反同位零跳动——例句填空模式 🔊=重播挖空例句原音（不剧透单词拼读），词面/听音模式=TTS 读词（与 R 键同口径 _rvHearBtn）；背面层级=①词+音标 ②中文释义（大字加粗高亮，点可 prompt 改 cn——新 editCn）③完整例句（生词加粗+灰小 🔉，点重放原音）+ 折叠胶囊「展开详情 (句译·英释·笔记) ▾」内含 ④例句翻译 ⑤内置英释(v.def) ⑥笔记（点可编辑）+ 横排快捷行 [✏️ 笔记][📖 查词][有道][剑桥]（去掉 ▶ 听原句，重听收归底部固定栏）；刚编辑过笔记或拉取英释自动展开（_rv.detailOpen）；.vocab-tip 情境化——翻卡显示「点例句或卡片可重听原音 · 空格/回车翻面 · ←不认识 · →认识」。H·列表页去冗余：筛选非「全部音频」时彻底隐藏 🎧 出处标签（不再全页刷屏）；行结构=第一行 单词+音标+高亮中文释义（点释义改 cn）行尾 [✏️][✕]，第二行完整例句，第三行（句译/笔记/英释混排）仅有内容才渲染；搜索范围并入 ph/cn。I·查词系统升级：📖 查词命中后静默回填——首个音标补进 v.ph（已有不覆盖），首条精简英释（词性. 定义，截 160 字）落盘 v.def，界面自动展开详情并就地刷新；有道/剑桥链接换新口径（dict.youdao.com/w/、dictionary.cambridge.org/dictionary/english-chinese-simplified/）。J·交互平台拉齐：桌面 Chrome 轻点 .pw 单词 span 直接入本并点亮 .pw-in（onBoxTap 去掉 _lastTouchAt 触屏 800ms 门槛，桌面=iPad 同规则，点空白/标点仍复制整句）；划选短语松手（mouseup/touchend）起 0.5s 防抖自动入本——期间点浮条「＋」立即加入、点「✕」或点击选区外（selectionchange 清表）取消，到点自动入本走既有反馈链（预习页撤销条 2 秒/练习页 toast）；_selAutoTmr/_prAutoTmr 预习/练习两页同规则。K·SRS 收敛：维持 V108/V109 修正口径——毕业只看走完 1→3→7→15 天间隔链（ivl>=5 第 5 次到期“认识”）；规格中「或连认 3 次」与「避免中途提前跳档」互斥（连认 3 次提前毕业正是 V108 外审修掉的死代码 bug），按「避免提前跳档」从后者执行。L·iPadOS 读音：_initVoices/_pickVoice 显式 u.voice 锁声机制零改动。sw.js 缓存名升 shadow_v110_offline_v30（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 109→110；版本号统一到 V110 -->
 <!-- V109 | build:20261118 | 用户问题 2 项 + 第九份外部审查 6 项 + 拍板项 1 项全部落地。用户1·预习「✅ 我会了」不再把含生词句子的 ⭐ 摘掉：V108 起点词入本已自动标 ⭐，但预习里点「我会了」进下一句又把 ⭐ 移除——重点句在预习流程里永远留不住；markKnow 现在先查本句还有没有“未毕业的当前音频生词”（新增 _liveVocabInSentence：点词/划词入本记的 st 落在本句区间 + 老词条无时间戳退词面词边界匹配，毕业词不算不绑架重点句），有则保留 ⭐ 并 toast「本句还有 N 个生词未毕业，⭐ 重点句已保留」，生词毕业/删除后再点「我会了」正常移出。用户2·练习页速率滚轮 375px 被挤成独占一行很难看：从入口行（预习模式/⭐N句/⭐生词句/📔生词本来就挤）挪到下方连读设置行「先慢后快」后面与播放设置作伴（滚轮 id 不变，预习页/重点句页/☰ 菜单同步照旧），折行时被挤下去的是灰色小注释而不是孤零零一个控件。外审1(中)·_fetchSubsIfMissing 开头“有字幕”判断改为“有文本且已有句子”（hasSubs && cs0.length）——批量缓存时字幕1 下载失败（V108 外审6 把 segments 留空指望这里补拉）但字幕2/3 下下来了：srts 有文本、segments 空，原判断直接 return 永不补拉，缓存条目句子为空进不了练习页、「↻ 刷新字幕」也拒绝工作只能删缓存重来；segments 为空照样补拉（V99 节流 1 小时一次）。外审2(中)·_restoreShiftSnap 归零快照还原：快照之后才入本的生词不在快照 voc 里，句子还原了它们还留在“平移后”的位置，「▶ 听原句」偏掉整个平移量——还原前先留一份当前（已平移）句首表，新词按它就近找所在句（-0.5s 容差/±1.5s 最近起点，V103 重映射同口径）把整句还原到快照值（快照后没再动滚轮时正好精确），找不到退算术回补 -(curT-snapT)，调用方随后的 applyShift(-snapT) 再补 -snapT 合计正好 -curT。外审3(中)·SRS 间隔链被“提前复习”刷穿：reviewMark 先记 wasDue 再改词——未到期提前刷到的只记连击，不推进档位不改 due；把「只练到期」关掉或「练全部（含未到期）」每天认识一遍不再 5 天走完 1→3→7→15 天整条链毕业。外审4(低)·「📍 第 N 句」标签只在 renderEditor 里刷，练习页换句再切回编辑页显示旧句号：抽 app._syncEdJumpCur()，renderEditor 末尾 + switchView('editor') 两处调用。外审5(低)·查词弹层开着时 Esc 只关生词本（弹层残留）、空格/←/→ 还会操作下面的翻卡：keydown 生词本分支最前面拦截（Esc 只关弹层、其余不透传），vocabBook.close() 补 this.closeDict()。外审6(低)·「⭐ 生词句」按钮在 375px 入口行必折两行：找句逻辑抽成 _vocabSentIdx(v, cheap)（cheap=true 只走时间戳两步不跑正则，高频调用不卡），按钮改为“还有生词句没标 ⭐”才显示——V108 起入本已自动标 ⭐，正常状态不出现，手动取消过 ⭐/老词才显示补标完自然消失；previewMode.updateBadge 末尾补调 _syncVocabStarBtn（自动标 ⭐ 后按钮跟着消失）；没时间戳的老词按钮常显的边界接受（点了走正则兜底）。拍板项·重点句退出分流：_showFocusPhase(fromPractice) 进入瞬间记 _focusBackIdx=state.currIndex 与来路（必须在 _jumpToFocusSentence 改写 currIndex 之前）——练习页「⭐ N 句」进来的（enterFocusPhase 传 true）「✅ 完成重点练习」/✕ 退出都回原句 toast「已回到第 N 句」，不再被拉回第 1 句覆盖进度；预习流程（完成弹窗/提前结束）进来的保持 V101“从第 1 句开始”；逐句听退出不动 currIndex（原行为）。sw.js 缓存名升 shadow_v109_offline_v29（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 108→109；版本号统一到 V109 -->
 <!-- V108 | build:20261118 | 用户需求 2 项 + 提案 5/7 两项补全 + 第八份外部审查 9 项全部落地。用户1·入本自动标 ⭐（正式跟读+预习两页同规则）：有生词/词组的句子自动加入重点句——previewMode.markWord 落定源句下标后，入本成功（新词）或词已在库（重复点词，句子可能是新的一句）都把所在句标 ⭐（新增 _autoStarVocabSentence：去重/排序/saveToStorage/updateBadge/_updateEarlyBtn，与手动 ⭐/批量「⭐ 生词句」同一份存储；已标过跳过、"太长/空"失败不标）；练习页 toast「⭐ 第 N 句已加入重点句」、预习页撤销条文案补「· 本句已标 ⭐」不叠第二个 toast；生词本底部提示同步更新。用户2·iPad 发音稳定性（用户实测"前面女声突然变成男声"）：_pickVoice 选中的声音锁进内存缓存（_voiceCache {en,zh}）+ 本机 localStorage（shadow_v108_voice_en/zh，voiceURI 是本机声音标识按设备不进全量备份）——getVoices() 列表/顺序会话中途会变（网络音上下线），每次现挑打分并列时会换人；锁定后只要声音还在列表且非机械音就一直用，同一会话、跨会话都不换人（iPhone 本来就稳定，iPad 锁定后同款体验）；唯一升级口：锁的是紧凑版且出现了非紧凑的更好选择（后来下载增强音）才重挑重存；ui.init 末尾提前预热 _initVoices（=外审8，原只在 open() 预热，iPadOS Safari 装配声音列表要几百毫秒）。提案5补全·📖 查词：生词卡背面「▶ 听原句 / ✏️ 笔记 / 📖 查词」与列表行「📖」按钮（新增 #dict-pop 弹层 z-index 7600 高于生词本面板）——dictionaryapi.dev 免费公共词典（CORS 开放）在线抓音标（点可读音）+词性释义（最多 3 条带例句），「📝 回填到笔记」一键追加（上限 500 字，editNote 同款）；中文词条/离线/查不到（词组专名常见）退有道/剑桥词典链接新标签打开；AbortController 9s 超时；查词是显式动作才联网。提案7补全·📍 当前句：编辑页工具行新增按钮（renderEditor 实时刷「📍 第 N 句」显示练习页停在哪句）一键定位当前练习句 state.currIndex——不用先记句号再手输；复用 edTuneSel(i, true)。外审1(中)·SRS 死代码：v.ok 与 v.ivl 同步 +1/同清零数学上永远相等，第 3 次认识就被 v.ok>=3 抢先毕业，+7 天/+15 天两档永远走不到——毕业只看走完 1→3→7→15 天间隔链（ivl>=5，第 5 次"认识"），v.ok 只作连击记录保留（老数据兼容）；战报/全毕业/开关 tooltip 文案同步改口径。外审2(中)·练习页划词浮条 4 处：a) z-index 950→8100——原来被 #backup-remind-bar(7999)/#sw-update-bar(8000) 盖死，提示条没关时浮条看不见也点不到还会误触"立即备份/刷新"；vocabBook.open() 同步收浮条防盖面板、toggleDrawer 开菜单收浮条；b) 盲听剧透——.practice-text.blur 加 user-select:none 且 _practiceSelection 拦 .blur 态（双保险，长按模糊字幕划不出原文，显字后恢复可划）；c) 残留——app.loadItem 切句/ui.switchView 切页/previewMode.start 进预习/_showFocusPhase 进重点句/ui.toggleTextBlur 显隐切换 五处补 dismissPrSelBar（fixed 浮条原会盖在别的视图顶部）；d) dismissPrSelBar 漏清 _prBarTouchTimer/_prBarTouching——点完浮条 600ms 内划下一个词浮条拒弹（V89 预习页同款修复）。外审3(中)·批量缓存三处：a) _batchStop 只 token++ 不复位——停止后按钮卡死红色停止态直到当前大音频（最长 45s）下完，现立即 _batchResetUi；b) await _batchCacheOne 晚归——停止/切目录/关弹窗后下载完成仍 ok++/登记/_loadBadges/弹完成 toast（切走 10 秒后突然弹上一目录的提示），现 await 后与 catch 后都校验代数 break、finally 只在未被作废时收尾；c) _cachedIds 还没核对完（null）时点批量会把全部音频当未缓存重抓——开头拦截"正在核对缓存状态，请稍候再点…"。外审4(中)·编辑页跳转/搜索定位到已选中句反手关掉微调条：edTuneSel 增 keepOpen 参（句号跳转/搜索/📍当前句传 true）——已是当前句保持打开并 scrollIntoView；点序号徽章不传保持"再点收起"。外审5(低)·edSearchKey 补 isComposing/keyCode 229——中文输入法选词回车不再误触发搜索。外审6(低)·_batchCacheOne 字幕1 有链接却失败时字幕2 顶成主字幕——补 V100 _fetchSubsIfMissing 同款保护（segments 留空走 V98 补拉，srts 仍留 URL）。外审7(低)·starVocabSentences 老词条兜底改词边界匹配（vocabBook._wordRe 同款，/g 正则 test 后复位 lastIndex）——短词 in/at/cat 不再子串误命中 interesting/what/education；构造失败退原子串。外审9(低)·#backup-remind-bar 由 fixed 顶栏改文档流（#restore-bar 同款，置顶于 .navbar 上方把页面顺推下来）——原来直接盖死「编辑/练习」切换栏必须先点备份/✕。sw.js 缓存名升 shadow_v108_offline_v28（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 107→108（新增 localStorage 键 shadow_v108_voice_en/zh 按设备不入备份）；版本号统一到 V108 -->
@@ -55,7 +56,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V110</title>
+<title>影子跟读 Pro V111</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -112,13 +113,15 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 /* V84.1: 加滚动兜底——小屏/横屏/iPad分屏高度不够时可上下滚动，底部按钮不再被裁掉 */
 #preview-listen-phase { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 /* V84: 字幕盒高度策略——伸展吃满剩余空间但封顶 40vh（原为无上限吃满，现整体缩小约 25%；短句时视觉饱满不留大片空白） */
-.preview-sentence-box { flex: 1 1 auto; max-height: 40vh; min-height: 110px; /* V84.1: 150→110 紧凑一屏 */ display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; overflow: hidden; }
+/* V111(用户3): 上限 40vh→46vh + flex-shrink 1→0——原来盒子被练习阶段容器压扁到 ~40vh 以下，极端长内容（长英文+长译文）
+   的最后一行被裁；现在盒子不被压缩、最多撑到 46vh，塞不下时预习页整体滚动（按钮滚下去仍可达），字幕优先完整显示 */
+.preview-sentence-box { flex: 1 0 auto; max-height: 46vh; min-height: 110px; /* V84.1: 150→110 紧凑一屏 */ display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; overflow: hidden; }
 .pv-top-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0; }
 .preview-sentence-num { font-size: 12px; font-weight: 700; color: var(--preview); background: var(--preview-border); padding: 2px 10px; border-radius: 10px; }
 .pv-trans-btn { border: 1px solid var(--preview-border); background: #fff; color: var(--preview); border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .pv-trans-btn:active { background: var(--preview); color: #fff; }
 /* V84: 主文本——26px 起自动缩小到 16px（fitPreviewText，同练习页 fitText 机制），缩不住内部滚动 */
-.preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 34vh; margin: 10px 0 0 0; }
+.preview-sentence-text { font-size: 26px; font-weight: 600; color: #202124; text-align: center; line-height: 1.5; white-space: pre-wrap; overflow-y: auto; max-height: 40vh; margin: 10px 0 0 0; } /* V111(用户3): CSS 兜底 34vh→40vh（实际由 _fitPreviewText 动态设）；缩字下限 16→14px 见 _fitPreviewText */
 .preview-sentence-text .pw { border-radius: 4px; padding: 0 1px; }
 /* V86: 去掉 .pw 的 user-select:none（原触摸设备禁选锁死 iOS 系统选词手柄——长按划选短语弹不出来）；
    轻点=click 入生词本 与 长按拖选=selectionchange 浮条入本 互不冲突（onBoxTap 开头已有划选兜底） */
@@ -685,7 +688,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
      点主体立即备份，✕ 今天不再提醒；备份成功即写 shadow_last_backup_at 并收起 -->
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V110</div>
+    <div class="nav-title">🎧 影子跟读 V111</div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -5334,17 +5337,44 @@ const app = {
             ui.renderEditor();
         } else ui.toast("请在试听时暂停于拆分点");
     },
+    // V111(用户1): 双语字幕合并助手——把两句文本各按行拆开，按“行内是否含汉字”分成中文块/英文块，
+    // 中文行与中文行、英文行与英文行分别以一个空格相连；块序跟随第一句（第一句首行是中文→中文块在上）。
+    // 两侧同为单语（同为纯英文/纯中文）退化为原“空格直连”（保留第一句内部换行，与 V110 前行为一致）；
+    // 一侧纯英文一侧纯中文（字幕结构不齐）按两块竖排不丢行；空串直接返回另一侧。
+    _mergeBiText(a, b) {
+        a = String(a == null ? '' : a).trim();
+        b = String(b == null ? '' : b).trim();
+        if (!a) return b;
+        if (!b) return a;
+        const isCJK = t => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(t); // 广义CJK文字行：汉字（基本区+扩展A+兼容区）+日文假名+谚文——中英双语场景即“中文行”；日韩语字幕行也归同一块，不会插进英文行之间
+        const cls = t => t.split('\n').map(x => x.trim()).filter(Boolean)
+            .reduce((acc, l) => { (isCJK(l) ? acc.cj : acc.en).push(l); return acc; }, { cj: [], en: [] });
+        const A = cls(a), B = cls(b);
+        const aMixed = A.cj.length > 0 && A.en.length > 0;
+        const bMixed = B.cj.length > 0 && B.en.length > 0;
+        if (!aMixed && !bMixed && ((A.cj.length > 0) === (B.cj.length > 0))) {
+            // 两侧同为单语且同类——旧行为：空格直连（保留第一句内部换行）
+            return (a + ' ' + b).trim();
+        }
+        const cj = A.cj.concat(B.cj).join(' ');
+        const en = A.en.concat(B.en).join(' ');
+        const firstLine = a.split('\n').map(x => x.trim()).find(Boolean) || '';
+        const parts = isCJK(firstLine) ? [cj, en] : [en, cj];
+        return parts.filter(Boolean).join('\n');
+    },
     mergeSeg(i) {
         if (i < state.segments.length-1) {
             state.segments[i].end = state.segments[i+1].end;
             // V84: 合并后时间轴已变，清除预习微调记的原始时间（防"重置"恢复到很老的值）
             try { delete state.segments[i]._os; delete state.segments[i]._oe; } catch(e) {}
+            // V111(用户1): 双语字幕改走 _mergeBiText——中文归中文、英文归英文，同类行以一个空格相连，
+            // 不再把下一句的中文粘到上一句的英文行尾；单语字幕自动退化为原空格直连（行为不变）
             if (state.segments[i].text !== undefined) {
-                state.segments[i].text = (state.segments[i].text + " " + (state.segments[i+1].text||"")).trim();
+                state.segments[i].text = this._mergeBiText(state.segments[i].text, state.segments[i+1].text);
             }
             // 修复：用 !== undefined 判断而非真值判断，避免空字符串跳过导致翻译丢失
-            if (state.segments[i].text2 !== undefined) state.segments[i].text2 = ((state.segments[i].text2||"") + " " + (state.segments[i+1].text2||"")).trim();
-            if (state.segments[i].text3 !== undefined) state.segments[i].text3 = ((state.segments[i].text3||"") + " " + (state.segments[i+1].text3||"")).trim();
+            if (state.segments[i].text2 !== undefined) state.segments[i].text2 = this._mergeBiText(state.segments[i].text2, state.segments[i+1].text2);
+            if (state.segments[i].text3 !== undefined) state.segments[i].text3 = this._mergeBiText(state.segments[i].text3, state.segments[i+1].text3);
             state.segments.splice(i+1,1);
             try { this._dropShiftSnap(); } catch(eSn) {} // V101(外审二4): 合并改变结构——平移快照作废
             // P1-2: 修正 currIndex——合并后若当前句是被合并的下一句，挪到 i；若被合并的下一句在当前句之前，索引前移
@@ -5563,7 +5593,7 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 110, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V110: 109→110（版本随轮递增）
+        const data = { version: 111, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V111: 110→111（版本随轮递增）
         const b = new Blob([JSON.stringify(data, null, 2)]);
         const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v110.json'; // V110: 109→110（V105 外审2 惯例：下载名随版本）
         document.body.appendChild(a); a.click(); a.remove();
@@ -5594,7 +5624,7 @@ const app = {
                 'shadow_v106_seq_blind', 'shadow_v106_seq_slowfirst', // V106: 连读末遍显字/先慢后快（功能3）
                 'shadow_v107_rv_due' // V107(提案5): 翻卡只练到期开关。注：shadow_last_backup_at / shadow_v107_backup_snooze 不进备份——每台设备各自追踪自己的备份行为与提醒状态，恢复旧备份不应把新设备的提醒节奏带回旧时间点
             ];
-            var data = { type: 'shadow_full_backup', version: 110, exportedAt: new Date().toISOString(), items: {} }; // V110: 版本号 109→110（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 111, exportedAt: new Date().toISOString(), items: {} }; // V111: 版本号 110→111（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -6168,30 +6198,27 @@ const previewMode = {
         if (last < str.length) el.appendChild(document.createTextNode(str.slice(last)));
         this._applyPwMarks(el); // V103(功能D)→V105(用户): 渲染后统一标词——单词照旧、短语整条点亮（见 _applyPwMarks）
     },
-    // V84: 预习主文本自适应字号——26px 起自动缩小到 16px（同练习页 fitText 机制：超长字幕先缩字号，缩不住再内部滚动）
+    // V84: 预习主文本自适应字号——26px 起自动缩小（同练习页 fitText 机制：超长字幕先缩字号，缩不住再内部滚动）
     _fitPreviewText() {
         try {
             const textEl = document.getElementById('preview-sentence-text');
             if (!textEl) return;
-            const t2El = document.getElementById('preview-sentence-text2');
-            const hintEl = document.getElementById('preview-play-hint');
-            const numEl = document.getElementById('preview-sentence-num');
             if (!textEl.parentElement) return;
-            // 预算：字幕盒上限 40vh，扣除顶部行/译文/提示行/内边距
-            // V84.1: 优先取盒子真实 clientHeight（小屏/横屏/分屏时盒子被压到 <40vh，字号要跟着缩够小）
-            const maxBox = Math.max(110, window.innerHeight * 0.40);
-            const boxEl = document.getElementById('preview-sentence-box');
-            const actualBoxH = (boxEl && boxEl.clientHeight > 0) ? boxEl.clientHeight : maxBox;
-            const effBox = Math.min(actualBoxH, maxBox);
-            const topH = numEl && numEl.parentElement ? numEl.parentElement.offsetHeight : 0;
-            const hintH = hintEl ? hintEl.offsetHeight : 0;
-            const t2H = (t2El && t2El.style.display !== 'none' && t2El.innerText.trim()) ? t2El.offsetHeight : 0;
-            const budget = Math.max(64, effBox - topH - hintH - t2H - 36);
+            // V111(用户3): 自校正缩字——先清 maxHeight 让 flex 把文本元素压出真实可用高度
+            //（clientHeight＝可用高度、scrollHeight＝内容高度），逐号缩字直到内容塞得进可用高度。
+            // 不再预测预算：原“-36”粗略扣减与精确测量版都败在“先测量后压缩”的循环依赖——文本一缩、
+            // 盒子/译文/提示行跟着回流，预测值即刻过期（长英文+长译文时英文最后一行仍被裁，即用户
+            // 说的“上下移动”）。自校正直接读布局结果，译文有无/换行/提示行变化全部自动适应
+            textEl.style.maxHeight = 'none';
             let size = 26;
             textEl.style.fontSize = size + 'px';
-            while (textEl.scrollHeight > budget && size > 16) { size--; textEl.style.fontSize = size + 'px'; }
-            // V84.1: 内部滚动区同步压到预算内（CSS 的 34vh 在盒子被压缩时会超出盒高导致底部裁字）
-            try { textEl.style.maxHeight = Math.max(64, budget) + 'px'; } catch(err) {}
+            // V111(用户3): 缩字下限 16→14px（≈五号字）——长句先缩字，14px 仍塞不下才内部滚动
+            while (size > 14 && textEl.scrollHeight > textEl.clientHeight + 1) { size--; textEl.style.fontSize = size + 'px'; }
+            // 触底仍溢出（极端超长内容）：maxHeight 钉到当前可用高度，卡内滚动兜底（配合盒子
+            // flex-shrink:0，此时预习页整体滚动、按钮可达，字幕盒已撑到 46vh 上限仍不够才走到这）
+            if (textEl.scrollHeight > textEl.clientHeight + 1) {
+                try { textEl.style.maxHeight = Math.max(64, textEl.clientHeight) + 'px'; } catch(err) {}
+            }
         } catch(e) { /* 自适应失败不影响功能 */ }
     },
     _playCurrentSentence() {
@@ -7466,13 +7493,17 @@ const vocabBook = {
         const list = this.list();
         const pop = document.getElementById('vocab-clear-pop');
         if (!pop) return;
-        const curN = state._loadedAudioUrl ? list.filter(v => this._isCurrentAudio(v)).length : 0;
+        // V111(用户2): 「仅清当前音频」不再随 0 词/未加载音频隐藏——从编辑页导航栏打开面板、或刚刷新
+        // 页面音频还没恢复时，用户只看到全局+取消，两级选择名存实亡（本轮用户实测反馈）。生词本非空就
+        // 两个选项都在：已加载音频显示真实词数；未加载音频标注「（未加载音频）」；空范围点击给 toast
+        const hasAudio = !!state._loadedAudioUrl;
+        const curN = hasAudio ? list.filter(v => this._isCurrentAudio(v)).length : 0;
         const curBtn = document.getElementById('vc-cur-btn');
         const allBtn = document.getElementById('vc-all-btn');
         if (curBtn) {
-            curBtn.style.display = curN > 0 ? '' : 'none';
-            curBtn.innerText = '🗑 仅清空当前音频生词 (共 ' + curN + ' 词)';
-            curBtn.title = '只删当前加载音频收录的 ' + curN + ' 个词，其它音频的词原样保留';
+            curBtn.style.display = '';
+            curBtn.innerText = hasAudio ? ('🗑 仅清空当前音频生词 (共 ' + curN + ' 词)') : '🗑 仅清空当前音频生词（未加载音频）';
+            curBtn.title = hasAudio ? ('只删当前加载音频收录的 ' + curN + ' 个词，其它音频的词原样保留') : '当前没有加载音频——先在主界面加载音频后再来清空';
         }
         if (allBtn) {
             allBtn.innerText = '⚠️ 清空全局所有生词 (共 ' + list.length + ' 词)';
@@ -7485,8 +7516,11 @@ const vocabBook = {
         if (pop) pop.classList.remove('show');
     },
     _clearCurAudio() {
+        // V111(用户2): 按钮不再隐藏后，两个空范围都要有明确出口（toast + 收弹层），不做静默无效点击
+        if (!state._loadedAudioUrl) { this._hideClearPop(); return ui.toast('尚未加载音频，无法定位「当前音频」的生词'); }
         const list = this.list();
         const n = list.filter(v => this._isCurrentAudio(v)).length;
+        if (!n) { this._hideClearPop(); return ui.toast('当前音频暂无生词，无需清空'); }
         this._list = list.filter(v => !this._isCurrentAudio(v));
         this._lastAddIdx = null;
         this._rv = null; // 清空范围影响到卡组——一并作废防假战报（V97 外审2 同款）
@@ -7732,7 +7766,27 @@ const vocabBook = {
         const url = String(state._loadedAudioUrl || '');
         if (!url) return false;
         if (v && v.a) {
-            try { return net.fixUrl(v.a) === net.fixUrl(url); } catch(e) { return false; }
+            try { if (net.fixUrl(v.a) === net.fixUrl(url)) return true; } catch(e) {}
+            // V111(用户2): 跨形态文件名兜底——同一文件先本地导入（a='local://文件名_大小'）后从服务器
+            // URL 加载（或反向）时 fixUrl 比对必失配，该文件词条全部不算“当前音频”。仅当一侧是
+            // local:// 才按文件名兜底（local 剥尾部 _大小、http 取最后路径段，大小写不敏感）；
+            // 两侧都是 http 不同目录同名仍不匹配——V104 的误命中保护原样保留
+            try {
+                const va = String(v.a);
+                if (va.indexOf('local://') === 0 || url.indexOf('local://') === 0) {
+                    const nmOf = t => {
+                        if (t.indexOf('local://') === 0) {
+                            const body = t.substring('local://'.length);
+                            const lu = body.lastIndexOf('_');
+                            return (lu > 0 ? body.substring(0, lu) : body).trim().toLowerCase();
+                        }
+                        return (idbCache.extractFilename(t) || '').trim().toLowerCase();
+                    };
+                    const n1 = nmOf(va), n2 = nmOf(url);
+                    if (n1 && n2 && n1 === n2) return true;
+                }
+            } catch(e2) {}
+            return false;
         }
         try {
             const nm = currentSourceName();
@@ -7793,7 +7847,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 110, exportedAt: new Date().toISOString(), vocab: list }; // V110: 109→110（ph/cn/def 随词条对象整体携带）
+        const data = { type: 'shadow_vocab_backup', version: 111, exportedAt: new Date().toISOString(), vocab: list }; // V111: 110→111（ph/cn/def 随词条对象整体携带）
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
