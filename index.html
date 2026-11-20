@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V113 | build:20261120 | V112 复查遗留修复 3 项 + 用户实测新增与体验升级 6 项（Excel 排版/高对比配色/翻卡 6 秒自动下一张/Windows 预习排版/常用功能说明页/字幕编辑撤销）全部落地。复查1·生词本子弹出层 Esc 拦截与 close() 清理：全局 keydown 的 #vocab-modal 分支补 #vocab-copy-pop（复制范围）/#vocab-paste-pop（粘贴更新）两级拦截——弹层开着 Esc 只关弹层不关生词本、其余按键不透传到底层翻卡快捷键（paste-pop 内 textarea 的空格/回车/方向键正常输入）；vocabBook.close() 除 closeDict 外补 _hideClearPop/_hideCopyPop/_hidePastePop——Esc 直接关生词本时子弹层不再残留在隐藏面板里下次打开还挂着。复查2·粘贴解析器增强：抽通用 _parseDelimited(text, delim) RFC 4180 解析器（引号内换行属单元格内容、""→" 转义），_parseVocabCsv（逗号）与粘贴 TSV（制表符）共用——电脑 Excel/Numbers 复制"单元格内带换行例句"粘贴不再被拆断成多行；Markdown 表格分支检测到 |---|---| 对齐分隔行时兼容省略行首 | 的标准管道符表格行（如「序号 | 单词 | …」，分隔行存在才放宽——正文里含 | 的行不误收）。复查3·桌面拖选滑出文本节点边界松手：_selAutoRouter 增 inPreviewBox/inPracticeBox——PC 鼠标拖选到句尾常滑出 #preview-sentence-text（/#practice-text-display）落到外层 .preview-sentence-box/#text-container 空白处松手，只要目标在外盒内且不在 button/select/input/textarea 上、选区仍在文本内，照常武装 500ms 自动入本；点盒外按钮仍清表（仅鼠标分支，触屏选柄本就在文本内）。需求1·Excel 排版全面升级（buildXlsx）：新增第 1 行表格总标题（A1:H1 合并、14pt 加粗水平垂直居中新样式 xf4、ht=30；内容取导出列表第一个非空 v.src 如「小谢尔顿S01.0764k.mp3」、全空兜底「生词本」）；8 列表头挪第 2 行行高显式翻倍 ht=36；正文样式 xf2 垂直对齐 top→center（细边框+自动换行保留）；sheetViews 冻结改 ySplit=2 topLeftCell=A3（滑动固定总标题+列头）；workbook.xml 补 definedNames._xlnm.Print_Titles=第 2 行（多页打印每页顶端重复列头，_xlsxSheetRef 含特殊字符单引号包裹）；严格按 OOXML 子标签顺序 mergeCells→printOptions(horizontalCentered=1 打印水平居中)→pageMargins→pageSetup→headerFooter(页脚 &C第 &P 页，共 &N 页——& 转义 &amp;)；表底 AI 提示词行高 64→96（长文案不裁断）；mergeCells count 汇总（总标题 A1:H1 + 提示词行一并入列）；导回无损（_rowsToVocab 前 5 行扫描列头，总标题行不干扰）。需求2·生词本与翻卡高对比配色+详情默认展开+翻卡 N 秒自动下一张：列表行 3 废除「译 · 📝笔记 · 📖英释」混拼灰字改独立块——中文意思保持橘红 #E65100 加粗、例句翻译蓝系（译 标签 #1A73E8 蓝底白字+#EEF5FF 浅蓝底+#0D47A1 深蓝正文）、笔记红系（笔记 标签 #D93025 红底白字+#FFF0F0 淡红底+#B71C1C 深红正文+边框，保留点击编辑）、英释灰绿 #5F6B6A 独立行；翻卡背面 .rv-detail 同调色板块状渲染（.rv-block/.rv-btag/.rv-btext）；_rvShowCard 新卡 detailOpen 默认 false→true（翻面直接见句译/英释/笔记，可手动收起）；翻卡后自动下一张——设置放练习页 ☰ 菜单抽屉（不放生词本弹窗）：「🎴 翻卡后自动下一张」下拉 关/3/5/6(默认)/8/10/15 秒，持久化 shadow_v113_rv_next 并入全量备份；reviewFlip 翻面即 _rvNextArm 起算（token 代数防过期）；超时纯推进 rv.pos++（到队尾进战报），绝不触发认识/不认识判定、绝不改 SRS 间隔与连击；战报同步修正 known=Math.max(0,total-unk-skipped) 且如实显示「自动跳过 K 个」——skippedRound 只记未判定词（reviewMark 判定时从跳过集合移除，三集合互斥不重复扣）；防打断：背面点读音/词/例句重放（_rvHearBtn/_rvWordTap/_rvSentTap）、展开收起详情、点外链=重置计时，editNote/editCn 弹 prompt 前 _rvNextClear（prompt 同步阻塞、关闭后旧定时器会立刻补触发）、#dict-pop 查词打开清除 closeDict 关闭后仍在背面则重挂；_rvFlipClear 统一收口 _rvNextClear（判卡/切卡/切 Tab/关面板全清）。需求3·AI 提示词统一更新（_copyRange miss/all 两分支 + exportExcel 表底 aiPrompt 同文案）：「特比」→「特别」，融入笔记列要求 use Chinese to explain any idioms, slang, background knowledge, or complex grammar in the example sentence、①②③ 同一行内勿换行、150 字内，并明确提醒不改第 2 列「单词」与第 8 列「出处音频」。需求4·Windows Chrome 预习排版对齐正式跟读：@media(min-width:800px) 下 .preview-sentence-box 改 flex:1 1 0%+max-height:none+min-height:120px（吃满卡片剩余垂直空间，不再 46vh 硬顶把 #preview-listen-phase 顶出外层滚动条）、.preview-sentence-text 补 width:100%/max-height:100%/line-height:1.4/padding:8px 15px；_fitPreviewText 宽屏起跳 26→34px（窄屏保持 26）；测量循环前临时 overflowY:hidden（Windows 非悬浮 17px 滚动条临界高度闪现挤窄文本引起假溢出），仅 14px 下限仍真溢出才恢复 auto+maxHeight 兜底；米黄/橙配色不变，手机 <800px 保留 V111 防压扁规则。需求5·「常用功能说明」页：navbar 左区新增紧凑「❓ 说明」按钮（编辑/练习两页均可开）+ ☰ 菜单内同款入口；#help-pop 弹层 z-index 7800（高于生词本 7500/查词 7600），右上 ✕/点背景/Esc 关闭（keydown 最前拦截——生词本在下层时优先关说明页）；5 块卡片内容：💾保存工程 vs 📦全量备份对比表（存什么/不含什么/何时用）、🎧完整学习流程四步、📔生词本与 AI 补全闭环（复制AI→粘贴更新 + Excel 闭环 + 双主键提醒 + SRS 1→3→7→15 天毕业与⭐保留规则）、✂️字幕编辑与对齐技巧（微调/平移/合并拆分/撤销/刷新字幕重映射）、📱iPhone/iPad 贴士（离线缓存/息屏续航 vs 锁屏暂停/PWA 独立存储先备份/自动播放解锁）。需求6·字幕编辑撤销：app._edHist 上限 25 步快照栈——mergeSeg/splitSeg/delSeg/addNewRow/updateSeg（文本与时间均真正变化才推）/applyReAnalyze/importSub（k=0 与 k=1/2 副字幕）执行前推入，快照深拷贝 segments（含 text2/text3/_os/_oe）+currIndex+starredIndices/doneIndices/cursorIdx/previewedCount/previewDone+_edSelIdx+_loopInitialized+label+focusIdx；切工程清栈三处（loadFromUrl 两成功分支与 cacheUI.load 收口于 _enterAfterLoad 开头、loadProject、本地导入 MP3）；edUndo() 弹快照整体还原 + _dropShiftSnap（平移快照作废）+ saveToStorage/updateBadge/save/renderEditor/updatePractice + scrollIntoView 聚焦回操作行 + toast「已撤销：label（还可撤销 N 步）」；按钮两处——编辑页顶部统计行「↩ 撤销」（无历史 disabled 置灰，有历史显示步数）+ 右下角悬浮胶囊 #ed-undo-fab（仅编辑页且有历史显示，滑到第 200 句误点合并不用拉回顶部）；renderEditor 末尾与 switchView('editor') 同步按钮态。升版：sw.js 缓存名 shadow_v112_offline_v32→shadow_v113_offline_v33；exportProject version 112→113+下载名 shadow_v113.json；全量备份 version 113（keys 新增 shadow_v113_rv_next）；生词本 JSON version 113；<title>/nav-title 统一 V113 -->
 <!-- V112 | build:20261119 | 第十份外部审查 9 项代码修复 + 生词本 AI 闭环便捷化 5 项全部落地（导出范围/弹层交互按工程化判断修正两处）。修复1·xlsx 导入解析重写：XML 解析改原生 DOMParser（NS 不敏感 getElementsByTagNameNS——容忍命名空间前缀；textContent 原生解码十/十六进制实体）+ 旧正则路径保命兜底（DOMParser 不可用/parsererror/无 row 时退回，双路径永不比 V111 差）；sharedStrings 与 inlineStr 均排除 <rPh> 拼音/注音节点的 <t>（Excel「拼音指南」自动嵌入的注音不再混进正文）；兼容自闭合 <t/>/<c/>/<row/>、无 r 属性按出现顺序、t=s/inlineStr/str/数值四类；_xmlUnesc 补十六进制实体 &#x2019;（弯撇号等）；_xmlEsc 导出前剔除 XML 1.0 非法控制字符 \x00-\x08\x0B\x0C\x0E-\x1F（特殊字幕不再让 Excel 报「文件已损坏」）；_rowsToVocab 表头不再死锁 rows[0]——扫描前 5 行定位「单词」列（首行空行/AI 说明行不再让整个导入判失败）；_vocabColMap 别名扩充（词条/词汇/phonetics/ipa/中文/意思/含义/meaning/example/context/例句译文/translation/备注/notes/来源/source/audio）。修复2·翻卡复习 UI 三处：V110 重构 reviewRender 漏挂 .rv-card 类——卡面米黄底/边框/圆角全丢成白板，现视觉并入 .rv-face（背景 #FFFDE7+2px 边框+16px 圆角+内边距+text-align:center），新增 .rv-face-in 包裹层用 margin:auto 0 实现溢出安全垂直居中（justify-content:center 在 flex 溢出时顶部被裁且滚不到顶）；#vocab-review 补 display:flex+column（原是普通块，.rv-wrap 的 flex:1 不生效只剩 min-height:320px 硬下限，iPhone 小屏把底部操作栏顶出面板），.rv-wrap min-height 320→0——纵向 flex 链 review→wrap→cardbox→face 打通，底栏钉底卡内滚动；.rv-detail .rv-row 移除 data-fit（原被 _fitCard 的 TXT=[24,20,16,14] 阶梯放大到 24px，13px 紧凑排版才是设计）；背面 .rv-w 绑 speak 点读（blank 模式底部只有「🔊 重听」播原句，翻面后单点听单词原无入口）；配套：tabReview 时隐藏数据工具栏、tabList 恢复——7 钮在 375px 占两行 100px 会把卡面挤到 46px 高（导入/导出/复制/粘贴是列表态操作，翻卡用不到；拖放导入绑 #vocab-modal 不受影响；375px 卡面实测 46→146px，底栏仍在视口内）。修复3·vocabBook.add() 与 _mergeVocab 双主键统一：add 原按词面全局判重（跨课学习第 10 课无法收录第 1 课记过的词，与导入合并/「当前音频」筛选/⭐ 判定互相矛盾），现改【同词且同音频】判重（norm 小写+空白折叠；有加载音频结合 _isCurrentAudio 判定，无音频信息退回词面判重）——四处口径完全一致，重复提示改「已在生词本（当前音频）」。修复4·iOS 划选 0.5s 自动入本与拖选柄冲突三重修法：touchstart（目标不在 #pv-sel-add/#pr-sel-add 内）立即作废挂起的 _selAutoTmr/_prAutoTmr——手指摸向蓝色选柄的瞬间绝不再中途抢触发；touchend 防抖 500→1200ms（伸手拖柄要 0.6~1.5s；鼠标保持 500ms，点浮条「＋」仍立即入本）；mouseup/touchend 事件目标限定字幕容器内（Safari 点外部按钮选区不塌，原会误武装定时器到点误入本）。修复5·预习长译文压扁主文本：.preview-sentence-text2 补 max-height:16vh+overflow-y:auto+flex-shrink:1+min-height:0（长译文自身可滚可收缩，不再把主英文压扁至不可见或被外盒 overflow:hidden 裁掉）；.preview-sentence-text 补 min-height:48px 保底两行；resize 触发 _fitPreviewText 增判 #preview-focus-phase 未激活（重点句阶段主文本 clientHeight=0，自校正缩字一路缩到 14px 下限，转屏回逐句听字号被无端改小）。修复6·_isCurrentAudio 跨形态匹配同步到全部链路：hearSentence Level 1 直放判定（原 cur===want||fixUrl 相等，本地导入↔网络加载切换时必失配退 Level 2/3、缓存无记录进一步退 TTS）、app._backfillVocabTr、app.applyShift、app._ensureShiftSnap、app._restoreShiftSnap 四处全改 vocabBook._isCurrentAudio(v)（编码差异/本地在线切换/老词条缺 v.a 均不再漏同步）。修复7·mergeSeg 副字幕空值丢失与 _mergeBiText 边界：text2/text3 判断加 ||（第 i 句无副字幕、第 i+1 句有时原来直接丢掉 i+1 的副字幕）；行分类升级三档——含 CJK 文字→中文块；无 CJK 文字但含全角标点且无任何字母数字（含全角）→中文块（「……」「——」「？！」纯标点行不再粘到英文块末尾）；其余→英文块。修复8·小修六件：_dictFillEntry 的 v.def 改已有不覆盖（!v.def，与 ph 同规——AI 填过/导入值优先）；cacheUI.load 删重复 ui.updatePractice(0)（两行后就是 updatePractice(currIndex)）；删 _filterAudioKey() 死代码；_clearGlobal 加 confirm 二次确认（弹层红框误触一次清光全局几百词不可恢复，confirm 报真实词数）；recorder.toggle 解锁改 _buildSilentWavUri() 且去 r.muted=true（对齐 V102 _unlockHearEl 修法——静音 WAV 物理无声无需 muted，部分 iOS WebKit 对 muted 播放不计入手势解锁）；parseSRT idle 直遇时间行也进解析（无序号行/WEBVTT 头文件原整篇解析为空）。修复9·sw.js 三处：install 预缓存 './' 弃 cache.add()——301/302 会存 redirected:true 响应、respondWith 在部分引擎报 network error，改手动 fetch（非 ok 跳过——add 原会缓存 404 页）+ redirected 时重建干净 Response 再 put（缓存键保持同款 Request './'，兜底查找链零变化）；fetch 竞速 network 先归时 clearTimeout（3s 后不再白跑一次 fromCache）；index.html 注册加 updateViaCache:'none'（SW 脚本更新检查绕过 HTTP 缓存，旧浏览器忽略）。AI闭环1·📋 复制AI+📋 粘贴更新剪贴板闭环（核心）：工具行新增两钮（现有 5 文件钮全保留）；复制侧弹范围选择层（按当前筛选 N 词/仅待补全 K 词缺音标或中文意思——最省 Token/全部 M 词），生成 Markdown 表格+情境化提示词复制到剪贴板（复用 copyTextToClipboard 的 clipboard API+execCommand 双兜底）；粘贴侧轻量弹层（textarea 长按粘贴+「📋 读取剪贴板」一键读取——iOS 权限被拒不堵路，引导手动粘贴），解析器四格式自动识别：JSON（数组/shadow_vocab_backup/全量备份提取）→Markdown 表格（AI 最常输出——只取 | 开头行、忽略 |---| 对齐行、去 **粗体**/`代码` 轻修饰且不动音标斜杠、保护 \| 转义）→TSV（Numbers/Excel 全选复制）→CSV（RFC 4180 复用），统一 _rowsToVocab→_mergeVocab 双主键合并，SRS 进度与音频时间戳不丢。AI闭环2·iOS/iPadOS 原生分享：_download 增 navigator.share 分支——canShare({files}) 支持 File 时直接拉起系统分享面板（发送到 ChatGPT/豆包/Numbers/存储到文件），同步手势栈内发起（无 await 断链）、AbortError 用户取消静默、非取消失败回退 <a download>、桌面（非 iOS）零变化。AI闭环3·iPad 分屏拖放导入：#vocab-modal 绑 dragenter/dragover/drop（计数器管理高亮防子元素闪烁），拖 .xlsx/.csv/.json 松手即走 _processVocabFile 合并更新，拖入时面板虚线高亮+「松手导入生词表文件」提示。AI闭环4·导出跟随筛选（工程化修正）：Excel/CSV 按当前筛选+搜索范围导出（列表所见即所得，文件名带 _N词，toast 提示切换方法；无筛选时=全量行为不变）；📤 JSON 保持全量（备份语义——按筛选导出会静默丢词，此为对审查建议的修正）。AI闭环5·导入引导：工具行「📥 合并」改「📥 导入/更新」（触屏无悬停也看得懂）；tip 文案补 AI 闭环指引；accept 扩 .tsv/.txt+MIME 类型（iOS 文件选择器兼容）。升版：sw.js 缓存名 shadow_v112_offline_v32；exportProject 下载名 shadow_v110.json→shadow_v112.json（V111 曾漏改）+version 112；全量备份/生词本 JSON version 112；版本号统一到 V112 -->
 <!-- V111 | build:20261119 | 用户 3 项落地（双语合并改道 / 清空两级选项必齐 / 预习字幕区加大缩字下探）。用户1·编辑页「🖇️ 合并」双语字幕错行：V110 前三路文本一律空格首尾直连，双语句（中文行\n英文行）合并后变成「中文\n英文 中文\n英文」——下一句的中文粘到上一句英文行尾、第三行才是下一句英文。新增 app._mergeBiText(a,b)：按行拆开、以“行内是否含汉字”分中文/英文两块，中文行与中文行、英文行与英文行分别以一个空格相连，块序跟随第一句（第一句首行是中文→合并后中文块在上）；两侧同为单语（同为纯英文/纯中文）自动退化为原空格直连（保留第一句内部换行，单语字幕零行为变化）；一侧纯英文一侧纯中文（字幕结构不齐）按两块竖排不丢行；文字行判定为广义 CJK（汉字基本区+扩展A+兼容区+日文假名+谚文）——中英双语场景即中文行，日韩语字幕行也归同一块不会插进英文行之间。text/text2/text3 三路同规则；时间轴/重点句/进度/微调原始值等既有合并逻辑零改动。用户2·生词本 🗑 清空“只有全部音频可以选”（用户实测）：V110 在当前音频 0 词或未加载音频时整个隐藏「仅清当前音频」按钮——从编辑页导航栏 📔 打开面板、或刚刷新页面音频还没恢复时，弹层只剩全局+取消，两级选择名存实亡。现在：生词本非空就始终显示两个选项——已加载音频显示真实词数；未加载音频按钮标注「（未加载音频）」、点击 toast「请先在主界面加载音频」；当前音频 0 词点击 toast「当前音频暂无生词」不再静默隐藏。配套修 _isCurrentAudio 跨形态兜底：同一文件先本地导入（a='local://文件名_大小'）后从服务器 URL 加载（或反向）时 fixUrl 比对必失配、该文件词条全部不算“当前音频”——仅当一侧是 local:// 时按文件名兜底（local 剥尾部 _大小、http 取最后路径段，大小写不敏感），两侧都是 http 不同目录同名仍不匹配（V104 误命中保护原样保留）。用户3·预习字幕区加大+缩字下探：字幕盒上限 40vh→46vh（iPhone 多出约 40px）且 flex-shrink 1→0——原盒子被练习阶段容器压扁到 40vh 以下，极端长内容（长英文+长译文）最后一行被裁；现在盒子不被压缩、最多撑到 46vh，塞不下时预习页整体滚动（按钮滚下去仍可达），字幕优先完整显示；主文本 CSS 兜底 max-height 34vh→40vh；_fitPreviewText 重写为自校正缩字——先清 maxHeight 让 flex 压出文本元素真实可用高度（clientHeight＝可用、scrollHeight＝内容），逐号缩字直到塞得进，下限 26px→14px（≈五号字），触底仍溢出才钉 maxHeight 卡内滚动兜底；不再预测预算（原“-36”粗略扣减败在译文行 margin/盒 padding 没算准，精确测量版又败在“先测量后压缩”的循环依赖——文本一缩、盒子/译文/提示行跟着回流，预测值即刻过期，长英文+长译文时最后一行仍被裁，即用户说的“上下移动”）；自校正直接读布局结果，译文有无/换行/提示行变化全部自动适应，绝大多数长句一屏完整显示。sw.js 缓存名升 shadow_v111_offline_v31（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 110→111；版本号统一到 V111 -->
 <!-- V110 | build:20261119 | 生词本与「点词/划词入本」交互系统级重构（用户规格 12 组全落地）。A·数据模型：词条新增 ph（音标）/cn（中文释义）/def（内置英释）三字段——add() 初始化空串、旧词条缺字段按空兼容、JSON 往返自动携带（向下兼容）。B·Excel 8 列 AI 闭环：列序严格=序号|单词|音标|中文意思|例句|例句翻译|笔记|出处音频；第 5 列例句用 OpenXML 富文本 inlineStr（<r><rPr><b/></rPr><t>…</t></r>）把目标词/短语原生加粗（新增 _sentRuns 复用 _wordRe 词边界口径全命中加粗，无命中退子串、再无退纯文本，Excel/WPS/Numbers 打开都是原生粗体）；表底空 1 行后 A:H 合并写整段 AI 提示词（新样式 xf3=无边框+wrapText+顶对齐，行高 64）——导出给 AI 填音标/释义/翻译/笔记再「📥 合并」导回。C·合并导入双主键：norm(w)+':::'+norm(src) 联合键查重——导入有出处时只精确匹配同音频同词，绝不误伤其它音频的同名词（未命中按新词追加）；导入缺出处时本地仅 1 个同名词容错直配，多个同名词时比对例句文本（先全等后互含，比对不上按新词）；ph/cn/note/tr 导入非空覆盖/空则补全，st/en/a/src/s 仍只补缺不覆盖，SRS 进度照旧 ivl 取大/due 取早/ok 取大/grad 取或。D·导入格式扩容：「📥 合并」新增 Excel(.xlsx)/CSV 支持——零依赖 ZIP 读取（central directory，method 0 store 直切）+ 内置 raw DEFLATE inflate 约 150 行（Excel 存的 .xlsx 是 DEFLATE 压缩、自家导出是 store 直存，两路都通）+ 单元格四类解析（t="s" sharedStrings / inlineStr 含富文本 run 拼接 / t="str" / 数值）+ 表头名映射（兼容新 8 列与旧 5 列『所在句子/出处』口径）；AI 提示词行与空行因单词列空被校验自然跳过；accept 扩 .json,.xlsx,.csv。E·面板三行重组：Tab 行——左 [📋 列表][🎴 翻卡复习]，右 [⏰ 只练到期]（从翻卡设置行挪出、按钮化 .on 高亮，shadow_v107_rv_due 键与语义不变）紧挨独立 [🗑 清空]；筛选行——搜索框定宽 110px+音频下拉 flex:1 占满（长文件名不再截断）；数据工具行 5 钮 [📥 Excel][📄 CSV][🎒 Anki][📤 JSON][📥 合并]；iPad/PC（≥700px）面板放宽 96%/max-540px/88vh；open() 强制默认筛选=当前音频（无音频回退全部音频，覆盖旧记忆值）。F·两级安全清空：🗑 弹独立确认层（#vocab-clear-pop）——首选默认「🗑 仅清空当前音频生词 (共 N 词)」（按 _isCurrentAudio 计数），次选「⚠️ 清空全局所有生词 (共 M 词)」+ 取消；Esc 关闭；当前音频 0 词时首选隐藏只留全局+取消。G·翻卡复习重排：卡框 .rv-cardbox flex 撑满中段、外框绝对固定不随文本形变；新增 _fitCard 阶梯缩字号（大字 data-fit="big" 34→28→22→16 / 正文 data-fit 24→20→16→14 同步降档）塞不下只许卡内纵向滚动（.rv-face overflow-y:auto）；底端固定操作栏 [🔊 读音|😅 不认识|😀 认识] 移出卡外（.rv-ops-fix）正反同位零跳动——例句填空模式 🔊=重播挖空例句原音（不剧透单词拼读），词面/听音模式=TTS 读词（与 R 键同口径 _rvHearBtn）；背面层级=①词+音标 ②中文释义（大字加粗高亮，点可 prompt 改 cn——新 editCn）③完整例句（生词加粗+灰小 🔉，点重放原音）+ 折叠胶囊「展开详情 (句译·英释·笔记) ▾」内含 ④例句翻译 ⑤内置英释(v.def) ⑥笔记（点可编辑）+ 横排快捷行 [✏️ 笔记][📖 查词][有道][剑桥]（去掉 ▶ 听原句，重听收归底部固定栏）；刚编辑过笔记或拉取英释自动展开（_rv.detailOpen）；.vocab-tip 情境化——翻卡显示「点例句或卡片可重听原音 · 空格/回车翻面 · ←不认识 · →认识」。H·列表页去冗余：筛选非「全部音频」时彻底隐藏 🎧 出处标签（不再全页刷屏）；行结构=第一行 单词+音标+高亮中文释义（点释义改 cn）行尾 [✏️][✕]，第二行完整例句，第三行（句译/笔记/英释混排）仅有内容才渲染；搜索范围并入 ph/cn。I·查词系统升级：📖 查词命中后静默回填——首个音标补进 v.ph（已有不覆盖），首条精简英释（词性. 定义，截 160 字）落盘 v.def，界面自动展开详情并就地刷新；有道/剑桥链接换新口径（dict.youdao.com/w/、dictionary.cambridge.org/dictionary/english-chinese-simplified/）。J·交互平台拉齐：桌面 Chrome 轻点 .pw 单词 span 直接入本并点亮 .pw-in（onBoxTap 去掉 _lastTouchAt 触屏 800ms 门槛，桌面=iPad 同规则，点空白/标点仍复制整句）；划选短语松手（mouseup/touchend）起 0.5s 防抖自动入本——期间点浮条「＋」立即加入、点「✕」或点击选区外（selectionchange 清表）取消，到点自动入本走既有反馈链（预习页撤销条 2 秒/练习页 toast）；_selAutoTmr/_prAutoTmr 预习/练习两页同规则。K·SRS 收敛：维持 V108/V109 修正口径——毕业只看走完 1→3→7→15 天间隔链（ivl>=5 第 5 次到期“认识”）；规格中「或连认 3 次」与「避免中途提前跳档」互斥（连认 3 次提前毕业正是 V108 外审修掉的死代码 bug），按「避免提前跳档」从后者执行。L·iPadOS 读音：_initVoices/_pickVoice 显式 u.voice 锁声机制零改动。sw.js 缓存名升 shadow_v110_offline_v30（无 SW 逻辑改动，仅强制刷新）；exportProject/全量备份/生词本 JSON version 109→110；版本号统一到 V110 -->
@@ -57,7 +58,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V112</title>
+<title>影子跟读 Pro V113</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -80,6 +81,8 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .navbar { background: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 100; flex-shrink: 0; height: 50px; }
 .nav-title { font-weight: 500; font-size: 18px; color: var(--primary); }
+.nav-help-btn { border: 1px solid #DADCE0; background: #fff; color: #5F6368; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; } /* V113(需求5): 说明入口——navbar 左区（编辑/练习切换钮前），编辑页与练习页均可见 */
+.nav-help-btn:active { background: #F1F3F4; }
 .mode-switch { background: #F1F3F4; padding: 3px; border-radius: 20px; }
 .mode-btn { border: none; background: none; padding: 6px 16px; font-weight: 700; border-radius: 18px; color: #5F6368; cursor: pointer; transition: 0.2s; font-size: 14px; }
 .mode-btn.active { background: #fff; color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
@@ -130,6 +133,13 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 /* V84: 有鼠标的设备（电脑）恢复可划选——触摸设备现已一并开放（见 .pw 注释） */
 .preview-sentence-text2 { font-size: 16px; color: #555; text-align: center; margin-top: 8px; line-height: 1.5; cursor: pointer; max-height: 16vh; overflow-y: auto; flex-shrink: 1; min-height: 0; -webkit-overflow-scrolling: touch; } /* V112(外审5): 长译文自身限高可滚可收缩——原来无约束时把主英文压扁至不可见、或被外盒 overflow:hidden 裁掉无法滚动 */
 .preview-sentence-text2:active { opacity: 0.6; }
+/* V113(需求4): 桌面宽屏（≥800px，Windows Chrome 笔记本/大屏）——预习主文本排版对齐正式跟读：
+   字幕盒不再被 46vh 硬顶（改 flex:1 1 0% 吃满卡片剩余垂直空间，不把 #preview-listen-phase 顶出
+   外层滚动条），主文本全宽 100%、1.4 行高、留内边距；手机竖屏 <800px 保留 V111 防压扁规则不变 */
+@media (min-width: 800px) {
+    .preview-sentence-box { flex: 1 1 0%; max-height: none; min-height: 120px; }
+    .preview-sentence-text { width: 100%; max-height: 100%; line-height: 1.4; padding: 8px 15px; }
+}
 .preview-play-hint { font-size: 13px; color: #999; margin-top: 10px; flex-shrink: 0; }
 /* V84: 主操作按钮加大（≥54px，苹果最低触控标准 44px 起步）防误点 */
 .preview-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0; margin-bottom: 12px; }
@@ -256,7 +266,15 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .vocab-item-note { font-size: 12px; color: #B06000; background: #FFF8E1; border: 1px dashed #FFE0B2; border-radius: 6px; padding: 3px 8px; margin-top: 4px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
 .vocab-item-ph { font-size: 13px; color: #999; font-weight: 400; margin-left: 6px; } /* V110: 行1 灰色音标 */
 .vocab-item-cn { font-size: 14px; color: #E65100; font-weight: 800; margin-left: 6px; cursor: pointer; } /* V110: 行1 高亮中文释义（点可改 cn） */
-.vocab-item-l3 { margin-top: 4px; font-size: 12px; line-height: 1.55; color: #8a8a8a; word-break: break-word; white-space: pre-wrap; } /* V110: 行3 句译/笔记/英释混排——仅有内容才渲染 */
+/* V113(需求2): 行3 废除「· 」混拼灰字，改独立高对比色块——中文意思橘红(行1)/句译蓝/笔记红/英释灰绿 一眼区分 */
+.vtag { flex-shrink: 0; display: inline-block; font-size: 11px; font-weight: 800; color: #fff; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+.vocab-item-txt { flex: 1; min-width: 0; word-break: break-word; white-space: pre-wrap; }
+.vocab-item-tr { display: flex; align-items: flex-start; gap: 7px; margin-top: 5px; background: #EEF5FF; border: 1px solid #D2E3FC; border-radius: 8px; padding: 5px 8px; font-size: 12.5px; line-height: 1.55; color: #0D47A1; } /* 例句翻译——蓝底白字标签 + 浅蓝底 + 深蓝正文 */
+.vtag-tr { background: #1A73E8; }
+.vocab-item-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 5px; background: #FFF0F0; border: 1px solid #F6C6C6; border-radius: 8px; padding: 5px 8px; font-size: 12.5px; line-height: 1.55; color: #B71C1C; cursor: pointer; } /* 笔记——红底白字徽章 + 淡红底 + 深红正文（点可编辑） */
+.vtag-note { background: #D93025; }
+.vocab-item-def { display: flex; align-items: flex-start; gap: 7px; margin-top: 4px; font-size: 12px; line-height: 1.5; color: #5F6B6A; } /* 内置英释——柔和灰绿，独立一行不与中文/翻译/笔记混杂 */
+.vtag-def { background: #78909C; }
 /* V107(提案4): 行尾 ✏️ 笔记按钮——与 ✕ 删除按钮同尺寸，蓝色系区分"编辑"语义 */
 .vocab-item-edit { width: 32px; height: 32px; border: 1px solid #C5D9F2; background: #F4F9FF; color: var(--primary); border-radius: 10px; font-size: 13px; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
 .vocab-empty { text-align: center; color: #aaa; font-size: 13px; padding: 36px 20px; line-height: 1.7; }
@@ -629,8 +647,20 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .rv-fold { display: block; margin: 14px auto 0; border: 1px dashed #E0E0E0; background: #fff; color: #5F6368; border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; -webkit-appearance: none; appearance: none; font-family: inherit; white-space: nowrap; } /* V110: 折叠胶囊「展开详情 (句译·英释·笔记) ▾」 */
 .rv-fold.open { background: #F1F3F4; border-style: solid; }
 .rv-detail { margin-top: 10px; text-align: left; background: #FAFAFA; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.6; color: #444; word-break: break-word; } /* V110: ④句译 ⑤英释 ⑥笔记 */
-.rv-detail .rv-lbl { display: inline-block; min-width: 34px; color: #999; font-weight: 700; }
-.rv-detail .rv-note-row { color: #B06000; cursor: pointer; background: #FFF8E1; border-radius: 8px; padding: 6px 8px; margin: 4px 0 0; }
+/* V113(需求2): 详情独立块高对比配色——句译蓝 / 笔记红 / 英释灰绿（与列表页同调色板；中文释义仍橘红大字在上方） */
+.rv-detail .rv-block { display: flex; align-items: flex-start; gap: 8px; border-radius: 10px; padding: 7px 10px; margin-top: 6px; text-align: left; }
+.rv-detail .rv-block:first-child { margin-top: 0; }
+.rv-btag { flex-shrink: 0; font-size: 11px; font-weight: 800; color: #fff; border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+.rv-btext { flex: 1; min-width: 0; font-size: 13px; line-height: 1.6; word-break: break-word; white-space: pre-wrap; }
+.rv-block-tr { background: #EEF5FF; border: 1px solid #D2E3FC; }
+.rv-block-tr .rv-btext { color: #0D47A1; }
+.rv-btag-tr { background: #1A73E8; }
+.rv-block-note { background: #FFF0F0; border: 1px solid #F6C6C6; cursor: pointer; }
+.rv-block-note .rv-btext { color: #B71C1C; }
+.rv-btag-note { background: #D93025; }
+.rv-block-def { background: #F5F7F6; border: 1px solid #E2E8E5; }
+.rv-block-def .rv-btext { color: #5F6B6A; }
+.rv-btag-def { background: #78909C; }
 .rv-quick { display: flex; gap: 8px; margin-top: 12px; justify-content: center; flex-wrap: wrap; } /* V110: 背面横排快捷行 [✏️ 笔记][📖 查词][有道][剑桥]（去掉 ▶ 听原句——重听收归底部固定栏） */
 .rv-quick > * { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; -webkit-appearance: none; appearance: none; font-family: inherit; }
 .rv-quick > :active { background: #F1F3F4; }
@@ -646,6 +676,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .rv-meta { font-size: 12px; color: #999; text-align: center; margin: 10px 0; }
 .rv-done { text-align: center; padding: 30px 10px; }
 .rv-done-num { font-size: 40px; font-weight: 800; color: var(--preview); }
+/* V113(需求6): 编辑页右下角悬浮撤销胶囊——仅编辑页且有撤销历史时显示（_edSyncUndoBtns 控制） */
+#ed-undo-fab { position: fixed; right: 18px; bottom: 24px; z-index: 900; display: none; align-items: center; border: none; background: #202124; color: #fff; border-radius: 999px; padding: 10px 16px; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.3); -webkit-appearance: none; appearance: none; font-family: inherit; }
+#ed-undo-fab:active { background: #444; }
 /* SW 更新提示条（审7） */
 #sw-update-bar { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 8000; background: #137333; color: #fff; padding: calc(10px + env(safe-area-inset-top, 0px)) 48px 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.25); } /* V97(外审10): 顶边距并入安全区（PWA 独立窗口不被状态栏/灵动岛遮挡）；右侧 48px 留给 ✕ 关闭 */
 #sw-update-close { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; line-height: 34px; text-align: center; font-size: 18px; font-weight: 400; border-radius: 8px; }
@@ -658,6 +691,23 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 #backup-remind-close:active { background: rgba(255,255,255,.2); }
 /* V108(提案5补全): 📖 查词弹层——生词卡/列表行在线查音标释义（dictionaryapi.dev 免费公共词典，
    CORS 开放），一键回填笔记；离线/查不到（词组、专名常见）退词典链接（有道/剑桥）手动查 */
+/* V113(需求5): 说明页弹层——z-index 7800 高于生词本(7500)/查词(7600)，navbar 与 ☰ 菜单里打开时下层面板还在也能盖住 */
+#help-pop { display: none; position: fixed; inset: 0; z-index: 7800; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; padding: 16px; }
+#help-pop.show { display: flex; }
+.help-card { background: #fff; border-radius: 16px; max-width: 560px; width: 100%; max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.3); overflow: hidden; }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+.help-title { font-size: 16px; font-weight: 800; color: #202124; }
+.help-body { padding: 2px 16px 18px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.help-sec { background: #F8F9FA; border: 1px solid #EEE; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
+.help-sec:first-child { margin-top: 10px; }
+.help-sec h4 { margin: 0 0 8px; font-size: 14px; font-weight: 800; color: #202124; }
+.help-sec p { font-size: 13px; color: #444; line-height: 1.7; margin: 0; }
+.help-sec ul { margin: 4px 0 0; padding-left: 18px; }
+.help-sec li { font-size: 13px; color: #444; line-height: 1.7; }
+.help-sec b { color: #202124; }
+.help-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12.5px; }
+.help-table th, .help-table td { border: 1px solid #E5E5E5; padding: 6px 8px; text-align: left; line-height: 1.55; vertical-align: top; }
+.help-table th { background: #EEF3FE; color: #202124; font-weight: 800; white-space: nowrap; }
 #dict-pop { display: none; position: fixed; inset: 0; z-index: 7600; background: rgba(0,0,0,0.45); align-items: center; justify-content: center; padding: 20px; }
 #dict-pop.show { display: flex; }
 #dict-card { background: #fff; border-radius: 14px; max-width: 420px; width: 100%; max-height: 72vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
@@ -713,7 +763,10 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
      点主体立即备份，✕ 今天不再提醒；备份成功即写 shadow_last_backup_at 并收起 -->
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
-    <div class="nav-title">🎧 影子跟读 V112</div>
+    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <div class="nav-title">🎧 影子跟读 V113</div>
+        <button class="nav-help-btn" onclick="helpPage.open()" title="常用功能说明：保存/备份区别 · 完整学习流程 · 生词本 AI 补全闭环 · 字幕编辑技巧 · iPhone/iPad 贴士">❓ 说明</button>
+    </div>
     <div class="mode-switch">
         <button class="mode-btn active" onclick="app.switchView('editor')">编辑</button>
         <button class="mode-btn" onclick="app.switchView('practice')">练习</button>
@@ -817,6 +870,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 共 <span id="row-count">0</span> 句
                 <input type="number" id="ed-jump" min="1" placeholder="句号↵" style="width:64px;padding:4px 6px;border:1px solid #ddd;border-radius:8px;font-size:12px;font-family:inherit;text-align:center;" onkeydown="app.edJumpKey(event)" title="输入句号回车直接跳到该句（选中并弹出微调条，范围 1-末句）">
                 <button class="btn-mini" id="ed-jump-cur" onclick="app.edJumpCur()" title="一键定位当前练习句（正式跟读正在练/停的那句）——选中并弹出微调条；不用先记句号再手输">📍 当前句</button>
+                <button class="btn-mini" id="ed-undo-top" onclick="app.edUndo()" disabled style="opacity:0.45;cursor:not-allowed;" title="没有可撤销的操作">↩ 撤销</button> <!-- V113(需求6): 字幕编辑撤销（有历史时显示步数） -->
                 <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
                     <input type="text" id="ed-search" placeholder="🔍 搜句子↵" style="width:118px;padding:4px 8px;border:1px solid #ddd;border-radius:8px;font-size:12px;font-family:inherit;" onkeydown="app.edSearchKey(event)" title="输入文本回车定位下一个匹配句（字幕 1/2/3 都搜）；再按回车或点右侧按钮跳下一处，循环查找">
                     <button class="btn-mini" id="ed-search-next" style="display:none;" onclick="app.edSearchNext()" title="跳到下一个匹配句">↪ 下一处</button>
@@ -893,6 +947,22 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                         </select>
                         <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 V100 起"练过"只有一个标准：预习逐句把全部句子过完一遍（进度≥句数）。点过跟读/重点句不算——没预习完就进预习，随时可点「🎧 返回正式跟读」或重点句退出；「▶ 继续上次」不受此设置影响（总是跟读）。</div>
                     </div>
+                    <!-- V113(需求2): 翻卡后自动下一张——设置放练习页 ☰ 菜单（不放生词本弹窗内）；持久化 shadow_v113_rv_next 已并入全量备份 -->
+                    <div style="background:#F8F9FA;border:1px solid #eee;border-radius:10px;padding:12px;margin-top:12px;">
+                        <div style="font-size:13px;font-weight:700;color:#444;margin-bottom:8px;">🎴 翻卡后自动下一张</div>
+                        <select id="rv-next-sel" onchange="vocabBook.setRvNext(this.value); if(!_isIOSDevice()) this.blur()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;" title="卡片翻到背面后超过 N 秒没点任何按钮，自动切下一张（纯推进：不计认识、不改 SRS 间隔与连击；任何主动操作都会重置计时）">
+                            <option value="0">关</option>
+                            <option value="3">3 秒</option>
+                            <option value="5">5 秒</option>
+                            <option value="6">6 秒（默认）</option>
+                            <option value="8">8 秒</option>
+                            <option value="10">10 秒</option>
+                            <option value="15">15 秒</option>
+                        </select>
+                        <div style="font-size:11px;color:#999;margin-top:6px;line-height:1.5;">💡 翻到背面超过 N 秒不点按钮就自动进下一张——只是跳过，<b>不算「认识」</b>、不动 SRS 间隔（1→3→7→15 天）；点读音/例句/笔记/查词或展开详情都会重新计时。在「📔 生词本 → 🎴 翻卡复习」生效。</div>
+                    </div>
+                    <!-- V113(需求5): 说明页入口（抽屉内）——先收抽屉再开弹层 -->
+                    <button class="btn-file" onclick="ui.toggleDrawer(); helpPage.open()">❓ 常用功能说明</button>
                     <!-- V84: 全量备份与恢复（跨端，含生词本+重点句进度+连读设置） -->
                     <button class="btn-file" onclick="app.exportFullBackup()">📦 备份</button>
                     <button class="btn-file" onclick="app.importFullBackup()">📥 恢复备份</button>
@@ -1387,7 +1457,66 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
     </div>
 </div>
 
+<!-- V113(需求5): ❓ 常用功能说明页——5 大块内容；右上 ✕ / 点背景 / Esc 关闭 -->
+<div id="help-pop" onclick="if(event.target===this) helpPage.close()">
+    <div class="help-card">
+        <div class="help-head"><span class="help-title">❓ 常用功能说明</span><button id="dict-close" onclick="helpPage.close()" title="关闭">✕</button></div>
+        <div class="help-body">
+            <div class="help-sec">
+                <h4>💾 保存工程 · 📂 加载工程 · 📦 全量备份 有什么区别？</h4>
+                <table class="help-table">
+                    <tr><th></th><th>💾 保存工程 / 📂 加载</th><th>📦 全量备份 / 📥 恢复</th></tr>
+                    <tr><td><b>存什么</b></td><td>当前音频的字幕（时间轴+文本）、当前句号、输入框链接</td><td>几乎全部：各音频字幕工程 + 📔 生词本 + 学习统计 + 预习进度/⭐ 重点句 + 全部设置</td></tr>
+                    <tr><td><b>不含什么</b></td><td>生词本、统计、设置都不含</td><td>音频文件与离线缓存（体积大，需重新加载/缓存）</td></tr>
+                    <tr><td><b>什么时候用</b></td><td>把当前字幕的修改成果单独存档、发给别人</td><td>换设备 / 重装 / 升级版本前必做——丢了找不回</td></tr>
+                </table>
+                <p style="margin-top:8px;color:#999;font-size:12px;">数据只存在本机浏览器：清缓存、Safari 长期不访问被回收、换机都会丢。建议每周 📦 全量备份一次（应用会定期提醒）。</p>
+            </div>
+            <div class="help-sec">
+                <h4>🎧 完整学习流程</h4>
+                <ul>
+                    <li><b>① 加载音频与字幕</b>：🌍 网络链接 / 💾 离线缓存（0 网络秒开）/ 📁 本地文件；加载过一次自动进离线缓存。</li>
+                    <li><b>② 📚 预习模式</b>：逐句听——不认识的词<b>点一下</b>入生词本（手机长按划短语，划好松手片刻自动入本），所在句自动标 ⭐；句首/句尾可微调；✅ 我会了 进下一句，⭐ 加入重点。</li>
+                    <li><b>③ ⭐ 重点句连读</b>：预习完把标 ⭐ 的句子串起来循环连读（可设遍数、留白、末遍显字、先慢后快）。</li>
+                    <li><b>④ 🎧 正式跟读</b>：单句循环、区间连读、末遍显字、先慢后快、🎤 录音对比、AI 模式自动判读。</li>
+                </ul>
+            </div>
+            <div class="help-sec">
+                <h4>📔 生词本与 AI 补全闭环</h4>
+                <ul>
+                    <li><b>📋 复制AI</b>：生词表（Markdown 表格 + 提示词）复制到剪贴板 → 粘给 ChatGPT/豆包等 AI（可附上剧集上下文），AI 填音标/释义/翻译/笔记。</li>
+                    <li><b>📋 粘贴更新</b>：把 AI 回复的表格整段粘回来——自动识别 Markdown / 制表符 TSV / CSV / JSON 四种格式，按【单词+出处音频】双主键合并，SRS 进度与音频时间戳不丢。<b>注意：别改第 2 列「单词」和第 8 列「出处音频」，改了就匹配不上。</b></li>
+                    <li><b>📥 Excel → 📥 导入/更新</b>：同一闭环走文件版（iPad 分屏可直接把文件拖进生词本面板）。</li>
+                    <li><b>SRS 间隔重复</b>：认识一次按 1→3→7→15 天排下次复习，走完整条链（第 5 次到期认识）🎓 毕业不再进默认复习；「不认识」打回新词。<b>生词未毕业的句子会一直保留 ⭐ 重点句</b>，毕业或删除后才放行。</li>
+                </ul>
+            </div>
+            <div class="help-sec">
+                <h4>✂️ 字幕编辑与对齐技巧</h4>
+                <ul>
+                    <li><b>单句微调</b>：编辑页点句号徽章 → 句首/句尾滚轮微调（±3.0s，带试听）；预习页有同款。</li>
+                    <li><b>⏱ 整体平移</b>：整条时间轴晚/早了零点几秒时用（负值=提前）；↺ 归零精确还原；只影响本音频。</li>
+                    <li><b>🖇️ 合并 / ✂️ 拆分</b>：断句不合意时拆开或合并（合并自动中英文分块不串行）；❌ 删除多余句。</li>
+                    <li><b>↩ 撤销</b>：合并/拆分/删除/改字/导入字幕后，点顶部「↩ 撤销」或右下角悬浮胶囊回退（最多 25 步，⭐ 重点句索引和当前句一并恢复）。</li>
+                    <li><b>↻ 刷新字幕</b>：回到下载时的原始版本，或按原 URL 重新拉取；⭐ 重点句按开始时间就近重映射。</li>
+                </ul>
+            </div>
+            <div class="help-sec">
+                <h4>📱 iPhone / iPad 实用贴士</h4>
+                <ul>
+                    <li><b>离线缓存</b>：加载过的音频+字幕在 💾 离线缓存里秒开，飞行模式可用。</li>
+                    <li><b>🔋 息屏续航 vs 🌙 锁屏暂停</b>：挂机磨耳朵听——保持「息屏续航」开、「锁屏暂停」关；想锁屏即停则两个都开（锁屏暂停优先）。</li>
+                    <li><b>PWA 添加到主屏幕</b>：全屏独立 App 体验；但<b>存储与 Safari 网页版分开</b>——升级版本或换设备前先 📦 全量备份，再到新环境 📥 恢复。</li>
+                    <li><b>自动播放被拦</b>：iOS 首次进页面不点屏幕不放音——手动点一次「▶ 播放」即解锁，之后全自动。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- V95: #vocab-undo-bar 已移入 .preview-header（出现时盖住整条顶栏）；原 fixed 屏幕底部位置废弃 -->
+
+<!-- V113(需求6): 编辑页右下角轻量悬浮撤销胶囊——长列表滑到第 200 句误点合并，不用拉回顶部就能撤销 -->
+<button id="ed-undo-fab" onclick="app.edUndo()" style="display:none;" title="撤销最近一次字幕编辑">↩ 撤销</button>
 
 <!-- V94: 编辑界面时间轴微调工具条（点序号徽章选中后弹出，fixed 底部不占列表高度） -->
 <div id="ed-tune-bar" style="display:none;">
@@ -3299,6 +3428,7 @@ const ui = {
         // V97(改3): _edTuneRefresh 现在还负责把条子挂回重建后的所选行下方
         try { app._edTuneRefresh(); } catch(e) {}
         try { app._buildShiftWheel(); app._syncShiftRow(); } catch(e0) {} // V99: 整体平移行（换字幕后累计值/套用按钮同步刷新）
+        try { app._edSyncUndoBtns(); } catch(eU) {} // V113(需求6): 撤销按钮态（步数/悬浮胶囊显隐）随列表重建同步
     },
     updatePractice(idx) {
         if (!state.segments[idx]) return;
@@ -3646,6 +3776,7 @@ const ui = {
 const app = {
     // ============ V94: 编辑界面时间轴微调（底部工具条） ============
     _edSelIdx: null, _edPlaying: false, _edLTimer: null, _edLongFired: false, _edByTouch: false, _edTouchResetTimer: null, _edLX: null, _edLY: null,
+    _edHist: [], // V113(需求6): 字幕编辑撤销栈（上限 25 步）——mergeSeg/splitSeg/delSeg/addNewRow/updateSeg/applyReAnalyze/importSub 执行前推快照
     // 点序号徽章：选中/取消选中（再点同徽章或 ✕ 收起）；换选原位切换
     // ============ V107(提案7): 编辑页句号跳转 + 文本搜索定位 ============
     // 几百句的长音频想回第 88 句 / 找某句台词只能滚半天——句号框回车直达，搜索框回车循环定位
@@ -4882,6 +5013,7 @@ const app = {
     //  skip 标记仍在写入（保留数据向后兼容），但不再参与判定
     // ============================================================
     _enterAfterLoad(resume) {
+        this._edHist = []; try { this._edSyncUndoBtns(); } catch(eH) {} // V113(需求6): 新音频加载成功——撤销栈清空（loadFromUrl 两个成功分支与 cacheUI.load 都走这里），防止撤销回上一个音频的字幕
         try { const rb = document.getElementById('restore-bar'); if (rb) rb.style.display = 'none'; } catch(e) {}
         try { this._backfillVocabTr(); } catch(e) {}
         const total = state.segments.length;
@@ -5194,7 +5326,7 @@ const app = {
         // V96(外审2): 进练习页统一隐藏「▶ 继续上次」橙条——原来只在 restoreProgress 里隐藏，
         // 走缓存分支（cacheUI.load → switchView('practice')）进练习页后橙条会一直挂在顶部占高度、还能再点
         if (v === 'practice') { const rb = document.getElementById('restore-bar'); if (rb) rb.style.display = 'none'; }
-        if (v === 'editor') { try { app._syncEdJumpCur(); } catch(eJ) {} } // V109(外审4): 切进编辑页刷新「📍 第 N 句」标签——练习页换句后标签不再过期显示旧句号
+        if (v === 'editor') { try { app._syncEdJumpCur(); } catch(eJ) {} try { app._edSyncUndoBtns(); } catch(eU) {} } // V109(外审4): 切进编辑页刷新「📍 第 N 句」标签；V113(需求6): 撤销胶囊随视图显隐
         document.getElementById('editor-view').style.display = v==='editor' ? 'block' : 'none';
         const pv = document.getElementById('practice-view');
         pv.style.display = v==='practice' ? 'flex' : 'none';
@@ -5254,6 +5386,9 @@ const app = {
     },
     updateSeg(i,k,v) {
         if(k.startsWith('text')) {
+            // V113(需求6): 文本真正变化才推撤销快照（textarea onchange 正常只在实际变化时触发，双保险）
+            if (String(state.segments[i][k] == null ? '' : state.segments[i][k]) === String(v)) return;
+            this._edPush('修改第 ' + (i + 1) + ' 句文本', i);
             state.segments[i][k]=v;
         } else {
             // 时间字段必须校验：parseFloat('abc')=NaN 会污染导出/播放/自动联动
@@ -5316,6 +5451,7 @@ const app = {
                     return;
                 }
             }
+            if (n !== state.segments[i][k]) this._edPush('修改第 ' + (i + 1) + ' 句时间', i); // V113(需求6): 时间真正变化才推快照（同值四舍五入后重复触发不推）
             state.segments[i][k]=n;
             try { this._dropShiftSnap(); } catch(eSn) {} // V101(外审二4): 手动改过时间——平移快照作废，归零退化为反向平移（不静默覆盖本次修改）
             // V94(规则补齐): 编辑界面任何方式改过时间=重定基准——清对应端 _os/_oe，
@@ -5340,6 +5476,7 @@ const app = {
         this.save();
     },
     delSeg(i) {
+        this._edPush('删除第 ' + (i + 1) + ' 句', i); // V113(需求6): 误删可撤销
         state.segments.splice(i,1);
         try { this._dropShiftSnap(); } catch(eSn) {} // V101(外审二4): 句数变了——平移快照作废（删 1 加 1 句数碰巧相同时快照会把旧结构还原回去）
         // 修正 currIndex：删前句→索引减1；删当前句→clamp 到新末尾；删后句→不影响
@@ -5370,6 +5507,7 @@ const app = {
     splitSeg(i) {
         const t = document.getElementById('main-audio').currentTime;
         if (t>state.segments[i].start && t<state.segments[i].end) {
+            this._edPush('拆分第 ' + (i + 1) + ' 句', i); // V113(需求6): 误拆可撤销
             const old = state.segments[i], ns={start:t,end:old.end,text:""};
             if(old.text2!==undefined) ns.text2=""; if(old.text3!==undefined) ns.text3="";
             state.segments.splice(i+1,0,ns); state.segments[i].end = t;
@@ -5428,6 +5566,7 @@ const app = {
     },
     mergeSeg(i) {
         if (i < state.segments.length-1) {
+            this._edPush('合并第 ' + (i + 1) + '-' + (i + 2) + ' 句', i); // V113(需求6): 误合并可撤销
             state.segments[i].end = state.segments[i+1].end;
             // V84: 合并后时间轴已变，清除预习微调记的原始时间（防"重置"恢复到很老的值）
             try { delete state.segments[i]._os; delete state.segments[i]._oe; } catch(e) {}
@@ -5480,7 +5619,86 @@ const app = {
             ui.updatePractice(state.currIndex);
         }
     },
+    // ============ V113(需求6): 字幕编辑撤销栈（上限 25 步） ============
+    // 快照在修改操作执行【前】推入：segments 深拷贝（含 text2/text3/_os/_oe）+ currIndex +
+    // 预习 starredIndices/doneIndices/cursorIdx/previewedCount/previewDone + 微调条 _edSelIdx +
+    // _loopInitialized + 描述 label + 撤销后聚焦行 focusIdx。切工程/新音频清空（loadFromUrl 与
+    // cacheUI.load 成功→_enterAfterLoad、loadProject、本地导入 MP3 三处），防止把当前音频的
+    // 字幕撤销回上一个音频。
+    _edPush(label, focusIdx) {
+        try {
+            if (!Array.isArray(this._edHist)) this._edHist = [];
+            this._edHist.push({
+                segs: state.segments.map(function(x) {
+                    return { start: x.start, end: x.end, text: x.text, text2: x.text2, text3: x.text3, _os: x._os, _oe: x._oe };
+                }),
+                currIndex: state.currIndex,
+                starred: previewMode.starredIndices.slice(),
+                doneIdx: previewMode.doneIndices.slice(),
+                cursorIdx: previewMode.cursorIdx,
+                previewedCount: previewMode.previewedCount,
+                previewDone: previewMode.previewDone,
+                edSelIdx: this._edSelIdx,
+                loopInit: state._loopInitialized,
+                label: String(label || '字幕编辑'),
+                focusIdx: (typeof focusIdx === 'number' && isFinite(focusIdx)) ? focusIdx : state.currIndex
+            });
+            if (this._edHist.length > 25) this._edHist.shift(); // 上限 25 步（FIFO）
+            this._edSyncUndoBtns();
+        } catch(e) {}
+    },
+    // 顶部统计行按钮 + 右下角悬浮胶囊：显隐/步数/最近操作提示 三态同步（renderEditor/_edPush/edUndo/清栈点调用）
+    _edSyncUndoBtns() {
+        const n = (Array.isArray(this._edHist) && this._edHist.length) || 0;
+        try {
+            const top = document.getElementById('ed-undo-top');
+            if (top) {
+                top.disabled = !n;
+                top.style.opacity = n ? '' : '0.45';
+                top.style.cursor = n ? '' : 'not-allowed';
+                top.title = n ? ('撤销最近一次字幕编辑（' + this._edHist[this._edHist.length - 1].label + '），最多 25 步') : '没有可撤销的操作';
+                top.innerText = n ? ('↩ 撤销' + (n > 1 ? '（' + n + '）' : '')) : '↩ 撤销';
+            }
+        } catch(e) {}
+        try {
+            const fab = document.getElementById('ed-undo-fab');
+            if (fab) {
+                const ed = document.getElementById('editor-view');
+                const inEd = !!(ed && ed.style.display !== 'none');
+                fab.style.display = (n && inEd) ? 'flex' : 'none';
+                if (n) fab.innerText = '↩ 撤销' + (n > 1 ? '（' + n + '）' : '');
+            }
+        } catch(e2) {}
+    },
+    edUndo() {
+        const hist = this._edHist;
+        if (!Array.isArray(hist) || !hist.length) return ui.toast('没有可撤销的操作');
+        const snap = hist.pop();
+        state.segments = snap.segs;
+        state.currIndex = snap.currIndex;
+        previewMode.starredIndices = snap.starred;
+        previewMode.doneIndices = snap.doneIdx;
+        previewMode.cursorIdx = snap.cursorIdx;
+        previewMode.previewedCount = snap.previewedCount;
+        previewMode.previewDone = snap.previewDone;
+        this._edSelIdx = snap.edSelIdx;
+        state._loopInitialized = snap.loopInit;
+        try { this._dropShiftSnap(); } catch(eSn) {} // V113(需求6): 平移快照的结构/句数已对不上——作废（撤销后「归零」退化为反向平移，不静默错移）
+        try { previewMode.saveToStorage(); } catch(eP) {}
+        try { previewMode.updateBadge(); } catch(eP2) {}
+        this.save();
+        ui.renderEditor();
+        ui.updatePractice(state.currIndex);
+        this._edSyncUndoBtns();
+        try {
+            const fi = Math.max(0, Math.min(snap.focusIdx, state.segments.length - 1));
+            const row = document.getElementById('ed-row-' + fi);
+            if (row && row.scrollIntoView) row.scrollIntoView({ block: 'center' }); // 滚回当时操作的位置
+        } catch(eR) {}
+        ui.toast('↩ 已撤销：' + snap.label + (hist.length ? '（还可撤销 ' + hist.length + ' 步）' : ''));
+    },
     addNewRow() {
+        this._edPush('添加空行', state.segments.length); // V113(需求6)
         const last = state.segments[state.segments.length-1]||{end:0};
         const n={start:last.end,end:last.end+2,text:""};
         if(last.text2!==undefined) n.text2=""; if(last.text3!==undefined) n.text3="";
@@ -5501,6 +5719,7 @@ const app = {
                     ui.toast('未检测到有效句子，已保留原字幕');
                     return;
                 }
+                this._edPush('重新断句', 0); // V113(需求6): 重新断句可撤销（快照含全部重点句/进度）
                 state.segments = segs;
                 // 重新断句后 segments 完全替换，currIndex 和 starredIndices 都失效
                 state.currIndex = 0;
@@ -5660,9 +5879,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 112, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V112: 111→112（版本随轮递增）
+        const data = { version: 113, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V113: 112→113（版本随轮递增）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v112.json'; // V112: 110→112（V105 外审2 惯例：下载名随版本；V111 曾漏改停在 110）
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v113.json'; // V113: 112→113（V105 外审2 惯例：下载名随版本；V111 曾漏改停在 110）
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -5689,9 +5908,10 @@ const app = {
                 'shadow_v100_rv_read', // V100: 翻面读句开关
                 'shadow_v103_vocab_filter', // V103: 生词本音频筛选（功能B）
                 'shadow_v106_seq_blind', 'shadow_v106_seq_slowfirst', // V106: 连读末遍显字/先慢后快（功能3）
-                'shadow_v107_rv_due' // V107(提案5): 翻卡只练到期开关。注：shadow_last_backup_at / shadow_v107_backup_snooze 不进备份——每台设备各自追踪自己的备份行为与提醒状态，恢复旧备份不应把新设备的提醒节奏带回旧时间点
+                'shadow_v107_rv_due', // V107(提案5): 翻卡只练到期开关。注：shadow_last_backup_at / shadow_v107_backup_snooze 不进备份——每台设备各自追踪自己的备份行为与提醒状态，恢复旧备份不应把新设备的提醒节奏带回旧时间点
+                'shadow_v113_rv_next' // V113(需求2): 翻卡后自动下一张秒数（0=关，默认 6）
             ];
-            var data = { type: 'shadow_full_backup', version: 112, exportedAt: new Date().toISOString(), items: {} }; // V112: 版本号 111→112（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 113, exportedAt: new Date().toISOString(), items: {} }; // V113: 版本号 112→113（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -5850,6 +6070,7 @@ const app = {
                 if (isFinite(parseFloat(s._oe))) o._oe = parseFloat(s._oe);
                 return o;
             });
+            this._edHist = []; try { this._edSyncUndoBtns(); } catch(eH) {} // V113(需求6): 换工程——撤销栈清空（旧工程的快照不再有意义）
             // V84.1r2: 隔离旧音频——导入工程只换字幕，旧音频不清会"新字幕配旧音频"、统计错记旧音频名下（沿用 V78 restoreBackup 清空模式）
             try { engine.stopAll(); } catch(eStop) {}
             state.audioBuffer = null;
@@ -5907,6 +6128,7 @@ const app = {
                 return;
             }
             if(k===0) {
+                this._edPush('导入主字幕 ' + f.name, 0); // V113(需求6): 导入字幕可撤销
                 state.segments = n;
                 // 主字幕整个替换 segments，相当于换新内容：重置进度和重点句
                 state.currIndex = 0;
@@ -5920,7 +6142,7 @@ const app = {
                 state._loopInitialized = false;
                 state._revealIdx = -1; // V102(外审一5): 换主字幕=新时间轴——“临时看/藏一句”的句号作废
                 try { app._resetShiftForNewTimeline(); } catch(eSh) {} // V99(功能二): 主字幕整个替换=新时间轴
-            } else app.mergeSub(n, k===1?'text2':'text3');
+            } else { this._edPush('合并副字幕 ' + f.name, 0); app.mergeSub(n, k===1?'text2':'text3'); } // V113(需求6): 副字幕合并可撤销
             state.subFileNames[k+1] = f.name;
             ui.renderEditor();
         };
@@ -6266,7 +6488,12 @@ const previewMode = {
         if (last < str.length) el.appendChild(document.createTextNode(str.slice(last)));
         this._applyPwMarks(el); // V103(功能D)→V105(用户): 渲染后统一标词——单词照旧、短语整条点亮（见 _applyPwMarks）
     },
-    // V84: 预习主文本自适应字号——26px 起自动缩小（同练习页 fitText 机制：超长字幕先缩字号，缩不住再内部滚动）
+    // V84: 预习主文本自适应字号——起跳字号自动缩小（同练习页 fitText 机制：超长字幕先缩字号，缩不住再内部滚动）
+    // V113(需求4): ①宽屏（innerWidth≥800，Windows Chrome/大屏）起跳字号对齐正式跟读 34px，窄屏保持 26px；
+    // ②测量循环前临时 overflowY:hidden——Windows 非悬浮 17px 滚动条在临界高度闪现会挤窄文本引起
+    // “假溢出”（auto 状态下可用宽度已少 17px，缩字循环被滚动条的出现/消失来回拉扯）；仅当降到
+    // 下限 14px 仍真溢出时才恢复 overflowY:auto + maxHeight 兜底；塞得下则保持 hidden（无滚动需求）；
+    // ③V111 的译文显隐自校正逻辑不变
     _fitPreviewText() {
         try {
             const textEl = document.getElementById('preview-sentence-text');
@@ -6274,19 +6501,19 @@ const previewMode = {
             if (!textEl.parentElement) return;
             // V111(用户3): 自校正缩字——先清 maxHeight 让 flex 把文本元素压出真实可用高度
             //（clientHeight＝可用高度、scrollHeight＝内容高度），逐号缩字直到内容塞得进可用高度。
-            // 不再预测预算：原“-36”粗略扣减与精确测量版都败在“先测量后压缩”的循环依赖——文本一缩、
-            // 盒子/译文/提示行跟着回流，预测值即刻过期（长英文+长译文时英文最后一行仍被裁，即用户
-            // 说的“上下移动”）。自校正直接读布局结果，译文有无/换行/提示行变化全部自动适应
+            // 不再预测预算：自校正直接读布局结果，译文有无/换行/提示行变化全部自动适应
             textEl.style.maxHeight = 'none';
-            let size = 26;
+            textEl.style.overflowY = 'hidden'; // V113(需求4): 测量期间不出滚动条——宽度不被 17px 滚动条挤窄
+            let size = (window.innerWidth >= 800) ? 34 : 26; // V113(需求4): 宽屏起跳对齐正式跟读 34px
             textEl.style.fontSize = size + 'px';
             // V111(用户3): 缩字下限 16→14px（≈五号字）——长句先缩字，14px 仍塞不下才内部滚动
             while (size > 14 && textEl.scrollHeight > textEl.clientHeight + 1) { size--; textEl.style.fontSize = size + 'px'; }
-            // 触底仍溢出（极端超长内容）：maxHeight 钉到当前可用高度，卡内滚动兜底（配合盒子
-            // flex-shrink:0，此时预习页整体滚动、按钮可达，字幕盒已撑到 46vh 上限仍不够才走到这）
+            // 触底仍溢出（极端超长内容）：恢复滚动 + maxHeight 钉到当前可用高度，卡内滚动兜底
             if (textEl.scrollHeight > textEl.clientHeight + 1) {
+                textEl.style.overflowY = 'auto';
                 try { textEl.style.maxHeight = Math.max(64, textEl.clientHeight) + 'px'; } catch(err) {}
             }
+            // 塞得下：保持 overflowY:hidden——内容不超、不出滚动条（防临界高度滚动条闪现挤窄文本）
         } catch(e) { /* 自适应失败不影响功能 */ }
     },
     _playCurrentSentence() {
@@ -7259,6 +7486,11 @@ function _xlsxColName(n) {
     while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - 1 - m) / 26; }
     return s;
 }
+// V113(需求1): definedName 里的工作表名引用——含空格/中文等特殊字符时按 OOXML 规范用单引号包裹（'生词本'!$2:$2）
+function _xlsxSheetRef(name) {
+    name = String(name == null ? 'Sheet1' : (name === '' ? 'Sheet1' : name)).replace(/'/g, "''");
+    return /[^A-Za-z0-9_]/.test(name) ? ("'" + name + "'") : name;
+}
 // UTF-8 编码（老浏览器无 TextEncoder 时手动编码兜底）
 const _utf8Encode = (typeof TextEncoder !== 'undefined')
     ? function(s) { return new TextEncoder().encode(s); }
@@ -7299,10 +7531,12 @@ function buildXlsx(rows, opts) {
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
         '</Relationships>');
 
+    // V113(需求1): 多页打印时每页顶端自动重复第 2 行列头——Print_Titles definedName（须在 </sheets> 之后）
     addFile('xl/workbook.xml',
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
         '<sheets><sheet name="' + _xmlEsc(opts.sheetName || 'Sheet1') + '" sheetId="1" r:id="rId1"/></sheets>' +
+        '<definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">' + _xlsxSheetRef(opts.sheetName) + '!$2:$2</definedName></definedNames>' +
         '</workbook>');
 
     addFile('xl/_rels/workbook.xml.rels',
@@ -7317,9 +7551,10 @@ function buildXlsx(rows, opts) {
     addFile('xl/styles.xml',
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-        '<fonts count="2">' +
+        '<fonts count="3">' +
         '<font><sz val="11"/><name val="Calibri"/></font>' +
         '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>' +
+        '<font><b/><sz val="14"/><color rgb="FF202124"/><name val="Calibri"/></font>' +
         '</fonts>' +
         '<fills count="3">' +
         '<fill><patternFill patternType="none"/></fill>' +
@@ -7337,30 +7572,40 @@ function buildXlsx(rows, opts) {
         '</border>' +
         '</borders>' +
         '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-        '<cellXfs count="4">' +
+        '<cellXfs count="5">' +
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
         '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
-        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' +
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
         '</cellXfs>' +
         '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
         '</styleSheet>');
 
-    // 工作表：冻结首行 + 列宽 + 横向打印一页宽（sheetPr/pageSetUpPr 配合 pageSetup fitToWidth）
+    // 工作表：V113(需求1) 冻结前两行（第 1 行总标题 + 第 2 行列头，滑动时固定）+ 列宽 + 横向打印一页宽
     let sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
         '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
-        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
         '<cols>';
     for (let c = 1; c <= NC; c++) {
         sheet += '<col min="' + c + '" max="' + c + '" width="' + (colWidths[c - 1] || 12) + '" customWidth="1"/>';
     }
     sheet += '</cols><sheetData>';
+    // V113(需求1): 第 1 行表格总标题——A1:末列 合并、14pt 加粗水平垂直居中（s=4）、行高 30；
+    // 原 8 列表头挪到第 2 行（行高显式翻倍 36）；数据行从第 3 行起、全部垂直居中（styles xf2）
+    const merges = [];
+    if (opts.title) {
+        merges.push('A1:' + _xlsxColName(NC) + '1');
+        sheet += '<row r="1" ht="30" customHeight="1"><c r="A1" s="4" t="inlineStr"><is><t xml:space="preserve">' + _xmlEsc(opts.title) + '</t></is></c></row>';
+    }
     rows.forEach(function(row, ri) {
-        sheet += '<row r="' + (ri + 1) + '">';
+        const rr = ri + (opts.title ? 2 : 1); // 实际行号：总标题占第 1 行、列头占第 2 行
+        const isHead = ri === 0;
+        sheet += '<row r="' + rr + '"' + (isHead ? ' ht="36" customHeight="1"' : '') + '>';
         row.forEach(function(cell, ci) {
-            const ref = _xlsxColName(ci + 1) + (ri + 1);
-            const style = ri === 0 ? ' s="1"' : ' s="2"';
+            const ref = _xlsxColName(ci + 1) + rr;
+            const style = isHead ? ' s="1"' : ' s="2"';
             if (cell && typeof cell === 'object' && Array.isArray(cell.rich)) {
                 // V110: 富文本例句——OpenXML Rich Text InlineStrings：目标词/短语原生包裹在
                 // <r><rPr><b/></rPr><t>词</t></r> 里，Excel/WPS/Numbers 打开都是原生加粗
@@ -7383,15 +7628,22 @@ function buildXlsx(rows, opts) {
     // 再用「📥 合并」按【单词+出处音频】双主键导回（合并侧对空单词行/AI 行自然跳过）
     let mergeXml = '';
     if (opts.aiPrompt) {
-        const blankR = rows.length + 1;
+        const blankR = rows.length + (opts.title ? 2 : 1); // V113(需求1): 总标题多占一行——空行行号随移
         const promptR = blankR + 1;
         sheet += '<row r="' + blankR + '"/>' +
-            '<row r="' + promptR + '" ht="64" customHeight="1"><c r="A' + promptR + '" s="3" t="inlineStr"><is><t xml:space="preserve">' + _xmlEsc(opts.aiPrompt) + '</t></is></c></row>';
-        mergeXml = '<mergeCells count="1"><mergeCell ref="A' + promptR + ':' + _xlsxColName(NC) + promptR + '"/></mergeCells>';
+            '<row r="' + promptR + '" ht="96" customHeight="1"><c r="A' + promptR + '" s="3" t="inlineStr"><is><t xml:space="preserve">' + _xmlEsc(opts.aiPrompt) + '</t></is></c></row>'; // V113(需求3): 行高 64→96——新提示词更长，防 Excel 内被裁断
+        merges.push('A' + promptR + ':' + _xlsxColName(NC) + promptR);
     }
+    if (merges.length) {
+        mergeXml = '<mergeCells count="' + merges.length + '">' + merges.map(function(m) { return '<mergeCell ref="' + m + '"/>'; }).join('') + '</mergeCells>';
+    }
+    // V113(需求1): 严格遵循 OOXML <worksheet> 子标签顺序 …mergeCells -> printOptions -> pageMargins -> pageSetup -> headerFooter：
+    // 打印页面水平居中 + 页脚「第 X 页，共 Y 页」（&amp;C 居中 &amp;P 当前页 &amp;N 总页数——XML 中 & 必须转义）
     sheet += '</sheetData>' + mergeXml +
+        '<printOptions horizontalCentered="1"/>' +
         '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
         '<pageSetup paperSize="9" orientation="' + (opts.landscape === false ? 'portrait' : 'landscape') + '" fitToWidth="1" fitToHeight="0"/>' +
+        '<headerFooter><oddFooter>&amp;C第 &amp;P 页，共 &amp;N 页</oddFooter></headerFooter>' +
         '</worksheet>';
     addFile('xl/worksheets/sheet1.xml', sheet);
 
@@ -7459,6 +7711,23 @@ function buildXlsx(rows, opts) {
     chunks.forEach(function(c) { outB.set(c, p); p += c.length; });
     return outB;
 }
+
+// ============================================================
+//  V113(需求5): ❓ 常用功能说明页——与生词本/查词同风格弹层
+//  右上角 ✕ / 点背景 / Esc 关闭；入口在顶部 navbar 与 ☰ 菜单抽屉
+// ============================================================
+const helpPage = {
+    open() {
+        const el = document.getElementById('help-pop');
+        if (!el) return;
+        el.classList.add('show');
+        try { const b = el.querySelector('.help-body'); if (b) b.scrollTop = 0; } catch(e) {}
+    },
+    close() {
+        const el = document.getElementById('help-pop');
+        if (el) el.classList.remove('show');
+    }
+};
 
 // ============================================================
 //  V84: 生词本 — 跨工程全局（localStorage 'shadow_v84_vocab'）
@@ -7663,6 +7932,7 @@ const vocabBook = {
     editNote(i) {
         const v = this.list()[i];
         if (!v) return;
+        this._rvNextClear(); // V113(需求2): prompt 是同步阻塞的——弹出前必须清自动下一张（关闭后旧定时器会立刻补触发切卡）；保存后重渲仍在背面由用户重新翻/等
         const val = prompt('📝 笔记：「' + (v.w || '') + '」\n（记用法/联想/易混点…留空保存=删除笔记）', v.note || '');
         if (val === null) return; // 取消
         const t = String(val).trim().slice(0, 500);
@@ -7683,6 +7953,7 @@ const vocabBook = {
     editCn(i) {
         const v = this.list()[i];
         if (!v) return;
+        this._rvNextClear(); // V113(需求2): 同 editNote——prompt 弹出前清自动下一张
         const val = prompt('释义：「' + (v.w || '') + '」\n（中文意思；留空保存=删除释义）', v.cn || '');
         if (val === null) return; // 取消
         const t = String(val).trim().slice(0, 200);
@@ -7709,6 +7980,7 @@ const vocabBook = {
         const wordEl = document.getElementById('dict-word');
         const body = document.getElementById('dict-body');
         if (!pop || !wordEl || !body) return;
+        this._rvNextClear(); // V113(需求2): 查词弹层打开期间严禁后台自动切卡——先清（closeDict 关掉后若仍在背面会重挂）
         this._dictIdx = i;
         this._dictFill = '';
         wordEl.textContent = '📖 ' + w;
@@ -7823,6 +8095,7 @@ const vocabBook = {
         this._dictTk++; // 作废在途请求的渲染
         const pop = document.getElementById('dict-pop');
         if (pop) pop.classList.remove('show');
+        try { if (this._rv && !this._rv.done && this._rv.flipped) this._rvNextArm(); } catch(eN) {} // V113(需求2): 查完词关弹层——仍在翻卡背面则自动下一张重新起算
     },
     // 入口按钮/面板计数。V94: 角标 class 化——预习/练习/编辑三个入口同步
     _updateBadge() {
@@ -7931,7 +8204,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 112, exportedAt: new Date().toISOString(), vocab: list }; // V112: 111→112（ph/cn/def 随词条对象整体携带）
+        const data = { type: 'shadow_vocab_backup', version: 113, exportedAt: new Date().toISOString(), vocab: list }; // V113: 112→113（ph/cn/def 随词条对象整体携带）
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
@@ -8045,7 +8318,10 @@ const vocabBook = {
         }
         return out;
     },
-    _parseVocabCsv(text) { // RFC 4180（引号转义/跨行字段/CRLF），去 BOM；返回行数组
+    // V113(复查2): 通用 RFC 4180 分隔符解析器——引号内换行属于单元格内容（跨行引号单元格 ""→" 转义），
+    // CSV(逗号) 与 TSV(制表符，电脑 Excel/Numbers 复制) 共用；从 Excel 复制"单元格内带换行的例句"
+    // 粘贴时不再被拆断成多行。去 BOM；返回行数组（不滤空行，调用方按需过滤）
+    _parseDelimited(text, delim) {
         text = String(text == null ? '' : text);
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
         const rows = [];
@@ -8056,13 +8332,16 @@ const vocabBook = {
                 if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
                 else field += c;
             } else if (c === '"') inQ = true;
-            else if (c === ',') { row.push(field); field = ''; }
+            else if (c === delim) { row.push(field); field = ''; }
             else if (c === '\r') { if (text[i + 1] === '\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
             else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
             else field += c;
         }
         if (field !== '' || row.length) { row.push(field); rows.push(row); }
-        return this._rowsToVocab(rows);
+        return rows;
+    },
+    _parseVocabCsv(text) { // RFC 4180（引号转义/跨行字段/CRLF），去 BOM；返回词条数组
+        return this._rowsToVocab(this._parseDelimited(text, ','));
     },
     _xmlUnesc(s) { // XML 实体反转义（amp 最后解——&amp;lt; 应得字面 &lt;）
         // V112(外审1): 补十六进制字符引用（&#x2019; 弯撇号等——十进制早支持，十六进制漏了）；
@@ -8884,7 +9163,7 @@ const vocabBook = {
                 '</div></div></div>';
             return;
         }
-        this._rv = { queue: pool, pos: 0, flipped: false, unknownRound: [], total: pool.length, graduated: 0 };
+        this._rv = { queue: pool, pos: 0, flipped: false, unknownRound: [], skippedRound: [], total: pool.length, graduated: 0 }; // V113(需求2): skippedRound——自动跳过（未判定）的词，战报从认识数里扣除
         this._rvShowCard();
     },
     reviewFlip() {
@@ -8892,6 +9171,7 @@ const vocabBook = {
         this._rvFlipClear(); // 手动翻面取消自动翻牌
         this._rv.flipped = true;
         this.reviewRender();
+        this._rvNextArm(); // V113(需求2): 已到背面——起算「N 秒后自动下一张」倒计时（0=关不启动）
         // V99(用户拍板): 翻面只播原音（正面已 TTS 读过词）；例句填空模式正面播过不重复；
         // V100(用户1): 「翻面读句」设为关时整段不触发（想听点背面例句或「▶ 听原句」）
         if (this._rvMode() !== 'blank' && this._rvRead()) { try { this.hearSentence(this._rv.queue[this._rv.pos]); } catch(e) {} }
@@ -8914,7 +9194,7 @@ const vocabBook = {
         // 切到下一张（或 setRvMode/reviewRestart 换卡）时，旧卡的翻牌定时器不清的话：新卡还在读音
         // 期间尚未 arm，_rvFlipTk 没变、新卡未翻面，代数校验全过——旧定时器到点会把没读完音的新卡提前翻面
         this._rvFlipClear();
-        if (this._rv && !this._rv.done) this._rv.detailOpen = false; // V110: 新卡默认收起详情（“刚编辑笔记/拉英释自动展开”只在当卡生效）
+        if (this._rv && !this._rv.done) this._rv.detailOpen = true; // V113(需求2): 新卡背面默认展开详情（句译/英释/笔记直接可见；原 V110 默认收起——用户仍可点胶囊「收起详情 ▴」手动收起）
         this.reviewRender();
         if (!this._rv || this._rv.done) return;
         const cur = this._rv.queue[this._rv.pos];
@@ -8978,6 +9258,7 @@ const vocabBook = {
         try { const m = document.getElementById('rv-mode-sel'); if (m) m.value = this._rvMode(); } catch(e) {}
         try { const f = document.getElementById('rv-flip-sel'); if (f) f.value = String(this._rvFlipSec()); } catch(e) {}
         try { const r = document.getElementById('rv-read-sel'); if (r) r.value = this._rvRead() ? '1' : '0'; } catch(e) {}
+        try { const nx = document.getElementById('rv-next-sel'); if (nx) nx.value = String(this._rvNextSec()); } catch(eN) {} // V113(需求2): 自动下一张秒数（下拉在练习页 ☰ 菜单抽屉）
         this._syncDueBtn(); // V110: 只练到期挪到 Tab 行按钮（原 #rv-due-sel 已删，此处改为同步按钮态）
     },
     // V99: 自动翻牌——默认 3s 自动翻面；手动翻/判卡/切 Tab/关面板全清；token 防过期触发。
@@ -9000,7 +9281,52 @@ const vocabBook = {
         if (this._rvReadTmr) { clearTimeout(this._rvReadTmr); this._rvReadTmr = null; } // V102(用户1): 读音等待兜底定时器一并清
         this._rvFlipTk = (this._rvFlipTk || 0) + 1;
         this._rvReadTk = (this._rvReadTk || 0) + 1; // V102(用户1): 读音结束回调代数同步作废——onend 晚到不再起算
+        this._rvNextClear(); // V113(需求2): 自动下一张倒计时一并作废——判卡/切卡/切 Tab/关面板/新卡渲染全走这里
     },
+    // ============ V113(需求2): 翻卡后 N 秒自动下一张（持久化 shadow_v113_rv_next，默认 6 秒，0=关；并入全量备份） ============
+    // 核心规则：自动下一张 ≠ 认识——纯推进（pos++，到队尾进战报），绝不触发「认识/不认识」判定、
+    // 绝不改 SRS 间隔档位（1→3→7→15 天）和连击；防打断：背面期间任何主动交互都重置/清除计时
+    // （点读音重听/点词句重放/笔记/查词/展开收起详情/点外链=重置；prompt 编辑与 #dict-pop 打开=清除，
+    //  prompt 是同步阻塞的，关闭后旧定时器会立刻补触发——必须在弹出前就清掉）
+    _rvNextSec() { const s = parseFloat(localStorage.getItem('shadow_v113_rv_next')); return isFinite(s) ? s : 6; },
+    setRvNext(v) {
+        safeSetItem('shadow_v113_rv_next', String(v));
+        ui.toast(parseFloat(v) > 0 ? ('🎴 翻到背面 ' + parseFloat(v) + ' 秒后自动下一张（纯跳过：不计认识、不改 SRS 间隔）') : '🎴 已关闭「翻卡后自动下一张」');
+        if (!(this._rv && !this._rv.done)) return;
+        if (parseFloat(v) > 0 && this._rv.flipped) this._rvNextArm(); // 当前正在背面——按新秒数重挂（正面不预挂，翻面时自会挂）
+        else this._rvNextClear();
+    },
+    _rvNextArm() {
+        this._rvNextClear();
+        const s = this._rvNextSec();
+        if (!s || s <= 0 || !this._rv || this._rv.done || !this._rv.flipped) return; // 只在背面起算；0=关
+        try { const dp = document.getElementById('dict-pop'); if (dp && dp.classList.contains('show')) return; } catch(eD) {} // 查词弹层开着不挂——closeDict 后重挂
+        const tk = (this._rvNextTk = (this._rvNextTk || 0) + 1); // token 代数——判卡/切卡/关面板/交互重置全作废旧定时器
+        this._rvNextTmr = setTimeout(() => {
+            if (tk !== this._rvNextTk || !this._rv || this._rv.done) return;
+            const rv = this._rv;
+            if (!rv.flipped) return;
+            const cur = rv.queue[rv.pos];
+            if (cur === undefined) return;
+            // 记跳过（去重；已被判「不认识」而重入队的词不算跳过——它有判定归属）
+            if (rv.unknownRound.indexOf(cur) === -1) {
+                if (!rv.skippedRound) rv.skippedRound = [];
+                if (rv.skippedRound.indexOf(cur) === -1) rv.skippedRound.push(cur);
+            }
+            rv.pos++;
+            rv.flipped = false;
+            if (rv.pos >= rv.queue.length) { rv.done = true; this._rvFlipClear(); this._stopAllAudio(); } // 到队尾进战报（同 reviewMark 收口）
+            this._rvShowCard();
+        }, s * 1000);
+    },
+    _rvNextClear() {
+        if (this._rvNextTmr) { clearTimeout(this._rvNextTmr); this._rvNextTmr = null; }
+        this._rvNextTk = (this._rvNextTk || 0) + 1;
+    },
+    // V113(需求2): 背面点词/点例句——重放的同时重置自动下一张倒计时（主动交互）
+    _rvWordTap(i) { try { this._rvNextArm(); } catch(e0) {} try { this.speak(i); } catch(e) {} },
+    _rvSentTap(i) { try { this._rvNextArm(); } catch(e0) {} try { this.hearSentence(i); } catch(e) {} },
+    
     // ok=true 认识出队；false 不认识放队尾本轮再看（记录进 unknownRound）
     reviewMark(ok) {
         try { this._unlockHearEl(); } catch(e) {} // V101(外审一2): 点判定是真手势——下一张卡的听原句链提前解锁
@@ -9008,6 +9334,8 @@ const vocabBook = {
         const rv = this._rv;
         const cur = rv.queue[rv.pos];
         if (cur === undefined) return;
+        // V113(需求2): 该词已被人工判定（认识/不认识）——从自动跳过集合移除，战报不重复扣（known = total - unk - skipped 三集合互斥）
+        if (rv.skippedRound) { const sk = rv.skippedRound.indexOf(cur); if (sk >= 0) rv.skippedRound.splice(sk, 1); }
         // V99(毕业): "认识"推间隔链；"不认识"清零连击、已毕业的回池
         // V107(提案5·SRS): 认识推进间隔链 1→3→7→15 天（due=下次到期时间戳）
         // V108(外审1): 毕业只看 ivl>=5（走完整条链）——原来还看 v.ok>=3，但 ok 与 ivl 同步 +1/同清零，
@@ -9051,7 +9379,7 @@ const vocabBook = {
         if (onlyUnknown && rv && rv.unknownRound && rv.unknownRound.length)
             queue = rv.unknownRound.filter(i => i < list.length);
         if (!queue.length) return this.tabList();
-        this._rv = { queue: queue, pos: 0, flipped: false, unknownRound: [], total: queue.length, graduated: 0, done: false };
+        this._rv = { queue: queue, pos: 0, flipped: false, unknownRound: [], skippedRound: [], total: queue.length, graduated: 0, done: false }; // V113(需求2): 同 tabReview——补跳过记录
         this._rvShowCard();
     },
     reviewRender() {
@@ -9062,12 +9390,15 @@ const vocabBook = {
         const list = this.list();
         if (!list.length) { el.innerHTML = '<div class="vocab-empty">生词本已空，先在预习/练习里点词入本</div>'; return; } // V97(外审2): 清空后残卡防御
         if (rv.done || rv.pos >= rv.queue.length) {
-            // 战报
+            // 战报。V113(需求2): 自动跳过的卡未经过任何「认识/不认识」判定——本轮认识必须扣掉跳过数
+            // （known = total - unk - skipped），不把跳过误算成认识；有跳过则如实显示
             const unk = rv.unknownRound.length;
+            const skipped = (rv.skippedRound || []).length;
+            const known = Math.max(0, rv.total - unk - skipped);
             el.innerHTML = '<div class="rv-wrap"><div class="rv-done">' +
                 '<div style="font-size:44px;">🎉</div>' +
-                '<div class="rv-done-num">' + (rv.total - unk) + '/' + rv.total + '</div>' +
-                '<div style="font-size:13px;color:#5F6368;margin:6px 0 2px;">本轮认识 ' + (rv.total - unk) + ' 个词，不认识 ' + unk + ' 个</div>' +
+                '<div class="rv-done-num">' + known + '/' + rv.total + '</div>' +
+                '<div style="font-size:13px;color:#5F6368;margin:6px 0 2px;">本轮认识 ' + known + ' 个词，不认识 ' + unk + ' 个' + (skipped ? '，自动跳过 ' + skipped + ' 个' : '') + '</div>' +
                 (rv.graduated ? '<div style="font-size:12px;color:#1E8E3E;margin:2px 0;">🎓 毕业 ' + rv.graduated + ' 个（走完 1→3→7→15 天间隔链，不再进默认复习）</div>' : '') +
                 '<div style="font-size:12px;color:#999;margin-bottom:14px;">不认识的词已排在队列里再战一轮</div>' +
                 '<div class="rv-ops">' +
@@ -9103,28 +9434,28 @@ const vocabBook = {
                 ? '<div class="rv-cn" data-fit onclick="vocabBook.editCn(' + idx + ')" title="点修改中文释义">' + ui.escapeHTML(v.cn) + '</div>'
                 : '<div class="rv-cn rv-cn-empty" onclick="vocabBook.editCn(' + idx + ')" title="点补充中文释义（AI 合并回填也会进来）">＋ 点此补充中文释义</div>';
             let detailRows = '';
-            // V112(外审2): 详情行去掉 data-fit——原被 _fitCard 的 TXT=[24,20,16,14] 阶梯放大到 24px
-            // （设计是 13px 紧凑排版），展开详情时句译/英释/笔记字大得喧宾夺主；保持 .rv-detail 的 13px
-            if (v.tr) detailRows += '<div class="rv-row"><span class="rv-lbl">译</span>' + ui.escapeHTML(v.tr) + '</div>';
-            if (v.def) detailRows += '<div class="rv-row" style="color:#5F6368;"><span class="rv-lbl">英释</span>' + ui.escapeHTML(v.def) + '</div>';
-            if (v.note) detailRows += '<div class="rv-row rv-note-row" onclick="vocabBook.editNote(' + idx + ')" title="点编辑笔记"><span class="rv-lbl">📝</span>' + ui.escapeHTML(v.note) + '</div>';
+            // V113(需求2): 详情独立高对比色块——句译(蓝)/笔记(红·点可编辑)/英释(灰绿)，与橘红中文释义一眼区分；
+            // V112(外审2) 的去 data-fit 规则保留（保持 .rv-detail 13px 紧凑排版，不被 _fitCard 放大）
+            if (v.tr) detailRows += '<div class="rv-block rv-block-tr"><span class="rv-btag rv-btag-tr">译</span><div class="rv-btext">' + ui.escapeHTML(v.tr) + '</div></div>';
+            if (v.def) detailRows += '<div class="rv-block rv-block-def"><span class="rv-btag rv-btag-def">📖 英释</span><div class="rv-btext">' + ui.escapeHTML(v.def) + '</div></div>';
+            if (v.note) detailRows += '<div class="rv-block rv-block-note" onclick="vocabBook.editNote(' + idx + ')" title="点编辑笔记"><span class="rv-btag rv-btag-note">笔记</span><div class="rv-btext">' + ui.escapeHTML(v.note) + '</div></div>';
             if (!detailRows) detailRows = '<div style="color:#bbb;">暂无句译/英释/笔记——点下方 ✏️ 补笔记、📖 查词拉英释；AI 合并回填也会进来</div>';
             face = '<div class="rv-face">' +
                 '<div class="rv-face-in">' + // V112(外审2): 内容包裹层——margin:auto 0 溢出安全垂直居中
                 '<div class="rv-head">' +
                     // V112(外审2): 背面词面可点读音——blank 模式底部固定栏只有「🔊 重听」（播原句），
                     // 翻面后想单独听单词发音原来没有入口；背面无翻面 onclick 不会冒泡误触
-                    '<span class="rv-w rv-w-click" data-fit="big" onclick="vocabBook.speak(' + idx + ')" title="点我读单词">' + ui.escapeHTML(v.w || '') + '</span>' + ph + chip +
+                    '<span class="rv-w rv-w-click" data-fit="big" onclick="vocabBook._rvWordTap(' + idx + ')" title="点我读单词">' + ui.escapeHTML(v.w || '') + '</span>' + ph + chip +
                 '</div>' +
                 cnHtml +
-                (v.s ? '<div class="rv-sent" data-fit style="cursor:pointer;" onclick="vocabBook.hearSentence(' + idx + ')" title="点例句重放原音">' + this._hlWord(v.s, v.w) + '<span class="rv-spk">🔊</span></div>' : '') +
+                (v.s ? '<div class="rv-sent" data-fit style="cursor:pointer;" onclick="vocabBook._rvSentTap(' + idx + ')" title="点例句重放原音">' + this._hlWord(v.s, v.w) + '<span class="rv-spk">🔊</span></div>' : '') +
                 '<button class="rv-fold' + (open ? ' open' : '') + '" onclick="vocabBook._rvToggleDetail()">' + (open ? '收起详情 ▴' : '展开详情 (句译·英释·笔记) ▾') + '</button>' +
                 '<div class="rv-detail"' + (open ? '' : ' hidden') + '>' + detailRows + '</div>' +
                 '<div class="rv-quick">' +
                     '<button onclick="vocabBook.editNote(' + idx + ')">✏️ 笔记</button>' +
                     '<button onclick="vocabBook.lookup(' + idx + ')" title="Free Dictionary API 在线抓音标/英释，自动回填 v.ph/v.def">📖 查词</button>' +
-                    '<a href="https://dict.youdao.com/w/' + encodeURIComponent(v.w || '') + '" target="_blank" rel="noopener" title="有道词典网页版/可唤醒有道 App">有道</a>' +
-                    '<a href="https://dictionary.cambridge.org/dictionary/english-chinese-simplified/' + encodeURIComponent(v.w || '') + '" target="_blank" rel="noopener" title="剑桥英汉双解词典">剑桥</a>' +
+                    '<a href="https://dict.youdao.com/w/' + encodeURIComponent(v.w || '') + '" target="_blank" rel="noopener" title="有道词典网页版/可唤醒有道 App" onclick="vocabBook._rvNextArm()">有道</a>' +
+                    '<a href="https://dictionary.cambridge.org/dictionary/english-chinese-simplified/' + encodeURIComponent(v.w || '') + '" target="_blank" rel="noopener" title="剑桥英汉双解词典" onclick="vocabBook._rvNextArm()">剑桥</a>' +
                 '</div>' +
                 '</div></div>';
         } else {
@@ -9155,10 +9486,12 @@ const vocabBook = {
     _rvToggleDetail() {
         if (!this._rv || this._rv.done) return;
         this._rv.detailOpen = !this._rv.detailOpen;
+        this._rvNextArm(); // V113(需求2): 展开/收起详情是主动交互——倒计时重置（正在看细看，别急着切卡）
         this.reviewRender();
     },
     // V110(规格二·3): 底部固定栏 🔊——填空模式=重播挖空例句原音（不剧透单词拼读），词面/听音=TTS 读词
     _rvHearBtn(i) {
+        try { this._rvNextArm(); } catch(eN) {} // V113(需求2): 主动重听——背面时自动下一张倒计时重置（正面 arm 自检不通过，无副作用）
         if (this._rvMode() === 'blank') { try { this.hearSentence(i); } catch(e) {} }
         else { try { this.speak(i); } catch(e) {} }
     },
@@ -9264,6 +9597,9 @@ const vocabBook = {
     close() {
         document.getElementById('vocab-modal').classList.remove('show');
         try { this.closeDict(); } catch(eD) {} // V109(外审5): 查词弹层同步关——原来 Esc 关掉生词本，弹层还留在屏幕上
+        try { this._hideClearPop(); } catch(eC) {} // V113(复查1): 三个子弹层一并收——防 Esc 关掉生词本后残留在隐藏面板里，下次打开还挂着
+        try { this._hideCopyPop(); } catch(eK) {}
+        try { this._hidePastePop(); } catch(eP) {}
         this._rvFlipClear(); // V99: 自动翻牌定时器
         this._stopAllAudio(); // V99/V100/V101: 停缓存直放+Level 1 主音频+TTS（V102(外审一3) 统一收口，原四行散写并入）
         this._hearTk = (this._hearTk || 0) + 1; // V100: 在途 Level 2 异步链作废（不再关面板后出声/写回 _hearUrls）
@@ -9322,16 +9658,28 @@ const vocabBook = {
                 sEl.addEventListener('click', () => this.hearSentence(i));
                 main.appendChild(sEl);
             }
-            // V110: 行3——句译/笔记/英释混排，有其一才渲染整行（有笔记点可编辑）
-            const l3 = [];
-            if (v.tr) l3.push('译 ' + v.tr);
-            if (v.note) l3.push('📝 ' + v.note);
-            if (v.def) l3.push('📖 ' + v.def);
-            if (l3.length) {
-                const l3El = document.createElement('div'); l3El.className = 'vocab-item-l3';
-                l3El.textContent = l3.join('  ·  ');
-                if (v.note) { l3El.title = '点编辑笔记'; l3El.style.cursor = 'pointer'; l3El.addEventListener('click', () => this.editNote(i)); }
-                main.appendChild(l3El);
+            // V113(需求2): 行3 改独立高对比色块——句译(蓝)/笔记(红·点可编辑)/英释(灰绿) 各自成块，
+            // 不再用「· 」混拼成一条灰字；仅有内容才渲染对应块
+            if (v.tr) {
+                const trEl = document.createElement('div'); trEl.className = 'vocab-item-tr';
+                const trTag = document.createElement('span'); trTag.className = 'vtag vtag-tr'; trTag.textContent = '译';
+                const trTxt = document.createElement('span'); trTxt.className = 'vocab-item-txt'; trTxt.textContent = v.tr;
+                trEl.appendChild(trTag); trEl.appendChild(trTxt); main.appendChild(trEl);
+            }
+            if (v.note) {
+                const ntEl = document.createElement('div'); ntEl.className = 'vocab-item-note';
+                ntEl.title = '点编辑笔记（用法/联想/易混点）';
+                const ntTag = document.createElement('span'); ntTag.className = 'vtag vtag-note'; ntTag.textContent = '笔记';
+                const ntTxt = document.createElement('span'); ntTxt.className = 'vocab-item-txt'; ntTxt.textContent = v.note;
+                ntEl.appendChild(ntTag); ntEl.appendChild(ntTxt);
+                ntEl.addEventListener('click', () => this.editNote(i));
+                main.appendChild(ntEl);
+            }
+            if (v.def) {
+                const dfEl = document.createElement('div'); dfEl.className = 'vocab-item-def';
+                const dfTag = document.createElement('span'); dfTag.className = 'vtag vtag-def'; dfTag.textContent = '📖 英释';
+                const dfTxt = document.createElement('span'); dfTxt.className = 'vocab-item-txt'; dfTxt.textContent = v.def;
+                dfEl.appendChild(dfTag); dfEl.appendChild(dfTxt); main.appendChild(dfEl);
             }
             // V110(规格二·4): 出处标签智能隐藏——筛选为「当前音频」/某指定音频时彻底隐藏（避免全页刷屏），仅「全部音频」时展示
             const showSrc = (this._filterAudio || 'all') === 'all';
@@ -9464,9 +9812,11 @@ const vocabBook = {
         sub.forEach(function(v, i) {
             md += '| ' + (i + 1) + ' | ' + esc(v.w) + ' | ' + esc(v.ph) + ' | ' + esc(v.cn) + ' | ' + esc(v.s) + ' | ' + esc(v.tr) + ' | ' + esc(v.note) + ' | ' + esc(v.src) + ' |\n';
         });
+        // V113(需求3): 提示词统一升级——融入笔记列习语/俚语/背景/复杂语法分析要求（use Chinese to explain…）
+        // 与单行防折约束（①②③ 同一行内、150 字内），并明确提醒不改第 2 列「单词」与第 8 列「出处音频」
         const prompt = (which === 'miss'
-            ? '这是我英语跟读的生词表（Markdown 表格），只包含待补全的词。请在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译，「笔记」列如有易混点或巧记法请帮我补充；保持其他列内容与表格结构不变，输出完整表格。'
-            : '这是我英语跟读的生词表（Markdown 表格）。请在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译，「笔记」列如有易混点或巧记法请帮我补充；已填好的保持不变，保持表格结构不变，输出完整表格。');
+            ? '这是我英语跟读的生词表（Markdown 表格），只包含待补全的词。请先通读剧集的上下文后，也就是我上传给你的或者粘贴给你的，在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译；「笔记」列如有易混词辨析、熟词僻义或巧记法请帮我补充，并 use Chinese to explain any idioms, slang, background knowledge, or complex grammar in the example sentence（请用 ①②③ 写在同一行内勿在单元格内换行，简明精炼控制在 150 字以内）；保持其他列内容与表格结构不变，输出完整表格。特别提醒：直接以 Markdown 表格输出，不要修改第 2 列「单词」和第 8 列「出处音频」'
+            : '这是我英语跟读的生词表（Markdown 表格）。请先通读剧集的上下文后，也就是我上传给你的或者粘贴给你的，在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译；「笔记」列如有易混词辨析、熟词僻义或巧记法请帮我补充，并 use Chinese to explain any idioms, slang, background knowledge, or complex grammar in the example sentence（请用 ①②③ 写在同一行内勿在单元格内换行，简明精炼控制在 150 字以内）；已填好的保持不变；保持其他列内容与表格结构不变，输出完整表格。特别提醒：直接以 Markdown 表格输出，不要修改第 2 列「单词」和第 8 列「出处音频」');
         copyTextToClipboard(prompt + '\n\n' + md,
             '📋 已复制' + label + ' ' + sub.length + ' 词 + AI 提示词——粘给 AI，填好后用「📋 粘贴更新」导回');
     },
@@ -9536,7 +9886,10 @@ const vocabBook = {
         }
         // 2) Markdown 表格（AI 最常输出）：只取以 | 开头的行；忽略 |---|---| 对齐行；
         //    单元格去首尾空白与 **粗体**/`代码` 轻修饰（音标 /…/ 的斜杠不是修饰符，原样保留）
-        const mdLines = text.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.charAt(0) === '|'; });
+        //    V113(复查2): 检测到 |---|---| 表格对齐分隔行时，兼容省略行首 | 的标准管道符表格行（如「序号 | 单词 | …」）
+        const allLines = text.split(/\r?\n/).map(function(l) { return l.trim(); });
+        const hasSepLine = allLines.some(function(l) { return l.indexOf('|') >= 0 && l.indexOf('-') >= 0 && /^[\s|:-]+$/.test(l); });
+        const mdLines = allLines.filter(function(l) { return l.charAt(0) === '|' || (hasSepLine && l.indexOf('|') >= 0); });
         if (mdLines.length >= 2) {
             const rows = [];
             for (let li = 0; li < mdLines.length; li++) {
@@ -9557,9 +9910,10 @@ const vocabBook = {
                 if (e2 && e2.length) return e2;
             }
         }
-        // 3) TSV（iPad Numbers / Excel 全选复制——制表符分隔）
+        // 3) TSV（iPad Numbers / Excel 全选复制——制表符分隔）。V113(复查2): 改走 _parseDelimited——
+        //    Excel/Numbers 单元格内换行的例句（引号包裹的跨行单元格）不再被拆断成多行
         if (text.indexOf('\t') >= 0) {
-            const rows = text.split(/\r?\n/).map(function(l) { return l.split('\t'); })
+            const rows = this._parseDelimited(text, '\t')
                 .filter(function(r) { return r.some(function(c) { return String(c).trim(); }); });
             const e3 = this._rowsToVocab(rows);
             if (e3 && e3.length) return e3;
@@ -9652,11 +10006,17 @@ const vocabBook = {
             list.forEach((v, i) => { // V110: 箭头函数——_sentRuns 需要 this
                 rows.push([i + 1, v.w || '', v.ph || '', v.cn || '', { rich: this._sentRuns(v.s, v.w) }, v.tr || '', v.note || '', v.src || '']);
             });
+            // V113(需求1): 第 1 行表格总标题——取本次导出列表里第一个非空「出处音频」（如 小谢尔顿S01.0764k.mp3），全部为空时兜底「生词本」
+            let xTitle = '生词本';
+            for (let ti = 0; ti < list.length; ti++) { const ts = String(list[ti].src || '').trim(); if (ts) { xTitle = ts; break; } }
+            // V113(需求3): 底部 AI 提示词与「📋 复制AI」统一更新（融入笔记列习语/俚语/背景/复杂语法分析 + 单行防折约束）
+            const aiPrompt = '这是我英语跟读的生词表（Markdown 表格），只包含待补全的词。请先通读剧集的上下文后，也就是我上传给你的或者粘贴给你的，在「音标」列填入国际音标，在「中文意思」列结合「例句」语境填入精准简明地道的中文释义，「例句翻译」列结合上下文翻译；「笔记」列如有易混词辨析、熟词僻义或巧记法请帮我补充，并 use Chinese to explain any idioms, slang, background knowledge, or complex grammar in the example sentence（请用 ①②③ 写在同一行内勿在单元格内换行，简明精炼控制在 150 字以内）；保持其他列内容与表格结构不变，输出完整表格。特别提醒：直接以 Markdown 表格输出，不要修改第 2 列「单词」和第 8 列「出处音频」';
             const bytes = buildXlsx(rows, {
                 sheetName: '生词本',
+                title: xTitle,
                 colWidths: [6, 18, 16, 26, 58, 36, 24, 22],
                 landscape: true,
-                aiPrompt: '这是我英语跟读的生词表，请在第 3 列（音标）填入国际音标，在第 4 列（中文意思）结合第 5 列例句语境和我提供的完整文档上下文（如有）填入精准简明地道的中文释义，第六列也结合上下文翻译下，第 7 列（笔记）如果有易混点或巧记法请帮我补充，保持其他列内容及表格结构不变输出给我。'
+                aiPrompt: aiPrompt
             });
             this._download(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 this._exportBaseName() + (scope.scoped ? '_' + scope.n + '词' : '') + '.xlsx',
@@ -10289,6 +10649,7 @@ document.getElementById('audio-file').addEventListener('change', e => {
         // 重置会话统计计数（与 loadFromUrl/restoreProgress 保持一致）
         _sessionCounted = false; _sessionSec = 0;
         try { app._resetShiftForNewAudio(); } catch(eSh) {} // V100(外审4): 本地导入切音频——平移会话状态重置
+        app._edHist = []; try { app._edSyncUndoBtns(); } catch(eH) {} // V113(需求6): 本地导入 MP3——撤销栈清空（用户拍板：切音频后旧字幕编辑历史不再回溯）
         const mainAudioEl = document.getElementById('main-audio'); 
         mainAudioEl.src = state._audioObjectUrl;
         mainAudioEl.dataset.name = f.name; // 记录文件名用于生成预习进度指纹
@@ -10390,6 +10751,12 @@ document.addEventListener('visibilitychange', () => {
 })();
 
 document.addEventListener('keydown', e => {
+    // V113(需求5): 说明页弹层开着——Esc 只关它，其余按键不透传（它从 navbar/菜单打开时生词本可能在下层，优先关最上层）
+    const _hp = document.getElementById('help-pop');
+    if (_hp && _hp.classList.contains('show')) {
+        if (e.code === 'Escape') { e.preventDefault(); try { helpPage.close(); } catch(errH) {} }
+        return;
+    }
     // V84.1: 生词本面板打开时——Escape 关闭，其余按键不透传到练习/预习（防看着生词本按空格误播音频）；
     // V99: 翻卡 Tab 下加复习快捷键——空格/回车=翻牌、←=不认识、→=认识、R=重听（填空模式 R 屏蔽防剧透）
     const _vm = document.getElementById('vocab-modal');
@@ -10404,6 +10771,18 @@ document.addEventListener('keydown', e => {
         const _cp = document.getElementById('vocab-clear-pop');
         if (_cp && _cp.classList.contains('show')) {
             if (e.code === 'Escape') { e.preventDefault(); try { vocabBook._hideClearPop(); } catch(errC) {} }
+            return;
+        }
+        // V113(复查1): 复制范围弹层开着——Esc 只关它，其余按键不透传（对齐 dict-pop/clear-pop）
+        const _kop = document.getElementById('vocab-copy-pop');
+        if (_kop && _kop.classList.contains('show')) {
+            if (e.code === 'Escape') { e.preventDefault(); try { vocabBook._hideCopyPop(); } catch(errK) {} }
+            return;
+        }
+        // V113(复查1): 粘贴更新弹层开着——Esc 只关它；textarea 须正常响应空格/回车/方向键（全部不透传到底层翻卡快捷键）
+        const _ppp = document.getElementById('vocab-paste-pop');
+        if (_ppp && _ppp.classList.contains('show')) {
+            if (e.code === 'Escape') { e.preventDefault(); try { vocabBook._hidePastePop(); } catch(errP) {} }
             return;
         }
         if (e.code === 'Escape') { e.preventDefault(); try { vocabBook.close(); } catch(err) {} }
@@ -11544,18 +11923,35 @@ function _selAutoRouter(ev) {
             return !!(el && t && el.contains(t));
         } catch(e) { return false; }
     };
+    // V113(复查3): PC 端拖选到句尾常滑出文本节点、落到外层字幕盒内空白处松手——只要松手目标在
+    // 对应字幕外盒内（且不在 button/select/input/textarea 上）且选区仍在文本内，照常武装自动入本
+    // 定时器；点到盒外的按钮仍清表不误触发（仅鼠标分支生效，触屏选柄本就在文本内）
+    const inPreviewBox = function(t) {
+        try {
+            const box = document.getElementById('preview-sentence-box');
+            if (!box || !t || !box.contains(t)) return false;
+            return !(t.closest && t.closest('button,select,input,textarea'));
+        } catch(e) { return false; }
+    };
+    const inPracticeBox = function(t) {
+        try {
+            const box = document.getElementById('text-container');
+            if (!box || !t || !box.contains(t)) return false;
+            return !(t.closest && t.closest('button,select,input,textarea'));
+        } catch(e) { return false; }
+    };
     const tgt = (ev && ev.target) || null;
     try {
         const pvw = document.getElementById('preview-view');
         if (pvw && pvw.classList.contains('active') && !document.getElementById('preview-focus-phase').classList.contains('active')) {
-            if (previewMode._mainTextSelection() && (inPreviewText(tgt) || !isTouch && tgt && tgt.closest && tgt.closest('#pv-sel-add'))) previewMode._armSelAuto(isTouch ? 1200 : 500);
+            if (previewMode._mainTextSelection() && (inPreviewText(tgt) || !isTouch && tgt && tgt.closest && tgt.closest('#pv-sel-add') || !isTouch && inPreviewBox(tgt))) previewMode._armSelAuto(isTouch ? 1200 : 500);
             else previewMode._clearSelAuto();
             return;
         }
     } catch(e) {}
     try {
         if (document.getElementById('practice-view').classList.contains('active')) {
-            if (vocabBook._practiceSelection() && (inPracticeText(tgt) || !isTouch && tgt && tgt.closest && tgt.closest('#pr-sel-add'))) vocabBook._armPrAuto(isTouch ? 1200 : 500);
+            if (vocabBook._practiceSelection() && (inPracticeText(tgt) || !isTouch && tgt && tgt.closest && tgt.closest('#pr-sel-add') || !isTouch && inPracticeBox(tgt))) vocabBook._armPrAuto(isTouch ? 1200 : 500);
             else vocabBook._clearPrAuto();
         }
     } catch(e) {}
