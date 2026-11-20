@@ -87,13 +87,13 @@
 //         so the existing fallback lookup chain is untouched.
 //      2) Fetch race: when the network settles before the 3s timer fires, clearTimeout now cancels the
 //         pending fromCache() lookup instead of running it pointlessly after the race is over.
-//      3) Cache name bumped to v32. Registration in index.html passes updateViaCache:'none' (the SW
+//      3) Cache name bumped to v33. Registration in index.html passes updateViaCache:'none' (the SW
 //         script update check bypasses HTTP cache; older browsers ignore the option).
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v112_offline_v32';
+var CACHE_NAME = 'shadow_v113_offline_v33';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
