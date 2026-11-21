@@ -94,11 +94,21 @@
 //         preview sentence-jump dropdown; .ass/.ssa and .lrc subtitle parsing with UTF-16 BOM import;
 //         local-import subtitle slots accept .ass/.ssa/.lrc). No SW logic change - cache bump forces
 //         refresh only.
+// V115: 1) Old-cache migration loop in install now also handles redirected responses: when migrating
+//         a page response with redirected=true, rebuild a clean Response (same body/status/headers)
+//         before fresh.put(), aligned with the V112 fetch precache fix - respondWith() with a
+//         redirected response is rejected as a network error on some engines, which would silently
+//         drop that migrated entry.
+//      2) Cache name bumped to v35 with V115 (full-play resume breakpoint + lock-screen/headset
+//         track switching keeps continuous modes + focus-phase blind listen & last-rep reveal +
+//         copy-for-AI attaches full subtitles + flashcard undo/pin/edit-word/swipe/due badge +
+//         server-dir memory & next-episode + cache-page search/sort + in-place sentence edit +
+//         timestamp overlap soft warning). No other SW logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v114_offline_v34';
+var CACHE_NAME = 'shadow_v115_offline_v35';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -123,7 +133,19 @@ self.addEventListener('install', function(event) {
                         return oc.keys().then(function(reqs) {
                             return Promise.all(reqs.map(function(r) {
                                 return oc.match(r).then(function(resp) {
-                                    if (resp && resp.ok) return fresh.put(keyOf(r.url), resp); // V94: normalize key on migration
+                                    if (!resp || !resp.ok) return null;
+                                    // V115: redirected responses must not be stored as-is - respondWith()
+                                    // rejects them as network errors on some engines. Rebuild a clean
+                                    // Response (same body/status/headers) before putting, same as the
+                                    // V112 fetch precache path.
+                                    if (resp.redirected) {
+                                        return fresh.put(keyOf(r.url), new Response(resp.body, {
+                                            status: resp.status,
+                                            statusText: resp.statusText,
+                                            headers: resp.headers
+                                        }));
+                                    }
+                                    return fresh.put(keyOf(r.url), resp); // V94: normalize key on migration
                                 });
                             }));
                         });
