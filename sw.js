@@ -104,11 +104,24 @@
 //         copy-for-AI attaches full subtitles + flashcard undo/pin/edit-word/swipe/due badge +
 //         server-dir memory & next-episode + cache-page search/sort + in-place sentence edit +
 //         timestamp overlap soft warning). No other SW logic change.
+// V115.1: Cache name bumped to v36. Bugfix release for the V115 review findings - no SW logic change:
+//      1) Cache page crashed on open (typo: undefined variable sortSel fixed in index.html).
+//      2) 375px layout: practice-page edit button moved into the text container (was overlapped by the
+//         wakelock button), vocab list row buttons rearranged into a right-side vertical column,
+//         flashcard bottom bar compacted so the card text area grows wider and taller.
+//      3) Download proxy hardening: fake HTTP-200 HTML pages and 0-byte blobs are now rejected and
+//         the final failure message names the actual reason (timeout / unreachable / html / empty).
+//      4) Flashcard swipe no longer ghost-flips the next card; moveUp guarded in auto-sort and pinned rows.
+//      5) Copy-for-AI: subtitle preload covers the full list, legacy no-source entries never attach the
+//         wrong episode's subtitles, and subtitle lines always prefer track 1 (English source text).
+//      6) In-place sentence edit keeps the empty-string property (editor textarea no longer hides);
+//         server browser restores the full folder history stack and offers a "back to root" entry
+//         when the remembered folder fails to load.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v115_offline_v35';
+var CACHE_NAME = 'shadow_v115_offline_v36';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
