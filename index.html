@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V115.1 | build:20261122 | V115 复查修复 8 项（外部审查）+ 用户实测 3 条全部落地。修复1(高)·离线缓存页报错打不开：cacheUI.render 第 1 行声明 const sortSel 却误写 if (sortEl && ...)——切入「💾 离线缓存」Tab 必抛 ReferenceError: sortEl is not defined 整页变「加载失败」（用户实测「离线缓存提示加载失败」即此），统一修正为 sortSel。修复2·375px 布局三处：a) 练习页就地改句钮 #pr-edit-btn 原写死 right:86px，开常亮后「💡 常亮ON」左缘延伸到 right:96px 直接盖住 ✏️、⏳ 倒计时出现时 padding-right:130px 还会把字幕按钮挤折行——✏️ 移入 #text-container 右上角（absolute top:6 right:6 z-index:5 半透明 0.78），onclick 加 stopPropagation 防冒泡触发字幕显隐切换，.sub-switcher padding-right 130→78px 恢复 V114 布局；b) 翻卡底部 4 钮 375px 紧凑——.rv-ops-fix gap 8→6/margin-top 12→8，栏内 .rv-btn padding 12px 4px/字号 13px，撤回钮 .rv-btn-undo 改 flex:0 0 auto + padding 12px 10px + 文案「↩ 上一张」→「↩ 撤回」，其余三钮单行不折行；同时卡面文字显示区加大（用户实测「翻卡的文字显示区域再大点」）——.rv-face 内边距 20px 14px→14px 10px、#vocab-review 左右内边距 16→10px，卡面更高更宽约 16px/12px；c) 生词本列表行尾 📌⬆✏️✕ 4 钮改右侧竖排一列（用户拍板「不要并排放，要右边一列从上到下」，覆盖审查的 2×2 网格方案）——.vocab-ops-col 纵向 flex、按钮 30×28 圆角 8，词/例句文本区不再被 146px 横排按钮挤窄。修复3·下载代理容错：net.fetchCommon 的 tryFetch 拿到 blob 后校验空包（!res.size）与假 200 HTML 错误/验证页（type 以 text/html 开头）——按失败丢弃继续下一候选（原样返回会让后续 decodeAudioData 报晦涩错误）；全部候选失败时按最后失败原因明确区分：连接超时（15 秒无响应）/网络不可达（设备离线或拒绝连接）/返回的是网页不是音频（链接失效）/服务器返回空文件/HTTP 状态异常，保留 15s 超时与 quiet 模式。修复4·翻卡两处：a) 滑动判卡后 350ms 内的鬼 click 不再把刚切出的下一张卡误点翻面——touchend 触发左/右滑判卡前记 _swipedAt，reviewFlip 开头拦截（系统松手补发 click 落在新卡面上原会直接翻面）；b) moveUp 边界防护——排序为「不熟优先」（自动排序）时交换物理下标界面纹丝不动还打乱底层顺序，先自动切回默认排序（toast 说明）再交换；default 模式下当前词非置顶而上一条是置顶词时拦截交换并提示「上方是置顶词，如需排在最前请点 📌 置顶」（直接交换会把置顶词挤出最前分区，界面看似毫无反应）。修复5·复制 AI 字幕三处：a) 弹层打开时 _preloadCopySubs 改传全量 list（原只传 baseList）——筛选「当前音频」但点「📋 复制全部」时其它音频的缓存字幕也已预载到位（预载只读 IndexedDB，多几条零成本，仍绝不 await 后写剪贴板）；b) _getCopySubBlocks 老词条兜底（词条全无 v.a）收紧——仅限筛选=全部/当前音频、或首词确属当前音频（_isCurrentAudio）才用内存 state.segments，筛选「某特定历史音频」且无出处 URL 时不再错贴当前正在播的另一集字幕；c) _formatSegLines 固定优先提取「字幕 1」（seg.text 英文原文）不再跟随当前激活轨——字幕 2/3 的机翻中文会干扰 AI 重新翻译、用户切在字幕 3 时也不该只复制中文，该句字幕 1 为空才依次兜底 text2/text3；复制弹层小字与成功 toast 均注明「取字幕 1（英文）」。修复6·两处：a) 就地改句留空保存改置空串 seg[key]=''（原 delete 属性会让编辑页 renderEditor 隐藏该句对应字幕轨的 textarea，与编辑页直接清空文本行为不一致）；b) serverBrowser 目录栈——_saveDirMemory 连同完整 history 路径数组落盘（同源校验），open() 恢复完整目录栈（去重、首项兜底根目录），多级子目录「↩️ 返回上一级」逐级退回不再跳回根目录；fetchAndRender 失败且非根目录时在列表追加可点的「↩️ 返回根目录」条目（重置 history=[BASE] 重载）——记忆目录被服务器删改后弹窗不再卡死。升版：sw.js 缓存名 shadow_v115_offline_v35→v36（全 ASCII 英文注释）；exportProject version 115.1+下载名 shadow_v115_1.json；全量备份/生词本 JSON version 115.1；<title>/nav-title 统一 V115.1 -->
 <!-- V115 | build:20261121 | 七大模块升级：磨耳朵断点续播 + 锁屏/耳机切句不打断连续播放 + 重点句盲听/末遍显字 + 复制AI附带完整字幕与合并容错 + 翻卡撤销/词条微调/置顶上移/滑动判卡/到期角标 + 服务器目录记忆与下一集/缓存搜排/就地改字幕/时间重叠提醒。一·全文磨耳朵断点续播：engine 新增 _fullInterrupted/_fullResumeTime/_fullResumeUrl/_fullLastSaveAt/_fullPauseBySys 与 _fullKey()/_saveFullProgress()/clearFullPlayResume()/hasFullPlayResume()/_syncFullPlayFromStorage()/_syncFullPlayBtn() 六方法——断点持久化复用 shadow_v94_lib_meta（libMetaPatch 补丁 fullTime/fullInterrupted，blob: 本地音频不入库）；_checkLoopBoundaries 的 FULL_PLAY 分支播放推进时每 ≥2s 节流落盘断点（防系统直接杀后台不发事件），播到末尾循环回起点时断点清零重存；#main-audio 幂等绑定原生 pause 监听——mode===FULL_PLAY 且非 ended/非尾部时判定为外部程序打断（来电/微信语音/其它 App 抢音频焦点），收敛入 engine._onExternalFullPause()：安全时间（iOS 先清零元素时间再派发事件，退 _fullResumeTime）落盘断点→mode=IDLE→清 reqId/_tickHandler→_pausedFrom='FULL_PLAY'→_fullPauseBySys=true→锁屏态 paused→resetButtons；MediaSession pause handler 在 stopAll 前先读安全时间落断点（stopAll 先置 IDLE 故 pause 监听不误触发）；visibilitychange hidden 时无论锁屏暂停开关立即落盘断点，visible 时补收敛/静默续播（lock_pause 关且在练习页时 resumeFullPlay(true) 静默吞 NotAllowedError）；toggleFullPlay 重写——播放中点击=主动停止清断点下次从 0、非播放中 hasFullPlayResume() 则 resumeFullPlay 续播否则从 0 起播；resumeFullPlay(silent) 大改——断点先读局部再 stopAll（stopAll 不清断点字段）、校验 <duration-0.1、同步 currIndex 到断点句（findIndex+updatePractice+saveIndex）、readyState≥1 先 seek、loadedmetadata 与 play().then 双兜底 |Δt|>0.8 补 seek（防 iOS readyState=0 忽略赋值）、重置统计基准 _lastAudioTime/_lastWallClock 防 seek 虚增时长、NotAllowedError 静默不报错不断点非静默提示再点一次；清理边界——stopAll/switchView/loadItem(false)/开关生词本不清断点，主动点⏹/切其它模式（playOnce/toggleLoop/toggleRangeLoop/toggleSeqRead/previewMode.start/enterFocusPhase/aiMode.start）清断点，换音频（loadFromUrl 两分支/cacheUI.load/restoreProgress/loadProject/#audio-file/ui.init）统一走 _fullResetForNewAudio（清内存后按 lib_meta 恢复该音频断点，跨会话续播）；#btn-full-play 三态：播放中 active+⏹停止 / 有断点 .resume 橙高亮+▶继续磨耳朵 / 默认 🎧全文磨耳朵（resetButtons 末尾统一同步）。二·锁屏/耳机切句不打断连续播放：engine 新增 stepInMode(dir)——FULL_PLAY 按句 seek（clamp 0..末句）保持模式、LOOP_RANGE 区间内循环跳句（越界绕另一端）、SEQ_READ 清 _seqTimer/_pendingPlayCleanup/kaStop 后区间内循环跳句直接 _seqReadAt(idx,reps,reps) 从第 1 遍起播，全程保持模式不退回单句停；MediaSession previoustrack/nexttrack 在练习页且模式属于三者时走 stepInMode 否则沿用 app.prev/next；新增 seekbackward/seekforward（offset 默认 5s，clamp 后连续模式下顺带同步 currIndex/_fullResumeTime）。三·重点句盲听与末遍显字：shadow_v115_focus_blind（默认关，.focus-tools 紧凑「🙈 盲听」钮 .on 高亮）——#preview-focus-phase.focus-blind 下所有未偷看句 .focus-item-text 模糊 blur(8px)+opacity .3+禁选中，点模糊文本切 .revealed 临时偷看（stopPropagation 不跳转），译按钮/第二字幕不受影响，#focus-now-playing 盲听中只显「▶第 N 句·第 r/t 遍（盲听中）」不剧透；shadow_v115_focus_last_reveal（默认关，放 #focus-more-row 展开行——375px 不挤 ⚙）——_readOneSegRepeat 记录 _focusReadCur{segIdx,repsLeft,repsTotal}，开启且 ≥2 遍时前 N-1 遍给当前句挂 .force-blind（now-playing 藏文本）、末遍摘除并加 .revealed 自动显字核对，换句清痕迹；_stopFocusRead 收尾清所有 .force-blind/.revealed 恢复静态开关态；列表重渲后（删句）重挂当前句模糊态。四·复制AI附带完整字幕+合并容错：copyForAI/_copyRange('miss') 待补全范围与 _exportScope 对齐（筛选「当前音频/某音频」时只统计该范围缺 ph/cn 的词，按钮文案标注）；vocabBook 新增 _copySubCache Map（fixUrl→segments）——弹层打开时 _preloadCopySubs 后台异步预取 list 中非当前音频的缓存字幕（_copyRange 全程同步执行、绝不 await 后写剪贴板，保护 iOS 剪贴板手势）；_getCopySubBlocks 匹配——单音频（筛选当前/词全出自当前/老词条兜底）用内存 state.segments、另一已缓存单音频用 _copySubCache、多音频按词序收集（当前音频优先，上限 8 万字符/2500 句超出截断+toast）；_formatSegLines 按 activeSub 取主轨、字幕3 纯中文时优先 seg.text（可拼 |text3）防 AI 看不到英文语境，清洗 HTML 标签/换行折叠/过滤占位句；组装顺序严格 Prompt→【当前音频完整字幕（《名》，共 N 句）】→Markdown 生词表，有字幕时提示词改「请先通读下方『当前音频完整字幕』了解上下文后」（删去过时的“也就是我上传给你的或者粘贴给你的”），无字幕兜底照旧+toast 说明；_mergeVocab norm 增弯引号/反引号归一（it's≠it’s 不再产生重复词）、「出处音频」被 AI 截断/去扩展名时二级兜底——同词候选剥 .mp3/.wav/… 后缀比对 src（相等或前缀匹配），多条候选优先核对例句文本，唯一命中归入原词条保住时间戳与 SRS；_parsePastedVocab 单元格清理补首尾单 *斜体*。五·翻卡撤销/微调/置顶上移/滑动/到期角标：_rv 新增 undoStack——reviewMark 修改词条前与 _rvNextArm 自动跳过推进前压快照 {wordIdx,prev{ok,ivl,due,grad},pos,qLen,unk,sk,grad,done}；reviewUndo() 弹快照还原 SRS 字段+回滚队列长度（“不认识”追加的队尾项）+还原 pos/unknownRound/skippedRound/graduated+done=false+flipped=true 停在背面方便改判，底部操作栏与战报页均提供「↩ 上一张」（栈空禁用），桌面 KeyZ/Backspace 触发；editPh(i)/editWord(i)（音标留空=删/上限 60 字；改词校验非空 ≤60 字、同音频双主键判重，改后刷新 _refreshPwMarks），均走 prompt 前 _rvNextClear/退出 _rvNextResume 安全模式——入口：列表行1与翻卡背面点音标（或+音标灰字占位）、背面 .rv-quick 增「✏️ 改词」；词条新增 pin 布尔（随 JSON/全量备份携带），togglePin 物理置顶（unshift/pin 分区内插回）+列表浅橙左边框+📌 视觉、moveUp 与当前可见列表（筛选+排序后）上一条真实交换位置，二者变动 _list 顺序后重置 _lastAddIdx=null 与 _rv=null——绑定到 speak/hearSentence/edit*/togglePin/moveUp/remove 的参数一律是 _list 真实下标；新增排序模式 shadow_v115_vocab_sort（default 置顶在前/unfamiliar 置顶→未毕业→ivl 低→更早到期），筛选行紧凑「↕」切换钮；tabReview 翻卡队列置顶词排最前；#vocab-review 触摸滑动手势（忽略 .rv-quick/按钮/链接，|dx|>55 且 |dx|>|dy|×1.5，1.2s 内松手）左滑=不认识右滑=认识，滑动中 .rv-face 轻量水平跟随松手复位；dueCount(audioOnly) 统计未毕业且到期——Tab 按钮动态「🎴 翻卡复习 (N到期)」/0 到期显示已清零，.vocab-badge 有到期显到期数（橙 .due）无到期显总词数、title 注明总数与到期数（不再混淆“没有生词”与“今日已清零”）。六·目录/缓存/就地改字/重叠提醒：serverBrowser 目录记忆存 'shadow_v115_sb_hist'（url+全文件名表+at，同源校验），open() 优先恢复上次文件夹；练习页 ☰ 菜单新增「⏭ 加载下一集」app.loadNextEpisode()——按记忆目录有序音频列表找当前 _loadedAudioUrl 下一项（列表不在内存时按当前 URL 剥文件名拉父目录解析一次），自动配对同名 .eng/.engchs/.chs（.srt/.ass/.lrc 兑底）一键 loadFromUrl；#group-cache 顶部新增搜索框（按名/URL 过滤）与排序下拉（最近缓存/名称 A-Z/有练习进度优先，'shadow_v115_cache_sort'）实时过滤排序渲染；预习 .pv-top-row（#pv-jump-select max-width 72%→62% 腾位）与练习页字幕行各加「✏️」就地改句入口——轻量 textarea 弹窗（非单行 prompt，换行不丢）编辑当前激活轨，保存前 _edPush 接入 25 步撤销栈，保存后写盘+预习主文本/练习页/编辑页三处同步重绘不打断播放；tuneWheel/edTuneWheel（经 updateSeg）/updateSeg 关闭自动联动时写入成功后 _warnOverlap 软提醒——与相邻句重叠时不阻断，toast「⚠️ 注意：与相邻句时间重叠 X.XXs（可在编辑页调整或开启自动联动）」且 #pt-info/#edt-info 变橙。七·杂项：importSub 空提示改「未解析到字幕内容（文件可能不是 SRT/ASS/LRC 格式或为空），已保留原数据」；exportFullBackup keys 并入 shadow_v115_focus_blind/shadow_v115_focus_last_reveal/shadow_v115_vocab_sort/shadow_v115_sb_hist/shadow_v115_cache_sort；严格保留 _playSegmentTimed 时序/idbCache 静默降级/statsDB v3/_mergeVocab 四格式识别/_copyRange 同步执行等全部不变量。sw.js 缓存名 shadow_v114_offline_v34→shadow_v115_offline_v35，install 旧缓存迁移循环同步补 resp.redirected 重建干净 Response（与 V112 fetch 预缓存对齐）；exportProject version 115+下载名 shadow_v115.json；全量备份/生词本 JSON version 115；<title>/nav-title 统一 V115 -->
 <!-- V114 | build:20261120 | V113 复查修复 3+2 项 + 预习下拉跳句 + .ass/.ssa 与 .lrc 字幕格式支持。复查1(高)·编辑页悬浮「↩ 撤销」胶囊 #ed-undo-fab 切视图显隐反转：switchView 里 _edSyncUndoBtns 原只在 if(v==='editor') 分支且先于 editor-view.style.display 赋值执行——切去练习页不刷新（胶囊一直浮在练习页右下角压住「下一句 →」，用户实测确认；预习页同理）；切回编辑页时 editor-view 仍是 'none' 被误判不在编辑页反而隐藏。现挪到 display 赋值之后且切编辑/练习都执行一次；previewMode.start() 与 enterFocusPhase() 隐藏 editor-view 后同样补调（极速加载自动进预习这条路径不经过 switchView）——胶囊现在只在编辑页右下角出现。复查2(中)·「🎴 翻卡后自动下一张」下拉初始回显错误：HTML <option value="6"> 漏 selected，未开过翻卡直接点开 ☰ 菜单显示成首项「关」但后台实际按 6 秒生效——补 selected + ui.init 按 shadow_v113_rv_next 存储值同步回显（存过 3/5/8/10/15 秒也正确显示）。复查3(中)·375px/360px 窄屏顶栏折行：V113 加「❓ 说明」后内容总宽约超 3px 撑破 height:50px——navbar 左右 padding 20→12+gap 6、nav-title 16px+nowrap+ellipsis+min-width:0（桌面 ≥800px 恢复 18px）、mode-switch flex-shrink:0+nowrap、mode-btn 左右 padding 16→12，一行放下。复查4(低)两处小完善：editNote/editCn 弹 prompt 前 _rvNextClear 后，用户取消或保存退出时若仍在翻卡背面（_rv 未 done 且 flipped）新抽 _rvNextResume 重挂自动下一张（原取消一次编辑倒计时永久停）；删 V107 旧版 .vocab-item-note 重复定义，pre-wrap/word-break 并入 V113 唯一定义。预习跳句·字幕盒顶部静态序号徽章 #preview-sentence-num 升级为下拉选框 #pv-jump-select（保持预习橙色胶囊配色、圆角 10px、12px 加粗、原生小箭头、max-width 72% 单行省略不挤「译」）：选项「#n / N · 句首词预览…」（空白折叠后取前 14 字超出加省略号，空句只显 #n / N），onchange→previewMode.jumpTo 校验后直达 _gotoSentence（自动播该句/刷顶栏进度条/微调滚轮/生词标亮/Media Session 全走既有链路）；纯下拉跳句不推进 previewedCount（保持仅 我会了/⭐重点/跳过 推进最远预习进度）；非 iOS 选完 blur；HTML onclick/touchstart/touchend stopPropagation + onBoxTap/onBoxTouchEnd 开头 closest('#pv-jump-select') 双保险防误触“点空白复制整句”；选项重建时机 start/continueListen/restart/renderEditor（rebuild=true），每次 _gotoSentence 只回显当前值（几百句时免重建开销）；全局 keydown 已有 SELECT 焦点守卫，聚焦下拉时方向键归原生不劫持预习快捷键。新格式·.ass/.ssa：parseSRT 开头剥 \uFEFF BOM 后检测 [Events] 段或行首 Dialogue: 分流 parseASS——[Events] Format: 行动态定位 Start/End/Text 列（缺失按 SSA 标准 10 列 Start=1/End=2/Text=9 兑底），只解析 Dialogue: 跳过 Comment:，时间戳 H:MM:SS.cc 厘秒按位数折算（'50'→0.5s/'500'→0.5s/'5'→0.5s），Text 末列允许正文含英文逗号（split(',',iText+1) 前切后并），先删 {\p1}...{\p0} 矢量绘图再删 {...} 特效标签，\N/\n→真实换行 \h→空格，trim 后空文本丢弃，零长句兑底 1 秒；按 start 排序后起止均差 ≤0.05s 的相邻条目自动合并（双语分轨 .ass 同一句话两行 Dialogue 不再连播两遍，重复文本跳过其余 \n 拼接）——网络加载/智能粘贴/离线补拉/批量缓存/刷新字幕/本地导入全链路自动兼容。新格式·.lrc：parseSRT 按 SRT/ASS 均零结果且含 [mm:ss.xx]/[mm:ss:xx] 时间标签时兑底转 parseLRC——逐行匹配行内全部时间标签（兼容压缩 LRC [00:30.00][01:45.20]词 一行展开多条、冒号分隔 [00:12:50]、1/2/3 位分数分别按十分之一秒/厘秒/毫秒折算），[ti:]/[ar:]/[al:]/[by:]/[offset:] 元数据行自然跳过，正文增强 LRC 逐字标签 <mm:ss.xx> 清理；先排序→同一时间点（±0.05s）非空行去重 \n 合并（兼容双语 .lrc）→纯空文本时间点（间奏结束标记 [00:45.00]）保留参与边界计算→下一条 start 作当前 end（末条 +5s、间距不足 0.3s 保底 start+0.3）→最后过滤空文本条目（间奏精准截断上一句且不留空句）。入口扩展：字幕 1/2/3 槽位 accept 扩 .ass/.ssa/.lrc；importSub 增 UTF-16 LE (FF FE)/BE (FE FF) BOM 检测解码（在 UTF-8/GBK 之前，老字幕网站 Unicode .ass 不再乱码）；handleSmartPaste 链接分配正则扩 .ass/.ssa/.lrc；serverBrowser.selectFile 与 _batchCacheOne 的 findSub 每槽位依次兑底 .srt→.ass→.lrc（.eng/.engchs/.chs 前缀同规）；exportSRT 原后缀 .ass/.ssa/.lrc 替换为 .srt（导出的是 SRT 内容不存假后缀）。升版：sw.js 缓存名 shadow_v113_offline_v33→shadow_v114_offline_v34；exportProject version 113→114+下载名 shadow_v114.json；全量备份/生词本 JSON version 113→114；<title>/nav-title 统一 V114 -->
 <!-- V113 | build:20261120 | V112 复查遗留修复 3 项 + 用户实测新增与体验升级 6 项（Excel 排版/高对比配色/翻卡 6 秒自动下一张/Windows 预习排版/常用功能说明页/字幕编辑撤销）全部落地。复查1·生词本子弹出层 Esc 拦截与 close() 清理：全局 keydown 的 #vocab-modal 分支补 #vocab-copy-pop（复制范围）/#vocab-paste-pop（粘贴更新）两级拦截——弹层开着 Esc 只关弹层不关生词本、其余按键不透传到底层翻卡快捷键（paste-pop 内 textarea 的空格/回车/方向键正常输入）；vocabBook.close() 除 closeDict 外补 _hideClearPop/_hideCopyPop/_hidePastePop——Esc 直接关生词本时子弹层不再残留在隐藏面板里下次打开还挂着。复查2·粘贴解析器增强：抽通用 _parseDelimited(text, delim) RFC 4180 解析器（引号内换行属单元格内容、""→" 转义），_parseVocabCsv（逗号）与粘贴 TSV（制表符）共用——电脑 Excel/Numbers 复制"单元格内带换行例句"粘贴不再被拆断成多行；Markdown 表格分支检测到 |---|---| 对齐分隔行时兼容省略行首 | 的标准管道符表格行（如「序号 | 单词 | …」，分隔行存在才放宽——正文里含 | 的行不误收）。复查3·桌面拖选滑出文本节点边界松手：_selAutoRouter 增 inPreviewBox/inPracticeBox——PC 鼠标拖选到句尾常滑出 #preview-sentence-text（/#practice-text-display）落到外层 .preview-sentence-box/#text-container 空白处松手，只要目标在外盒内且不在 button/select/input/textarea 上、选区仍在文本内，照常武装 500ms 自动入本；点盒外按钮仍清表（仅鼠标分支，触屏选柄本就在文本内）。需求1·Excel 排版全面升级（buildXlsx）：新增第 1 行表格总标题（A1:H1 合并、14pt 加粗水平垂直居中新样式 xf4、ht=30；内容取导出列表第一个非空 v.src 如「小谢尔顿S01.0764k.mp3」、全空兜底「生词本」）；8 列表头挪第 2 行行高显式翻倍 ht=36；正文样式 xf2 垂直对齐 top→center（细边框+自动换行保留）；sheetViews 冻结改 ySplit=2 topLeftCell=A3（滑动固定总标题+列头）；workbook.xml 补 definedNames._xlnm.Print_Titles=第 2 行（多页打印每页顶端重复列头，_xlsxSheetRef 含特殊字符单引号包裹）；严格按 OOXML 子标签顺序 mergeCells→printOptions(horizontalCentered=1 打印水平居中)→pageMargins→pageSetup→headerFooter(页脚 &C第 &P 页，共 &N 页——& 转义 &amp;)；表底 AI 提示词行高 64→96（长文案不裁断）；mergeCells count 汇总（总标题 A1:H1 + 提示词行一并入列）；导回无损（_rowsToVocab 前 5 行扫描列头，总标题行不干扰）。需求2·生词本与翻卡高对比配色+详情默认展开+翻卡 N 秒自动下一张：列表行 3 废除「译 · 📝笔记 · 📖英释」混拼灰字改独立块——中文意思保持橘红 #E65100 加粗、例句翻译蓝系（译 标签 #1A73E8 蓝底白字+#EEF5FF 浅蓝底+#0D47A1 深蓝正文）、笔记红系（笔记 标签 #D93025 红底白字+#FFF0F0 淡红底+#B71C1C 深红正文+边框，保留点击编辑）、英释灰绿 #5F6B6A 独立行；翻卡背面 .rv-detail 同调色板块状渲染（.rv-block/.rv-btag/.rv-btext）；_rvShowCard 新卡 detailOpen 默认 false→true（翻面直接见句译/英释/笔记，可手动收起）；翻卡后自动下一张——设置放练习页 ☰ 菜单抽屉（不放生词本弹窗）：「🎴 翻卡后自动下一张」下拉 关/3/5/6(默认)/8/10/15 秒，持久化 shadow_v113_rv_next 并入全量备份；reviewFlip 翻面即 _rvNextArm 起算（token 代数防过期）；超时纯推进 rv.pos++（到队尾进战报），绝不触发认识/不认识判定、绝不改 SRS 间隔与连击；战报同步修正 known=Math.max(0,total-unk-skipped) 且如实显示「自动跳过 K 个」——skippedRound 只记未判定词（reviewMark 判定时从跳过集合移除，三集合互斥不重复扣）；防打断：背面点读音/词/例句重放（_rvHearBtn/_rvWordTap/_rvSentTap）、展开收起详情、点外链=重置计时，editNote/editCn 弹 prompt 前 _rvNextClear（prompt 同步阻塞、关闭后旧定时器会立刻补触发）、#dict-pop 查词打开清除 closeDict 关闭后仍在背面则重挂；_rvFlipClear 统一收口 _rvNextClear（判卡/切卡/切 Tab/关面板全清）。需求3·AI 提示词统一更新（_copyRange miss/all 两分支 + exportExcel 表底 aiPrompt 同文案）：「特比」→「特别」，融入笔记列要求 use Chinese to explain any idioms, slang, background knowledge, or complex grammar in the example sentence、①②③ 同一行内勿换行、150 字内，并明确提醒不改第 2 列「单词」与第 8 列「出处音频」。需求4·Windows Chrome 预习排版对齐正式跟读：@media(min-width:800px) 下 .preview-sentence-box 改 flex:1 1 0%+max-height:none+min-height:120px（吃满卡片剩余垂直空间，不再 46vh 硬顶把 #preview-listen-phase 顶出外层滚动条）、.preview-sentence-text 补 width:100%/max-height:100%/line-height:1.4/padding:8px 15px；_fitPreviewText 宽屏起跳 26→34px（窄屏保持 26）；测量循环前临时 overflowY:hidden（Windows 非悬浮 17px 滚动条临界高度闪现挤窄文本引起假溢出），仅 14px 下限仍真溢出才恢复 auto+maxHeight 兜底；米黄/橙配色不变，手机 <800px 保留 V111 防压扁规则。需求5·「常用功能说明」页：navbar 左区新增紧凑「❓ 说明」按钮（编辑/练习两页均可开）+ ☰ 菜单内同款入口；#help-pop 弹层 z-index 7800（高于生词本 7500/查词 7600），右上 ✕/点背景/Esc 关闭（keydown 最前拦截——生词本在下层时优先关说明页）；5 块卡片内容：💾保存工程 vs 📦全量备份对比表（存什么/不含什么/何时用）、🎧完整学习流程四步、📔生词本与 AI 补全闭环（复制AI→粘贴更新 + Excel 闭环 + 双主键提醒 + SRS 1→3→7→15 天毕业与⭐保留规则）、✂️字幕编辑与对齐技巧（微调/平移/合并拆分/撤销/刷新字幕重映射）、📱iPhone/iPad 贴士（离线缓存/息屏续航 vs 锁屏暂停/PWA 独立存储先备份/自动播放解锁）。需求6·字幕编辑撤销：app._edHist 上限 25 步快照栈——mergeSeg/splitSeg/delSeg/addNewRow/updateSeg（文本与时间均真正变化才推）/applyReAnalyze/importSub（k=0 与 k=1/2 副字幕）执行前推入，快照深拷贝 segments（含 text2/text3/_os/_oe）+currIndex+starredIndices/doneIndices/cursorIdx/previewedCount/previewDone+_edSelIdx+_loopInitialized+label+focusIdx；切工程清栈三处（loadFromUrl 两成功分支与 cacheUI.load 收口于 _enterAfterLoad 开头、loadProject、本地导入 MP3）；edUndo() 弹快照整体还原 + _dropShiftSnap（平移快照作废）+ saveToStorage/updateBadge/save/renderEditor/updatePractice + scrollIntoView 聚焦回操作行 + toast「已撤销：label（还可撤销 N 步）」；按钮两处——编辑页顶部统计行「↩ 撤销」（无历史 disabled 置灰，有历史显示步数）+ 右下角悬浮胶囊 #ed-undo-fab（仅编辑页且有历史显示，滑到第 200 句误点合并不用拉回顶部）；renderEditor 末尾与 switchView('editor') 同步按钮态。升版：sw.js 缓存名 shadow_v112_offline_v32→shadow_v113_offline_v33；exportProject version 112→113+下载名 shadow_v113.json；全量备份 version 113（keys 新增 shadow_v113_rv_next）；生词本 JSON version 113；<title>/nav-title 统一 V113 -->
@@ -60,7 +61,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V115</title>
+<title>影子跟读 Pro V115.1</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -285,6 +286,8 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .vtag-def { background: #78909C; }
 /* V107(提案4): 行尾 ✏️ 笔记按钮——与 ✕ 删除按钮同尺寸，蓝色系区分"编辑"语义 */
 .vocab-item-edit { width: 32px; height: 32px; border: 1px solid #C5D9F2; background: #F4F9FF; color: var(--primary); border-radius: 10px; font-size: 13px; cursor: pointer; flex-shrink: 0; -webkit-appearance: none; appearance: none; font-family: inherit; }
+.vocab-ops-col { display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; align-items: center; } /* V115.1(修复2·用户指定): 行尾 📌⬆✏️✕ 4 钮右侧竖排一列——不再并排挤窄词/例句文本区 */
+.vocab-ops-col .vocab-item-edit, .vocab-ops-col .vocab-item-del { width: 30px; height: 28px; border-radius: 8px; font-size: 12px; } /* V115.1(修复2): 竖排列内按钮紧凑一号 */
 .vocab-empty { text-align: center; color: #aaa; font-size: 13px; padding: 36px 20px; line-height: 1.7; }
 .vocab-tip { flex-shrink: 0; font-size: 11px; color: #bbb; text-align: center; padding: 8px 12px; border-top: 1px solid #f5f5f5; }
 
@@ -637,7 +640,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
    V112(外审2): 补 display:flex + column——原是普通块，.rv-wrap 的 flex:1 不生效只剩 min-height:320px 硬下限，
    iPhone 小屏/横屏时 320px 超过面板可用高度，把底部操作栏 .rv-ops-fix 顶出可视区要滚动才见；
    现在纵向 flex 链打通（review→wrap→cardbox→face），操作栏钉在可视区底端，卡内滚动 */
-#vocab-review { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; }
+#vocab-review { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 10px; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; }
 .vocab-item-ops { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .vocab-item-op { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
 /* V99: 生词本点读/点听 + 翻卡设置行 */
@@ -647,7 +650,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .vocab-item-op.op-listen { color: var(--primary); border-color: #C5D9F2; background: #F4F9FF; }
 .rv-wrap { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; } /* V110: 撞满 #vocab-review（flex 容器）——底栏钉在可视区底部；空态居中保留；V112(外审2): min-height 320px→0——320px 硬下限在小屏把底栏顶出面板 */
 .rv-cardbox { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; } /* V110: 卡框外层绝对固定——不随文本长短形变 */
-.rv-face { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 20px 14px; text-align: center; } /* V110: fitText 塞不下的极端超长只许卡内纵向滚动，卡框不变形；V112(外审2): .rv-card 视觉并入——V110 重构时 reviewRender 漏挂 .rv-card 类，米黄底/边框/圆角全丢成了白板 */
+.rv-face { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; background: #FFFDE7; border: 2px solid var(--preview-border); border-radius: 16px; padding: 14px 10px; text-align: center; } /* V115.1(修复2): 内边距 20px 14px→14px 10px——卡面文字显示区加大（用户实测反馈） */ /* V110: fitText 塞不下的极端超长只许卡内纵向滚动，卡框不变形；V112(外审2): .rv-card 视觉并入——V110 重构时 reviewRender 漏挂 .rv-card 类，米黄底/边框/圆角全丢成了白板 */
 .rv-face:active { background: #FFF8E1; }
 .rv-face-in { margin: auto 0; width: 100%; min-height: 0; } /* V112(外审2): 溢出安全的垂直居中——不用 justify-content:center（flex 溢出时顶部被裁且滚不到顶），margin:auto 在空间不足时自动归零退回顶部对齐 */
 .rv-head { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap; }
@@ -677,12 +680,14 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 .rv-quick { display: flex; gap: 8px; margin-top: 12px; justify-content: center; flex-wrap: wrap; } /* V110: 背面横排快捷行 [✏️ 笔记][📖 查词][有道][剑桥]（去掉 ▶ 听原句——重听收归底部固定栏） */
 .rv-quick > * { border: 1px solid #E0E0E0; background: #fff; color: #444; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; -webkit-appearance: none; appearance: none; font-family: inherit; }
 .rv-quick > :active { background: #F1F3F4; }
-.rv-ops-fix { display: flex; gap: 8px; margin: 12px 0 0; flex-shrink: 0; } /* V110: 底端固定操作栏 [🔊 读音|😅 不认识|😀 认识]——移出卡外，正反同位零跳动；V112: flex-shrink:0 防被压缩 */
+.rv-ops-fix { display: flex; gap: 6px; margin: 8px 0 0; flex-shrink: 0; } /* V110: 底端固定操作栏 [🔊 读音|😅 不认识|😀 认识]——移出卡外，正反同位零跳动；V112: flex-shrink:0 防被压缩 */
 .rv-w-click { cursor: pointer; } /* V112(外审2): 背面词面可点读音 */
 .rv-sent { font-size: 16px; color: #444; margin-top: 12px; line-height: 1.5; }
 .rv-src { font-size: 12px; color: #999; margin-top: 8px; }
 .rv-ops { display: flex; gap: 8px; margin-top: 14px; }
 .rv-btn { flex: 1; border-radius: 12px; padding: 12px 6px; font-size: 14px; font-weight: 800; cursor: pointer; }
+.rv-ops-fix .rv-btn { padding: 12px 4px; font-size: 13px; } /* V115.1(修复2): 底部操作栏紧凑——375px 四钮单行不折行（战报页按钮不受影响） */
+.rv-ops-fix .rv-btn-undo { flex: 0 0 auto; padding: 12px 10px; } /* V115.1(修复2): 撤回钮定宽紧凑 */
 .rv-btn:disabled { opacity: 0.4; cursor: not-allowed; } /* V115(五): ↩ 上一张栈空时置灰（不可点） */
 .rv-btn-know { background: #E6F4EA; color: #137333; border: 2px solid #34A853; }
 .rv-btn-dont { background: #FCE8E6; color: #C5221F; border: 2px solid #EA4335; }
@@ -780,7 +785,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
     <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-        <div class="nav-title">🎧 影子跟读 V115</div>
+        <div class="nav-title">🎧 影子跟读 V115.1</div>
         <button class="nav-help-btn" onclick="helpPage.open()" title="常用功能说明：保存/备份区别 · 完整学习流程 · 生词本 AI 补全闭环 · 字幕编辑技巧 · iPhone/iPad 贴士">❓ 说明</button>
     </div>
     <div class="mode-switch">
@@ -1031,9 +1036,9 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
             <!-- V94: 细进度条——孩子看得见离终点还有多远（(当前句+1)/总句数） -->
             <div class="pp-progress" role="progressbar" aria-label="学习进度"><div class="pp-progress-fill" id="pp-progress-fill" style="width:0%"></div></div>
-            <div class="sub-switcher" style="position: relative; padding-right: 130px;">
+            <div class="sub-switcher" style="position: relative; padding-right: 78px;">
                 <!-- V97(改4): ⏰ 定时从顶栏挪到本行行首（字幕1 前面，顶栏腾位给句号下拉）；运行中橙色高亮，弹层内可取消 -->
-                <!-- V115(六): 行尾新增 ✏️ 就地改句钮（padding-right 78→130px 腾位，✏️ 在 常亮 左侧不重叠）——错别字字幕不必再切编辑页，保存接入 25 步撤销栈 -->
+                <!-- V115(六): 行尾新增 ✏️ 就地改句钮；V115.1(修复2): ✏️ 移入下方文本区右上角（原 right:86px 被「💡 常亮ON」盖住、⏳ 倒计时挤压字幕按钮）——padding-right 恢复 V114 的 78px -->
                 <div class="sleep-wrapper">
                     <div class="icon-btn" id="sleep-btn" style="font-size:19px;padding:3px 4px;" onclick="ui.toggleSleepModal()">⏰</div>
                     <div id="sleep-display" class="sleep-display"></div>
@@ -1052,10 +1057,10 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                 <button class="sub-btn" onclick="ui.switchSubTab(1)">字幕2</button>
                 <button class="sub-btn" onclick="ui.switchSubTab(2)">字幕3</button>
                 <button id="btn-wakelock" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;color:#5F6368;cursor:pointer;transition:0.2s;" onclick="wakeLock.toggle()">💡 常亮</button>
-                <button id="pr-edit-btn" style="position:absolute;right:86px;top:50%;transform:translateY(-50%);width:32px;height:30px;font-size:13px;padding:0;border-radius:8px;border:1px solid var(--border);background:#fff;color:#5F6368;cursor:pointer;font-family:inherit;" onclick="app.editCurrentSentence()" title="就地修改本句字幕文本（错别字/标点）——接入编辑页 25 步撤销栈，保存后三页同步、不打断播放">✏️</button> <!-- V115(六): 就地改句入口（练习页字幕行；right:86 避开右侧 💡 常亮） -->
             </div>
 
             <div class="practice-text-container" id="text-container" onclick="ui.practiceTextTap(event)"> <!-- V106(功能1): 有划选时优先浮条入本不切显隐（ui.practiceTextTap 分流），点空白照常切换 -->
+                <button id="pr-edit-btn" style="position:absolute;top:6px;right:6px;z-index:5;opacity:0.78;width:34px;height:32px;font-size:14px;padding:0;border-radius:8px;border:1px solid var(--border);background:#fff;color:#5F6368;cursor:pointer;font-family:inherit;" onclick="event.stopPropagation();app.editCurrentSentence()" title="就地修改本句字幕文本（错别字/标点）——接入编辑页 25 步撤销栈，保存后三页同步、不打断播放">✏️</button> <!-- V115.1(修复2): 从字幕行挪入文本区右上角——原 right:86px 会被「💡 常亮ON」（左缘 right:96px）盖住；stopPropagation 防冒泡触发字幕显隐切换 -->
                 <div id="practice-text-display" class="practice-text blur">(请加载内容)</div>
                 <div id="click-hint" class="click-hint">👈 点击切换显隐</div>
             </div>
@@ -1469,7 +1474,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <div id="vocab-copy-pop" onclick="if(event.target===this) vocabBook._hideCopyPop()">
     <div class="vc-card" onclick="event.stopPropagation()">
         <div class="vc-title">📋 复制给 AI</div>
-        <div class="vc-sub">AI 提示词 + 对应音频完整字幕 + Markdown 生词表 → 粘给 AI 填空后「📋 粘贴更新」导回</div> <!-- V115(四): 复制内容新增完整字幕块（字幕在生词表之前） -->
+        <div class="vc-sub">AI 提示词 + 对应音频完整字幕（固定取字幕 1 英文原文）+ Markdown 生词表 → 粘给 AI 填空后「📋 粘贴更新」导回</div> <!-- V115(四): 复制内容新增完整字幕块（字幕在生词表之前） -->
         <button class="vc-btn vc-copy" id="vcopy-filter-btn" onclick="vocabBook._copyRange('filter')"></button>
         <button class="vc-btn vc-copy2" id="vcopy-miss-btn" onclick="vocabBook._copyRange('miss')"></button>
         <button class="vc-btn vc-copy2" id="vcopy-all-btn" onclick="vocabBook._copyRange('all')"></button>
@@ -1969,7 +1974,7 @@ const cacheUI = {
             const q = (searchEl ? searchEl.value : '').trim().toLowerCase();
             const mode = this._sortMode();
             const sortSel = document.getElementById('cache-sort-sel');
-            if (sortEl && sortEl.value !== mode) sortEl.value = mode; // 回显持久化的排序方式
+            if (sortSel && sortSel.value !== mode) sortSel.value = mode; // 回显持久化的排序方式（V115.1 修复1：原误写 sortEl 未定义变量——切入本 Tab 必报 ReferenceError 整页「加载失败」）
             let shown = q
                 ? all.filter(p => String(p.name || '').toLowerCase().indexOf(q) >= 0 || String(p.audioUrl || '').toLowerCase().indexOf(q) >= 0)
                 : all.slice();
@@ -2237,12 +2242,27 @@ const serverBrowser = {
         document.getElementById('server-browser-modal').style.display = 'flex';
         // V115(六): 记住上次文件夹——同源校验后优先恢复（根目录兑底）；目录文件名表供「⏭ 加载下一集」用
         let startUrl = CONST.SERVER_BROWSER_BASE_URL;
+        let savedHist = null;
         try {
             const saved = safeParse(localStorage.getItem('shadow_v115_sb_hist'), null);
             if (saved && typeof saved.url === 'string' && saved.url.indexOf(CONST.SERVER_BROWSER_BASE_URL) === 0 && saved.url !== CONST.SERVER_BROWSER_BASE_URL) startUrl = saved.url;
+            // V115.1(修复6): 恢复完整目录栈（同源校验+去重）——多级子目录「↩️ 返回上一级」逐级退回上次浏览的路径
+            if (saved && Array.isArray(saved.history)) {
+                const seen = {};
+                savedHist = [];
+                saved.history.forEach(function(u) {
+                    if (typeof u === 'string' && u.indexOf(CONST.SERVER_BROWSER_BASE_URL) === 0 && !seen[u]) { seen[u] = true; savedHist.push(u); }
+                });
+            }
         } catch(eS) {}
         this.history = [CONST.SERVER_BROWSER_BASE_URL];
-        if (startUrl !== CONST.SERVER_BROWSER_BASE_URL) this.history.push(startUrl);
+        if (savedHist && savedHist.length) {
+            if (savedHist[0] !== CONST.SERVER_BROWSER_BASE_URL) savedHist.unshift(CONST.SERVER_BROWSER_BASE_URL);
+            this.history = savedHist;
+            startUrl = savedHist[savedHist.length - 1];
+        } else if (startUrl !== CONST.SERVER_BROWSER_BASE_URL) {
+            this.history.push(startUrl);
+        }
         this.fetchAndRender(startUrl);
     },
     close() {
@@ -2268,7 +2288,18 @@ const serverBrowser = {
         pathEl.textContent = dp;
         fetch(url, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(html => this.parseAndRender(html, url))
-            .catch(e => { listEl.innerHTML = '<div class="browser-item loading" style="color:red;">加载失败: ' + e.message + '</div>'; });
+            .catch(e => {
+                listEl.innerHTML = '<div class="browser-item loading" style="color:red;">加载失败: ' + e.message + '</div>';
+                // V115.1(修复6): 记忆目录被服务器删改后弹窗不再卡死——非根目录失败时追加「返回根目录」条目
+                if (url !== CONST.SERVER_BROWSER_BASE_URL) {
+                    const back = document.createElement('div');
+                    back.className = 'browser-item';
+                    back.style.cssText = 'cursor:pointer;color:var(--primary);font-weight:700;';
+                    back.textContent = '↩️ 返回根目录（当前目录可能已被移动或删除）';
+                    back.onclick = () => { this.history = [CONST.SERVER_BROWSER_BASE_URL]; this.fetchAndRender(CONST.SERVER_BROWSER_BASE_URL); };
+                    listEl.appendChild(back);
+                }
+            });
     },
     parseAndRender(html, baseUrl) {
         const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -2296,7 +2327,9 @@ const serverBrowser = {
             const files = this.allParsedFiles
                 .filter(function(f) { return !f.isDirectory; })
                 .map(function(f) { return { name: f.name, url: f.url }; });
-            safeSetItem('shadow_v115_sb_hist', JSON.stringify({ url: folderUrl, files: files, at: Date.now() }));
+            // V115.1(修复6): 连同完整目录栈 history 一并落盘（同源校验）——open() 逐级恢复，「↩️ 返回上一级」不再跳回根目录
+            const hist = (this.history || []).filter(function(u) { return typeof u === 'string' && u.indexOf(CONST.SERVER_BROWSER_BASE_URL) === 0; });
+            safeSetItem('shadow_v115_sb_hist', JSON.stringify({ url: folderUrl, files: files, history: hist, at: Date.now() }));
         } catch(e) {}
     },
     // V103(功能C): 徽章数据源——idbCache 键集合 + lib_meta（idx/total）+ 预习存储（⭐）。
@@ -2555,13 +2588,23 @@ const net = {
                 if (ac) opt.signal = ac.signal;
                 const r = await fetch(u, opt);
                 if (t) clearTimeout(t);
-                if (!r.ok) return null;
-                return type === 'blob' ? await r.blob() : await r.text();
+                if (!r.ok) { lastFail = 'http' + r.status; return null; } // V115.1(修复3): 记录失败原因供最终提示
+                const res = type === 'blob' ? await r.blob() : await r.text();
+                // V115.1(修复3): 代理返回 HTTP 200 的 HTML 错误/验证页或 0 字节空包——按失败丢弃，
+                // 继续尝试下一候选（原样返回会让后续 decodeAudioData/字幕解析报晦涩错误）
+                if (!res) { lastFail = 'empty'; return null; }
+                if (type === 'blob') {
+                    if (!res.size) { lastFail = 'empty'; return null; } // 0 字节空包
+                    if (res.type && String(res.type).indexOf('text/html') === 0) { lastFail = 'html'; return null; } // 假 200 HTML 错误/验证页
+                }
+                return res;
             } catch(e) {
                 if (t) clearTimeout(t);
+                lastFail = (e && e.name === 'AbortError') ? 'timeout' : 'offline'; // V115.1(修复3): 区分超时与网络不可达
                 return null; // 超时 abort / 网络错误 → 统一按失败处理，走下一个候选
             }
         };
+        let lastFail = ''; // V115.1(修复3): 最后一次失败的原因（timeout/offline/html/empty/httpXXX）
         if (!quiet) ui.setLoadBtnText("尝试直连下载...");
         let res = await tryFetch(url);
         if (res !== null) return res;
@@ -2570,7 +2613,13 @@ const net = {
             res = await tryFetch(p + encodeURIComponent(url));
             if (res !== null) return res;
         }
-        throw new Error("下载失败(请检查链接或网络)");
+        // V115.1(修复3): 全部候选失败——按最后失败原因给出明确提示（不再是一句笼统的"请检查链接或网络"）
+        const why = lastFail === 'timeout' ? '连接超时（15 秒无响应，请检查网络后重试）'
+            : lastFail === 'offline' ? '网络不可达（设备可能离线，或服务器/代理拒绝连接）'
+            : lastFail === 'html' ? '返回的是网页不是音频文件（链接可能已失效）'
+            : lastFail === 'empty' ? '服务器返回了空文件'
+            : (lastFail ? ('HTTP 状态异常 ' + lastFail) : '未知原因');
+        throw new Error('下载失败：' + why + '（已依次尝试直连和全部代理）');
     },
     async fetchBlobSmart(url, opts) { return this.fetchCommon(url, 'blob', opts); },
     async fetchTextSmart(url, opts) { return this.fetchCommon(url, 'text', opts); },
@@ -6324,7 +6373,7 @@ const app = {
         const old = String(seg[ctx.key] == null ? '' : seg[ctx.key]);
         if (val === old) { this._sentEditClose(); return ui.toast('本句没有变化'); }
         this._edPush('就地修改第 ' + (ctx.idx + 1) + ' 句字幕', ctx.idx); // V115(六): 接入 25 步撤销栈（可回退）
-        if (val) seg[ctx.key] = val; else delete seg[ctx.key]; // 留空保存=删除本轨文本
+        seg[ctx.key] = val; // V115.1(修复6): 留空保存=置空串保留属性——delete 会让编辑页 renderEditor 隐藏该轨 <textarea>（与编辑页直接清空文本行为一致）
         ui.renderEditor(); // 内含 save()——写盘 + 防抖回写离线缓存 + 编辑页对应行重绘
         // 练习页字幕区同步（不打断音频——updatePractice 只重绘文本）
         try { ui.updatePractice(state.currIndex); } catch(eU) {}
@@ -6438,9 +6487,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 115, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V115: 114→115（版本随轮递增）
+        const data = { version: 115.1, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V115.1: 115→115.1（复查修复版）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v115.json'; // V115: 114→115（下载名随版本）
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v115_1.json'; // V115.1: 115→115_1（下载名随版本）
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -6474,7 +6523,7 @@ const app = {
                 'shadow_v115_sb_hist', // V115(六): 服务器目录记忆（上次文件夹+文件名表，「下一集」用）
                 'shadow_v115_cache_sort' // V115(六): 离线缓存页排序方式
             ];
-            var data = { type: 'shadow_full_backup', version: 115, exportedAt: new Date().toISOString(), items: {} }; // V115: 版本号 114→115（导入侧只校验 type，不影响兼容）
+            var data = { type: 'shadow_full_backup', version: 115.1, exportedAt: new Date().toISOString(), items: {} }; // V115.1: 版本号 115→115.1（导入侧只校验 type，不影响兼容）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -8801,6 +8850,13 @@ const vocabBook = {
     moveUp(i) {
         // 与当前可见列表（筛选+排序后）的上一条真实交换位置——同置顶分组的相邻项
         const list = this.list();
+        // V115.1(修复4): 「不熟优先」是自动排序——交换物理下标界面纹丝不动还打乱底层顺序；
+        // 自动切回默认排序再交换（_sortIdxs 实时读排序模式，下方 idxs 自动按默认序计算）
+        if (this._vocabSort() !== 'default') {
+            try { localStorage.setItem('shadow_v115_vocab_sort', 'default'); } catch(eS) {}
+            try { this._syncSortBtn(); } catch(eB) {}
+            ui.toast('↕ 已自动切回「默认排序」再上移（「不熟优先」为自动排序，手动位置不生效）');
+        }
         let idxs;
         let inReview = false;
         try {
@@ -8813,6 +8869,8 @@ const vocabBook = {
         if (pos <= 0) return ui.toast('上面没有词了');
         const j = idxs[pos - 1];
         if (j === i || j === undefined) return;
+        // V115.1(修复4): 置顶分区防护——上方是置顶词时直接交换会把置顶词挤出最前分区（界面看似毫无反应还打乱顺序）
+        if (!list[i].pin && list[j] && list[j].pin) return ui.toast('上方是置顶词，如需排在最前请点 📌 置顶');
         const tmp = list[i]; list[i] = list[j]; list[j] = tmp;
         this._lastAddIdx = null;
         this._rv = null;
@@ -9130,7 +9188,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 115, exportedAt: new Date().toISOString(), vocab: list }; // V115: 114→115（ph/cn/def/pin 随词条对象整体携带）
+        const data = { type: 'shadow_vocab_backup', version: 115.1, exportedAt: new Date().toISOString(), vocab: list }; // V115.1: 115→115.1（ph/cn/def/pin 随词条对象整体携带）
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
@@ -10211,6 +10269,7 @@ const vocabBook = {
             if (Date.now() - st > 1200) return; // 慢速拖动视为滚动意图
             const dx = t.clientX - sx, dy = t.clientY - sy;
             if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                self._swipedAt = Date.now(); // V115.1(修复4): 记录判卡时刻——松手后系统补发的鬼 click 不得把刚切出的下一张卡误点翻面
                 if (dx < 0) self.reviewMark(false); // 左滑=😅 不认识
                 else self.reviewMark(true);        // 右滑=😀 认识
             }
@@ -10218,6 +10277,7 @@ const vocabBook = {
     },
     reviewFlip() {
         if (!this._rv || this._rv.flipped || this._rv.done) return;
+        if (this._swipedAt && Date.now() - this._swipedAt < 350) return; // V115.1(修复4): 滑动判卡后 350ms 内的鬼点击忽略
         this._rvFlipClear(); // 手动翻面取消自动翻牌
         this._rv.flipped = true;
         this.reviewRender();
@@ -10470,7 +10530,7 @@ const vocabBook = {
         // 正反同位毫秒级对齐零跳动；填空模式 🔊=重播当前挖空例句的原声音频（不剧透单词拼读），
         // 词面/听音模式=TTS 读词（与 R 键同口径 _rvHearBtn）
         const ops = '<div class="rv-ops rv-ops-fix">' +
-            '<button class="rv-btn rv-btn-minor rv-btn-undo" onclick="vocabBook.reviewUndo()"' + ((rv.undoStack && rv.undoStack.length) ? ' title="撤销刚才的判定/自动跳过，回退上一张改判（快捷键 Z / Backspace）"' : ' disabled title="还没有可撤销的判卡"') + '>↩ 上一张</button>' + // V115(五): 翻卡撤销（栈空禁用置灰）
+            '<button class="rv-btn rv-btn-minor rv-btn-undo" onclick="vocabBook.reviewUndo()"' + ((rv.undoStack && rv.undoStack.length) ? ' title="撤销刚才的判定/自动跳过，回退上一张改判（快捷键 Z / Backspace）"' : ' disabled title="还没有可撤销的判卡"') + '>↩ 撤回</button>' + // V115(五): 翻卡撤销（栈空禁用置灰）；V115.1(修复2): 文案「上一张」→「撤回」——375px 底栏四钮单行放得下
             '<button class="rv-btn rv-btn-minor rv-btn-hear" onclick="vocabBook._rvHearBtn(' + idx + ')" title="' + (mode === 'blank' ? '重播当前挖空例句的原声音频（不剧透单词拼读）' : 'TTS 读单词') + '">' + (mode === 'blank' ? '🔊 重听' : '🔊 读音') + '</button>' +
             '<button class="rv-btn rv-btn-dont" onclick="vocabBook.reviewMark(false)">😅 不认识</button>' +
             '<button class="rv-btn rv-btn-know" onclick="vocabBook.reviewMark(true)">😀 认识</button>' +
@@ -10751,7 +10811,7 @@ const vocabBook = {
             if (v.src && showSrc) { const srcEl = document.createElement('div'); srcEl.className = 'vocab-item-src'; srcEl.textContent = '🎧 ' + v.src; main.appendChild(srcEl); }
             // V110(规格二·4): 行尾 [✏️]（笔记）与 [✕]（删除）；📖 查词收归翻卡背面快捷行
             // V115(五): 新增 [📌]（置顶/取消）与 [⬆]（上移一位）——置顶词 📌 橙色高亮
-            const ops = document.createElement('div'); ops.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
+            const ops = document.createElement('div'); ops.className = 'vocab-ops-col'; // V115.1(修复2·用户指定): 4 钮右侧竖排一列（📌⬆ 在上、✏️✕ 在下）
             const pin = document.createElement('button'); pin.className = 'vocab-item-edit'; pin.innerText = '📌';
             if (v.pin) pin.style.cssText = 'background:#FFF3E0;color:#E65100;border-color:#FFB74D;';
             pin.title = v.pin ? '取消置顶（列表与翻卡队列不再优先）' : '置顶——列表与翻卡队列都排最前';
@@ -10862,7 +10922,9 @@ const vocabBook = {
         pop.classList.add('show');
         // V115(四): 弹层打开期间后台异步预载其它已缓存音频的 segments——_copyRange 点按时全程同步执行
         // （绝不在 await 后写剪贴板，保护 iOS 剪贴板同步手势），字幕从 _copySubCache 秒取
-        this._preloadCopySubs(baseList);
+        // V115.1(修复5): 预载范围改用全量 list（原只传 baseList）——筛选「当前音频」时点
+        // 「📋 复制全部」，其它音频的缓存字幕也已预载到位（预载只读 IndexedDB，多几条零成本）
+        this._preloadCopySubs(list);
     },
     _hideCopyPop() {
         const pop = document.getElementById('vocab-copy-pop');
@@ -10907,7 +10969,7 @@ const vocabBook = {
             out = mkPrompt(false, which === 'miss') + '\n\n' + md;
         }
         copyTextToClipboard(out,
-            '📋 已复制' + label + ' ' + sub.length + ' 词' + (subInfo.text ? (' + 完整字幕 ' + subInfo.count + ' 句') : '（未附字幕：当前未加载音频且无可用缓存字幕）') + ' + AI 提示词——粘给 AI，填好后用「📋 粘贴更新」导回' + (subInfo.truncated ? '（字幕过长已截断）' : ''));
+            '📋 已复制' + label + ' ' + sub.length + ' 词' + (subInfo.text ? (' + 完整字幕 ' + subInfo.count + ' 句·取字幕1英文') : '（未附字幕：当前未加载音频且无可用缓存字幕）') + ' + AI 提示词——粘给 AI，填好后用「📋 粘贴更新」导回' + (subInfo.truncated ? '（字幕过长已截断）' : ''));
     },
     // ============================================================
     //  V115(四): 复制AI 附带完整字幕——缓存与匹配
@@ -10981,8 +11043,16 @@ const vocabBook = {
             });
             const allCur = hasCur && urls.length > 0 && urls.every(function(u) { return u === curFixed; });
             const noSrcLegacy = !urls.length; // 全是无 v.a 的老词条
+            // V115.1(修复5): 老词条兜底收紧——仅限筛选=全部/当前音频、或首词确属当前音频；
+            // 筛选「某特定历史音频」且词条无出处 URL 时，不得把当前正在播的另一集字幕错贴上去
+            const filt = this._filterAudio || 'all';
+            let legacyOk = false;
+            if (noSrcLegacy) {
+                legacyOk = (filt === 'all' || filt === '__cur__');
+                if (!legacyOk && sub.length) { try { legacyOk = this._isCurrentAudio(sub[0]); } catch(eL) {} }
+            }
             // 情况一：筛选=当前音频 / 词全出自当前音频 / 老词条兜底——内存 segments
-            if (hasCur && ((this._filterAudio || 'all') === '__cur__' || allCur || noSrcLegacy)) {
+            if (hasCur && (filt === '__cur__' || allCur || legacyOk)) {
                 return this._formatCopyBlocks([{ name: this._curAudioName(), segs: state.segments }], R, true);
             }
             // 情况二：单一其它音频——取预载缓存
@@ -10991,10 +11061,11 @@ const vocabBook = {
                 if (cached && cached.length) return this._formatCopyBlocks([{ name: this._audioNameFromUrl(urls[0]), segs: cached }], R, true);
                 return R; // 该音频没缓存字幕——不带字幕（提示词走无字幕分支）
             }
-            // 情况三：多音频（或混合）——按词序收集可用块，当前已加载音频优先保证收录
+            // 情况三：多音频（或混合）——按词序收集可用块，当前已加载音频优先保证收录；
+            // V115.1(修复5): 老词条（无 v.a）同样受 legacyOk 管控——筛选“某特定历史音频”时不得收录当前另一集
             const picked = [];
             const seen = [];
-            if (hasCur && (!urls.length || urls.indexOf(curFixed) >= 0)) {
+            if (hasCur && (legacyOk || urls.indexOf(curFixed) >= 0)) {
                 picked.push({ name: this._curAudioName(), segs: state.segments });
                 seen.push(curFixed);
             }
@@ -11007,7 +11078,8 @@ const vocabBook = {
                 if (cached && cached.length) { picked.push({ name: self._audioNameFromUrl(u), segs: cached }); seen.push(u); }
             });
             if (!picked.length) {
-                if (hasCur) return this._formatCopyBlocks([{ name: this._curAudioName(), segs: state.segments }], R, true); // 兜底
+                // V115.1(修复5): 末尾兜底同受管控——仅当前音频确与词集相关（legacyOk 或词集含当前音频）才附当前字幕
+                if (hasCur && (legacyOk || urls.indexOf(curFixed) >= 0)) return this._formatCopyBlocks([{ name: this._curAudioName(), segs: state.segments }], R, true);
                 return R;
             }
             return this._formatCopyBlocks(picked, R, false);
@@ -11041,20 +11113,15 @@ const vocabBook = {
         R.text = parts.join('\n\n');
         return R;
     },
-    // 单句提取：按 activeSub 取主轨；字幕3 纯中文时优先 seg.text（可拼 |text3）防 AI 看不到英文语境；
-    // 清洗 HTML 标签/内部换行折叠为空格/过滤空行与占位句；「#n 正文」每句一行（n=原句序）
+    // V115.1(修复5): 固定优先提取「字幕 1」（seg.text，英文原文）——不再跟随当前激活轨：
+    // 字幕 2/3 的机翻中文会干扰 AI 重新翻译、用户切在字幕 3 时也不该只复制中文；
+    // 该句字幕 1 为空才依次兜底 text2/text3；清洗 HTML 标签/换行折叠为空格/过滤占位句；「#n 正文」每句一行
     _formatSegLines(segs) {
         const out = [];
-        const mainKey = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
         (segs || []).forEach(function(seg, i) {
             if (!seg) return;
-            let t;
-            if (state.activeSub === 2 && String(seg.text || '').trim()) {
-                t = String(seg.text) + (String(seg.text3 || '').trim() ? ('|' + seg.text3) : '');
-            } else {
-                t = seg[mainKey] || seg.text || seg.text2 || seg.text3 || '';
-            }
-            t = String(t).replace(/<[^>]+>/g, '').replace(/\s*\n\s*/g, ' ').trim();
+            let t = String(seg.text || '') || String(seg.text2 || '') || String(seg.text3 || '');
+            t = t.replace(/<[^>]+>/g, '').replace(/\s*\n\s*/g, ' ').trim();
             if (!t || t === '(自动断句失败)' || t === '(无内容)') return;
             out.push('#' + (i + 1) + ' ' + t);
         });
