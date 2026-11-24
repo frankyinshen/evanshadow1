@@ -126,11 +126,19 @@
 //         (4 consecutive timeout/unreachable failures stop the batch with a clear message instead
 //         of crawling for minutes). Aggregate progress text and an end-of-batch toast that says
 //         re-clicking only re-downloads the failed items. No SW fetch/install logic change.
+// V117: Cache name bumped to v40. Offline-download engine rework in index.html per the "browser PWA
+//         batch offline download engine" playbook: streaming body reads with an idle watchdog (20s
+//         no-data abort, renewed per chunk, 15min total cap) instead of an unbounded body read; Blob
+//         assembled from streamed chunks (iOS memory safe); truncation detection; retry
+//         classification (timeout/unreachable/5xx/429 retried, 4xx/html/empty fail fast); big-file
+//         (>15MB) event-driven mutex with a persisted size table; dual-layer progress with 400ms
+//         throttle; weak-network (2g/saveData) concurrency 3->2; silent keep-alive audio during
+//         batches so a locked-screen iOS does not freeze the page. No SW fetch/install logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v116_offline_v39';
+var CACHE_NAME = 'shadow_v117_offline_v40';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
