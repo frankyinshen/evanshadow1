@@ -117,11 +117,16 @@
 //      6) In-place sentence edit keeps the empty-string property (editor textarea no longer hides);
 //         server browser restores the full folder history stack and offers a "back to root" entry
 //         when the remembered folder fails to load.
+// V115.2: Cache name bumped to v37. Feature release (listen-loop medley, practice trans peek,
+//         vocab-only blur mode, jump-to-sentence, mask-translation self-test) + review fixes; one SW
+//         logic change: fetch race - when the 3s timeout wins and the network later rejects, the
+//         orphaned netEarly promise used to surface as an Unhandled Promise Rejection in the console;
+//         it now carries an empty catch() right after being created (page behavior unchanged).
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v115_offline_v36';
+var CACHE_NAME = 'shadow_v115_offline_v37';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -283,6 +288,7 @@ self.addEventListener('fetch', function(event) {
             try { if (tid) clearTimeout(tid); } catch(e0) {}
             throw e;
         });
+        try { netEarly.catch(function() {}); } catch(e1) {} // V115.2: orphan-rejection guard - when the 3s timeout wins the race and the network later rejects (5xx / offline), the netEarly promise had no remaining consumer and logged an Unhandled Promise Rejection; harmless but noisy - this empty catch silences it without touching the race itself.
         event.respondWith(
             // Network wins: return normally; 3s fires first: use cache if available (r non-null), else
             // (r null) keep waiting for network.
