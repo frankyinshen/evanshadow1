@@ -120,11 +120,17 @@
 // V116: Cache name bumped to v38. Feature release (full-play pause/resume, listen-loop callback
 //         generation guards, jump-to-sentence full-play resume anchor, practice trans peek flex fix,
 //         narrow-screen filter row wrap). No SW logic change - bump forces cache refresh only.
+// V116.1: Cache name bumped to v39. Batch offline cache rework in index.html: 3-way parallel
+//         download pool (about 3x faster), per-file automatic retry (2 retries with 0.9s/1.8s backoff
+//         inside the direct-then-all-proxies candidate chain), and a network-level circuit breaker
+//         (4 consecutive timeout/unreachable failures stop the batch with a clear message instead
+//         of crawling for minutes). Aggregate progress text and an end-of-batch toast that says
+//         re-clicking only re-downloads the failed items. No SW fetch/install logic change.
 // NOTE: Comments are ASCII-only on purpose. Some hosts return Content-Type without charset=utf-8 for .js,
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v116_offline_v38';
+var CACHE_NAME = 'shadow_v116_offline_v39';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
