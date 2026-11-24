@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V117 | build:20261125 | 学习用户提供的《浏览器 PWA 批量离线下载引擎-技术总结》并按其十条军规重构离线下载模块（net.fetchCommon + serverBrowser 批量缓存）。军规1·空闲看门狗替代固定/无限超时：blob 路径原「响应头 15s + body 读取永不限」——服务器/代理 body 断流时请求永远挂着（表象=「下载很慢/卡死」）；现改首包 20s + 每收到一块数据续期 20s + 总上限 15min 兜底防僵尸——再慢只要数据在流动就不会被掐断，真断流 20s 即中止走下一候选；文本路径（字幕 KB 级）维持 V89 15s 头超时不变。军规2·流式读取+Blob 组装替代一次性读入：getReader() 逐块泵取→chunks→new Blob（Safari 大 Blob 自动换页磁盘），iOS 多路并发内存峰值从「文件总大小」降到「块大小×并发」不再被 jetsam 杀进程；顺带得到真实下载进度 received/Content-Length（一次性 arrayBuffer/blob 拿不到）+ 截断检测（流提前结束但字节不足→按网络失败走下候选可重试）；无 body.getReader 的老浏览器回退 r.blob() 且超时按 max(60s, 大小÷200KB/s) 放宽（上限 15min）；响应头一到位先判 Content-Type text/html——代理假 200 错误页不必等整个 HTML 下载完才识别（V115.1 检查 res.type 的快速版）。军规5·重试分类：fetchCommon 错误对象附机器可读 .reason（timeout/offline/html/empty/httpXXX），_batchCacheOne 3 次尝试只对 超时/不可达/5xx/429/未知 退避重试（0.9s/1.8s，每次尝试 fetchCommon 内部重建 AbortController 不复用旧 signal）——4xx/网页/空文件立即失败不再空耗两轮退避与流量（死链重试也没用）。军规6·大文件（>15MB）事件驱动互斥：新增 _sizeMap 大小表（键=hashUrl 短 id，'shadow_v117_dl_sizes' localStorage 防抖 3s 落盘+批次结束 flush，并入全量备份 keys）——已知大文件派发前排队（cursor-- 退回游标+bigQ 挂起 worker），未知大小乐观启动、响应头 onMeta 到达瞬间动态补登记（不预发 HEAD 省一个请求往返、!isBig&&!dynBig 防重复登记守卫）；大文件完成释放槽位并 setTimeout(50ms) 错峰唤醒下一个排队者，晚归/作废路径也释放；全程事件驱动零轮询。军规10·双层进度+400ms 节流：进度行「⬇ 5/18 · 失败 1 · ep03 43% · 大文件串行 · 网络不稳」——批次级计数+单文件级真实百分比（取进度最高的在途文件；就地改字段不新建对象防高频 GC），DOM 刷新 400ms 时间戳节流防流式高频回调抖动。军规(降并发克制)·仅 slow-2g/2g/saveData 降为 2 路（navigator.connection），3g/4g/wifi 照旧 3 路——过度保守的降级正是「下载慢得像失败」的元凶之一。军规(3.10.1 本地化)·批量期间防休眠：iOS 锁屏后无媒体播放的页面被整个冻结、fetch 停摆（表象=「下载不动」）——复用 V93 的 -81dB 静音保活 WAV（同一 blob URL）但用独立 audio 元素：共享 engine 元素会被 kaStop 连带停掉用户练习链条正依赖的保活音（V93 修复回归），且不写 mediaSession（锁屏不该显示「播放中」误导锁屏 ▶ 走 resumePaused）；遵循「🔋 息屏续航」同一开关口径，_batchResetUi（停止/收尾两路）停。军规(3.10.7)·开始 toast 设定预期：「N 路并行 · 大文件自动串行 · 失败自动重试 · 锁屏不断」。军规3/4（游标+完成回调链并发、_batchToken 批次代数隔离）V116.1 已满足原样保留；军规7（下载完成 postMessage 通知 SW 键集合）不适用——本应用音频播放走 IndexedDB+blob URL 不经 SW、sw.js 从不拦截媒体请求，无键集合需要同步；军规8（存储键与网络 URL 两条编码 lane）已满足——idbCache 键统一走 net.fixUrl 规范化、fetch 走原始 URL，全应用同口径不变；军规9（播放让路）不适用——本应用播放永远是先下完整 Blob 再播本地 blob URL（state._audioObjectUrl），从不网络边下边播，无带宽争抢。升版：sw.js 缓存名 shadow_v116_offline_v39→shadow_v117_offline_v40（无 SW 逻辑改动，仅强制刷新）；exportProject version 117+下载名 shadow_v117.json；全量备份/生词本 JSON version 117；新增 localStorage 键 shadow_v117_dl_sizes 并入全量备份 keys；<title>/nav-title 统一 V117 -->
 <!-- V116.1 | build:20261124 | 用户实测痛点专项修复：服务器目录「📥 批量缓存本目录」批量下载又慢又经常失败。根因三条：1) toggleBatchCache 用 for 循环逐条 await——一个音频（几~几十 MB）下完才下一个，30 个文件总时长≈30×(音频+3字幕) 全串行；2) 失败一个要先耗完「直连 15s 超时→代理1 15s→代理2 15s」（约 45s）才作废——失败越多整批越慢；3) 音频下载单次尝试定生死——网络抖一下/代理瞬时抽风即永久 fail++，无任何重试（字幕失败不致命，lt 返回 null 照存）。修复五件套：a) 3 路并行下载池——共享 cursor 游标 + 3 个 worker 同时拉，纯 fetch 不碰音频元素、_cachedIds.push 单线程无竞态、浏览器同主机连接上限约 6 路（音频+字幕错峰在途排队不报错），整体提速约 3 倍；b) _batchCacheOne 音频下载单条自动重试 2 次（0.9s/1.8s 退避，每次尝试内部仍走「直连→全部代理」候选链；退避等待中已被停止直接抛错不再发下一次尝试）——瞬时抖动自愈；c) 网络级熔断——连续 4 个「超时/不可达」失败（按 fetchCommon 抛错文案判定）自动停止整批并 toast 明说原因与剩余数（死管道下每条要等满 3 候选×15s×3 次重试=分钟级，不再十几分钟爬行；非网络级失败如链接失效/空文件/HTTP 异常不熔断照常过完）；d) 进度文本改聚合式「正在缓存 5/18 · 失败 1 · 3 路并行 · 网络不稳」；e) 完成汇总 toast 失败时明确「已各自动重试 2 次；再点一次本按钮只会补失败的这 N 个」（失败项不登记 _cachedIds，再点自动只补失败项——原有语义如今写明给用户看）。不变量全保留：_batchToken 代数「再点即停/切目录/关弹窗」三路作废、晚归不计数不登记不向新目录弹提示（V108 外审3 三条规则逐条移植进 worker 结构）、字幕失败不致命照存音频+V98 补拉、字幕1 失败不顶替主轨、_loadBadges 收尾刷新。升版：sw.js 缓存名 shadow_v116_offline_v38→v39（无 SW 逻辑改动，仅强制刷新）；exportProject version 116.1+下载名 shadow_v116_1.json；全量备份/生词本 JSON version 116.1；无新增 localStorage 键；<title>/nav-title 统一 V116.1 -->
 <!-- V116 | build:20261124 | 用户主需求 1 项 + 外部审查 5 项全部采纳（用户备注：iPhone 15 Pro Max 430px 实测筛选行/图标无恙——窄屏修复采用 ≤400px 媒体查询定向生效，430px 单行布局原样保留）。用户主需求·全文磨耳朵暂停/继续：toggleFullPlay 播放中分支由“stopAll+clearFullPlayResume（停止清断点，下次从头播）”改为“暂停保留断点”——安全时间（元素时间>0.5 优先，退内存断点）→_saveFullProgress(t,true) 立即落盘→mode=IDLE→_playSeq++/清 reqId/_tickHandler（作废在途回调，与 _onExternalFullPause 同款收口）→a.pause()（mode 已先置 IDLE，原生 pause 监听不误判外部打断）→_pausedFrom='FULL_PLAY'（锁屏/耳机 ▶ 走 resumePaused→resumeFullPlay 从断点续）→_fullPauseBySys=false（用户主动暂停，回前台不静默续播，区别于系统抢焦点）→mediaSession paused→resetButtons；按钮三态文案 播放中 active「⏸ 暂停」/有断点 resume 橙「▶ 继续磨耳朵」/默认「🎧 全文磨耳朵」；暂停↔继续与锁屏暂停/来电打断共用同一条断点链，跨会话 lib_meta 续播照旧；想从头播：切任意单句/其它模式（清断点）再点，或播满一整轮（回起点时断点自动清零）。审查修复1(高)·🎧 串烧停止/切换后的回调残留三处：a) _llSpeak/_llSent 的 fin() 开头补代数守卫 if(!this._ll||this._ll.tk!==tk||!this._ll.on) 直接返回——点「⏹ 停止」/关生词本时 speechSynthesis.cancel() 触发 onerror→fin 原样推进，开「译·后」会把中文释义当场读出来、例句被截断会照旧进入下一步；b) _llWait 开头补同款守卫——原连播停止后 fin→_llWait 无条件 engine.kaStart()，kaStop 刚执行完静音保活音立刻被复活、后台一直挂着不停；c) 结构变动入口统一先停串烧：tabReview/setFilterAudio/togglePin/moveUp/_clearCurAudio/_clearGlobal/remove 开头补 if(this._ll&&this._ll.on) this.listenLoopStop()——切翻卡/换筛选/置顶/上移/清空/删词原不停连播，后台定时器继续跑与翻卡叠音或因 _list 下标错位读错词（remove 物理删除使后续下标前移，额外补上）。审查修复2(中)·📍 精听提示文案与磨耳朵实际行为不一致：提示说“点 🎧 全文磨耳朵从这句续播”，实际 jumpSentence→loadItem(idx,true)→playOnce 开头 clearFullPlayResume 清断点，toggleFullPlay 无断点时写死 currentTime=0 从头播——现在 jumpSentence 在 loadItem 返回后把断点锚到本句句首（_saveFullProgress(segments[idx].start,true)+_syncFullPlayBtn 刷橙「▶ 继续磨耳朵」），点了真从本句续播（resumeFullPlay 先停本句播放再从句首续，无缝）；普通 playOnce 清断点规则不变（锚点在其后回填）；列表行 📍 与翻卡背面 title/toast 同步改准确文案。审查修复3(中)·练习页「译」临时偷看长句被裁：.practice-text 去 max-height:100% 改 flex:0 1 auto+min-height:48px（与预习页 V112 外审5 同款）——英文占满时译文区被顶出 overflow:hidden 容器外看不见；#pr-trans-view 补 max-height:22vh+overflow-y:auto+flex-shrink:1+min-height:0+-webkit-overflow-scrolling:touch，长译文自身滚动不再被裁。审查修复4(中)·375px 筛选行 6 元素过挤（用户 430px 无恙，仅窄屏生效）：@media(max-width:400px) 下 .vocab-filter-row flex-wrap:wrap+.vocab-filter-row select min-width:128px——搜索/下拉/↕/🙈 首行（下拉撑到 ~174px 剧集名可读），「译·关+🎧 串烧」顺延次行；390~430px 单行布局原样保留（430px 用户实测无恙）。.rv-quick 翻卡背面快捷行去图标与文字间空格（📍精听/✏️笔记/✏️改词/📖查词）+padding 5x7→5x5、gap 4→3——6 钮 375px 边缘溢出收进卡内（430px 照旧一行更宽松）。审查修复5(低)·listenLoopStop 列表 Tab 重绘丢状态+顺修 V115.2 隐患：停止串烧原在列表 Tab 下 this.render() 重建整个 #vocab-list——滚动位置跳回顶部、「🙈 遮释义」点开的 .unmasked 偷看态全恢复模糊；现与翻卡分支同款只把 #vocab-tip 还原回对应 Tab 默认提示文字，不重绘列表；顺修——原判定 indexOf('串烧连播中')===0 永不成立（tip 实际以「🎧 」开头，indexOf 返回 2），原列表 Tab 靠 render() 重绘捎带重置 tip 才看似正常、翻卡 Tab 从未真正还原过，改 !== -1 两 Tab 都真正还原。升版：sw.js 缓存名 shadow_v115_offline_v37→shadow_v116_offline_v38（无 SW 逻辑改动，仅强制刷新）；exportProject version 116+下载名 shadow_v116.json；全量备份/生词本 JSON version 116；无新增 localStorage 键；<title>/nav-title 统一 V116 -->
 <!-- V115.2 | build:20261124 | 用户三大功能升级 + 外部审查 7 项全部采纳。功能A·🎧 串烧连播（解放双手纯听）：生词本筛选行新增「🎧 串烧」按钮——按当前音频筛选口径（不含搜索词、含已毕业词、置顶在前）快照队列循环：TTS 读单词→停 1s→播原句（复用 hearSentence 三级兑底链 Level1 主音频直放/Level2 缓存直放/Level3 TTS，带 onEnd+估算双兜底防 iOS onend 不可靠卡链）→停 2s 默想词义→下一词，播完一轮回队首无限循环；「译·关/前/后」三态开关（shadow_v115_2_ll_zh）控制读词前/后 TTS 报中文释义；息屏全程 engine.kaStart 保活音防冻结锁屏继续听（_llWait 每步重挂——hearSentence 内部 stopAll 会停掉保活音）；停连播=再点按钮/关生词本自动停（close 联动）；进行中按钮深蓝 .on 高亮+底部 tip 实时显示第 x/y 词。功能A附带布局（用户指定）：生词本面板 80vh→92vh/iPad 88→96vh（+15% 全给释义内容）；翻卡卡面同享增高+折叠钮「收起详情」改卡面右上角悬浮（不再占一整行，详情区多出的高度全给句译/英释/笔记）；背面快捷行 [📍精听][✏️笔记][✏️改词][📖查词][有道][剑桥] 6 钮一行 nowrap（padding 7x13→5x7、字号 12→11.5）；筛选行搜索框 110→76px 腾位。功能B·练习页「译」临时偷看：#text-container 右上角 ✏️ 旁新增「译」小按钮——点一下在当前句下方临时展开字幕2/3 的中文（previewMode._getSub 同口径：主轨外第一非空轨），切句/切字幕轨自动收起（updatePractice 重渲即收），绝不改动 activeSub（与预习页「译」同体验）；有可用译文才显示按钮。功能B2·「🧩 只遮生词」半盲模式：显隐循环扩为 手动→永显→只遮生词→永隐 四态（permBlurMode='vocab'，.on-vocab 蓝高亮）——整句英文正常显示、只把生词本里的词/短语（.pw-in 淡蓝底仍在原地）高斯模糊遮住，点一下临时偷看（.revealed，切句自动重遮）；vocab 模式下点字幕空白不触发整句显隐切换（防误触破坏半盲态）、userBlurState 恒显示、新音频重置同步。功能C·📍 去这句精听：翻卡背面快捷行与列表行尾（仅 _isCurrentAudio 命中时显示）新增「📍 精听」——复用 app._vocabSentIdx 定位句子（时间戳区间包含→±1.5s 兑底→文本匹配），点一下关生词本、切到跟读页对应句号并自动播放本句（loadItem(idx,true) 同款链），想连听前后语境再点「🎧 全文磨耳朵」从这句续播。功能C2·列表「🙈 遮释义」自测开关：筛选行新增「🙈 释义」按钮（shadow_v115_2_mask）——开启后列表里所有中文释义/句译/笔记高斯模糊遮住（.vocab-mask），点哪条才单独显示哪条（.unmasked，再点走原编辑功能），单词读音/例句原声照常可点——整页快速扫词自测。审查修复1(中高)·cacheUI.load 漏调 engine._fullResetForNewAudio——离线缓存加载/「▶ 继续上次」（_restoreMode==='cache'）不恢复磨耳朵断点、音频 A→B 旧断点状态不重置，补在 state._loadedAudioUrl 赋值后与 loadFromUrl 两分支对齐。审查修复2(中)·_mergeVocab 未处理 pin——JSON 导出再合并丢置顶：新增词条拷 iv.pin；已有词条合并 iv.pin&&!lv.pin 置顶；合并后统一稳定重排（置顶收拢前段，非置顶相对序不变）保住「置顶分区」物理约定。审查修复3(中)·loadNextEpisode 拉目录污染按钮文案+无防连点——fetchTextSmart 补 {quiet:true}（不再把「🚀 极速加载」改成「尝试直连下载…」且失败不回写）、wrapper _loadingNextEp 锁（finally 释放）防弱网连点双拉双 loadFromUrl。审查修复4(中)·_copySubCache 同会话修改字幕后不失效——copyForAI 弹层每次打开先 clear 重新预取（IDB 读毫秒级），另 _syncCacheSegments put 成功/_applyNewSegments 落新段时同步 delete 对应键（双保险，就地改句→刷新字幕→复制AI 不再带旧字幕）。审查修复5(低)·划词浮条 z-index 8100 盖住就地改句弹层 7750——_sentEditOpen 开头补 vocabBook.dismissPrSelBar()（与 vocabBook.open 同款）。审查修复6(低)·editWord 判重不对称——v 有 a、x 无 a 原直接 return false，改 nmOf(v.a)===x.src 文件名比对（两侧对称）。审查修复7(低)·sw.js 竞态超时后 netEarly 孤立 Rejection——respondWith 前挂 netEarly.catch(function(){}) 空捕获，控制台不再报 Unhandled Promise Rejection。升版：sw.js 缓存名 shadow_v115_offline_v36→v37；exportProject version 115.2+下载名 shadow_v115_2.json；全量备份/生词本 JSON version 115.2；exportFullBackup keys 并入 shadow_v115_2_ll_zh/shadow_v115_2_mask；<title>/nav-title 统一 V115.2 -->
@@ -64,7 +65,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V116.1</title>
+<title>影子跟读 Pro V117</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -797,7 +798,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
     <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-        <div class="nav-title">🎧 影子跟读 V116.1</div>
+        <div class="nav-title">🎧 影子跟读 V117</div>
         <button class="nav-help-btn" onclick="helpPage.open()" title="常用功能说明：保存/备份区别 · 完整学习流程 · 生词本 AI 补全闭环 · 字幕编辑技巧 · iPhone/iPad 贴士">❓ 说明</button>
     </div>
     <div class="mode-switch">
@@ -2396,6 +2397,9 @@ const serverBrowser = {
     // V116.1: 3 路并行下载池 + 单条自动重试 2 次 + 网络级熔断（连续 4 个超时/不可达即停）——
     // 原逐条串行+单次尝试定生死，正是「批量下载很慢、经常失败」的根因（详见文件头 V116.1 注释）
     _batchToken: 0, _batchRunning: false,
+    // V117(军规6): 文件大小表 {hid:bytes}——响应头/落库时登记（'shadow_v117_dl_sizes' 防抖 3s 落盘），
+    // 下次批量派发前预判大文件（>15MB）排队互斥；_dlProg=在途文件真实百分比（军规10 双层进度用）
+    _sizeMap: null, _sizeMapSaveT: null, _dlProg: {}, _dlKaEl: null,
     _batchStop() {
         // V108(外审3): 只作废在途任务，还立即复位按钮与运行标记——原来只 token++，当前正在下载的大音频
         // （最长 45s）结束前按钮一直卡死在红色停止态，无法立刻重开；收尾 toast 也不再等晚归的 finally
@@ -2409,7 +2413,49 @@ const serverBrowser = {
         const prog = document.getElementById('sb-batch-progress');
         if (btn) { btn.classList.remove('running'); btn.innerText = '📥 批量缓存本目录'; }
         if (prog) prog.textContent = '';
+        this._dlKaStop(); // V117(3.10.1): 停批量专用保活音（停止/收尾两条路都经过这里）
         this._batchRunning = false;
+    },
+    // V117(军规6): 大小表惰性装载——响应头/落库时登记，供下批次派发前预判大文件（>15MB）
+    _sizeMapLoad() {
+        if (!this._sizeMap) this._sizeMap = safeParse(localStorage.getItem('shadow_v117_dl_sizes'), {}) || {};
+        return this._sizeMap;
+    },
+    _sizeMapPut(hid, bytes) {
+        try {
+            const m = this._sizeMapLoad();
+            if (!bytes || bytes <= 0 || bytes === m[hid]) return;
+            m[hid] = bytes;
+            this._sizeMapSave();
+        } catch(e) {}
+    },
+    // 防抖 3s 落盘（批次结束 flush 时传 now=true 立即写）；几百条目只几 KB
+    _sizeMapSave(now) {
+        if (!this._sizeMap) return;
+        if (this._sizeMapSaveT) { clearTimeout(this._sizeMapSaveT); this._sizeMapSaveT = null; }
+        const w = () => { this._sizeMapSaveT = null; try { localStorage.setItem('shadow_v117_dl_sizes', JSON.stringify(this._sizeMap)); } catch(e) {} };
+        if (now) w(); else this._sizeMapSaveT = setTimeout(w, 3000);
+    },
+    // V117(3.10.1 本地化): 批量下载期间防休眠——iOS 锁屏后无媒体播放的页面会被整个冻结，fetch 停摆（表象=「下载不动」）。
+    // 复用 V93 的 -81dB 静音保活 WAV（同一 blob URL）但用【独立 audio 元素】：共享 engine 的元素会被
+    // kaStop 连带停掉用户练习链条正依赖的保活音（V93 修复回归）；也不写 mediaSession——锁屏不该
+    // 显示「播放中」误导锁屏 ▶ 走 resumePaused。遵循「🔋 息屏续航」同一开关口径。
+    _dlKaStart() {
+        try {
+            if (!engine.kaEnabled()) return; // 同开关口径（关=接受锁屏停摆的旧行为）
+            if (!this._dlKaEl) {
+                const proto = engine._kaEnsure();
+                if (!proto || engine._kaFailed) return;
+                const el = document.createElement('audio');
+                el.loop = true; el.setAttribute('playsinline', ''); el.preload = 'auto';
+                el.src = proto.src; // 复用 V93 静音 WAV 的 blob URL（2 秒循环，听不见）
+                this._dlKaEl = el;
+            }
+            if (this._dlKaEl.paused) this._dlKaEl.play().catch(function() {}); // 按钮点击=用户手势，iOS 允许；被拒静默降级
+        } catch(e) {}
+    },
+    _dlKaStop() {
+        try { if (this._dlKaEl && !this._dlKaEl.paused) this._dlKaEl.pause(); } catch(e) {}
     },
     toggleBatchCache() {
         if (this._batchRunning) { // 再点即停
@@ -2435,42 +2481,83 @@ const serverBrowser = {
         const btn = document.getElementById('sb-batch-btn');
         if (btn) { btn.classList.add('running'); btn.innerText = '⏹ 停止批量缓存'; }
         const self = this;
-        // V116.1: 3 路并行 + 单条重试 + 网络级熔断。并发安全：纯 fetch 不碰音频元素、不写共享 DOM 状态，
-        // _cachedIds.push 单线程无竞态；浏览器同主机连接上限约 6，3 路音频+字幕错峰在途不超限（排队不报错）。
-        // V108(外审3) 三条晚归规则逐条移植进 worker 结构：作废后成功不计数不登记、作废后失败不计数、
-        // 作废后的 finally 不收尾不向新目录弹提示
-        const CONC = 3;
+        // V117(军规·降并发克制): 仅 slow-2g/2g/saveData 降为 2 路——3g/4g/wifi 照旧 3 路
+        //（过度保守的降级正是「下载慢得像失败」的元凶之一）
+        let CONC = 3;
+        try { const c = navigator.connection; if (c && (c.saveData || /^(slow-)?2g$/.test(c.effectiveType || ''))) CONC = 2; } catch(eC) {}
+        const BIG = 15 * 1048576; // V117(军规6): 大文件阈值——>15MB 全局同时只跑 1 个，小文件照常 N 路并行
+        const sizeMap = this._sizeMapLoad(); // 军规6: 已知大小派发前预判；未知大小乐观启动+响应头动态补登记（见 onMeta）
+        this._dlProg = {}; // V117(军规10): 在途文件真实百分比表（流式读取才拿得到）
+        this._dlKaStart(); // V117(3.10.1): 批量期间静音保活——锁屏不冻结
+        ui.toast('📥 开始批量缓存：' + CONC + ' 路并行 · 大文件自动串行 · 失败自动重试' + (engine.kaEnabled() ? ' · 锁屏不断' : '')); // V117(3.10.7): 开始即告知并发策略，减少「卡死」误判
+        // V116.1 不变量全保留：纯 fetch 不碰音频元素、_cachedIds.push 单线程无竞态、
+        // V108 外审3 三条晚归规则（不计数不登记不向新目录弹提示）、字幕失败不致命、_loadBadges 收尾刷新
         (async () => {
             let ok = 0, fail = 0, cursor = 0, netStreak = 0, fused = false, fusedN = 0;
-            const isNetErr = (e) => { const m = String((e && e.message) || e || ''); return m.indexOf('超时') >= 0 || m.indexOf('不可达') >= 0; }; // fetchCommon 抛错文案：连接超时（15 秒无响应…）/网络不可达（设备可能离线…）
-            const upd = () => {
+            let bigActive = 0; const bigQ = []; // V117(军规6): 大文件互斥槽位 + 排队者（存 worker 函数，事件驱动零轮询）
+            const isNetErr = (e) => { const m = String((e && e.message) || e || ''); return m.indexOf('超时') >= 0 || m.indexOf('不可达') >= 0; }; // fetchCommon 抛错文案：连接超时（20 秒无数据流动…）/网络不可达（…）
+            let lastUpd = 0; // V117(军规10.3): DOM 刷新 400ms 节流（流式回调频率高，时间戳比较即可）
+            const upd = (force) => {
+                const now = Date.now();
+                if (!force && now - lastUpd < 400) return;
+                lastUpd = now;
                 try {
                     const prog = document.getElementById('sb-batch-progress');
-                    if (prog) prog.textContent = '正在缓存 ' + ok + '/' + todo.length + (fail ? ' · 失败 ' + fail : '') + ' · ' + CONC + ' 路并行' + (netStreak ? ' · 网络不稳' : '');
+                    if (!prog) return;
+                    // V117(军规10.2): 双层进度——批次级计数 + 单文件级真实百分比（取进度最高的在途文件展示）
+                    let best = null;
+                    for (const k in self._dlProg) { const it = self._dlProg[k]; if (it && (!best || it.p > best.p)) best = it; }
+                    const tail = best ? (best.n.replace(/\.[^.]+$/, '').substring(0, 16) + ' ' + best.p + '%') : (CONC + ' 路并行');
+                    prog.textContent = '⬇ ' + ok + '/' + todo.length + (fail ? ' · 失败 ' + fail : '') + ' · ' + tail
+                        + (bigActive ? ' · 大文件串行' : '') + (netStreak ? ' · 网络不稳' : '');
                 } catch(eP) {}
             };
-            upd();
+            upd(true);
+            const wakeBig = () => { if (bigQ.length) { const w = bigQ.shift(); setTimeout(w, 50); } }; // 50ms 错峰唤醒下一个排队者
             const worker = async () => {
                 while (token === self._batchToken && !fused) {
                     const i = cursor++;
                     if (i >= todo.length) return;
+                    const f = todo[i];
+                    const hid = idbCache.hashUrl(f.url);
+                    // V117(军规6): 已知大文件且已有一个在跑——游标退回、本 worker 挂起排队（大文件完成时事件唤醒，不轮询）
+                    let isBig = false, dynBig = false;
+                    if ((sizeMap[hid] || 0) > BIG) {
+                        if (bigActive > 0) { cursor--; bigQ.push(worker); return; }
+                        isBig = true; bigActive++;
+                    }
+                    let settled = false;
+                    const releaseBig = () => { if (settled) return; settled = true; if (isBig || dynBig) { bigActive--; wakeBig(); } }; // 槽位释放+唤醒（晚归/作废也释放）
                     try {
-                        await self._batchCacheOne(todo[i], token);
+                        const sz = await self._batchCacheOne(f, token, {
+                            // 响应头一到：登记大小（下批次预判）+ 未知大文件动态补登记互斥（!dynBig 守卫防多次上报重复计数）
+                            onMeta: (len) => { try { if (len > 0) self._sizeMapPut(hid, len); } catch(e0) {} if (!isBig && !dynBig && len > BIG) { dynBig = true; bigActive++; } },
+                            // 真实下载进度（军规10 双层进度；就地改字段不新建对象防高频 GC）
+                            onProgress: (frac) => {
+                                if (!(frac > 0)) return;
+                                const p = Math.min(99, Math.round(frac * 100));
+                                const cur = self._dlProg[hid];
+                                if (cur) { if (p !== cur.p) cur.p = p; }
+                                else self._dlProg[hid] = { n: f.name, p: p };
+                                upd();
+                            }
+                        });
+                        try { if (sz > 0) self._sizeMapPut(hid, sz); } catch(e0) {} // 落库后以实际大小覆盖（chunked 响应无 Content-Length 也能登记）
+                        delete self._dlProg[hid];
+                        releaseBig();
                         if (token !== self._batchToken) return; // V108(外审3): 下载期间点了停止/切了目录/关了弹窗——晚归结果不计数不登记，就此打住
-                        ok++; netStreak = 0; upd();
+                        ok++; netStreak = 0; upd(true);
                         // 增量登记：中途搜索/重绘列表时徽章立刻反映（收尾再整体刷新一次）
-                        try {
-                            const hid = idbCache.hashUrl(todo[i].url);
-                            if (self._cachedIds && self._cachedIds.indexOf(hid) < 0) self._cachedIds.push(hid);
-                        } catch(e0) {}
+                        try { if (self._cachedIds && self._cachedIds.indexOf(hid) < 0) self._cachedIds.push(hid); } catch(e0) {}
                     } catch(e1) {
+                        delete self._dlProg[hid];
+                        releaseBig();
                         if (token !== self._batchToken) return; // V108(外审3): 失败晚归同样直接停——不再 fail++ 去弹已切走目录的提示
                         console.warn('批量缓存失败:', todo[i].name, e1);
-                        fail++; upd();
+                        fail++; upd(true);
                         if (isNetErr(e1)) {
                             // V116.1: 网络级熔断——连续 4 个「超时/不可达」说明管道本身不通（离线/服务器挂/代理全拒），
-                            // 继续耗下去每条要等满 3 候选×15s×3 次重试（分钟级）——停止全部 worker，不再十几分钟爬行。
-                            // 非网络级失败（链接失效/空文件/HTTP 异常）不熔断：那是单文件自己的问题，整批照常过完
+                            // 停止全部 worker 不再十几分钟爬行；非网络级失败（链接失效/空文件/HTTP 异常）不熔断照常过完
                             netStreak++;
                             if (netStreak >= 4 && !fused) { fused = true; fusedN = netStreak; }
                         } else netStreak = 0;
@@ -2480,6 +2567,8 @@ const serverBrowser = {
             try {
                 await Promise.all(Array.from({ length: Math.min(CONC, todo.length) }, () => worker()));
             } finally {
+                self._sizeMapSave(true); // 大小表 flush（作废批次也落——数据不浪费，下批次照样预判）
+                self._dlProg = {};
                 // V108(外审3): 只有未被作废的运行才做收尾（复位 UI/刷新列表/弹完成 toast）——
                 // 停止/切目录/关弹窗的晚归 finally 不再向新目录弹上一目录的完成提示或刷新列表
                 //（停止瞬间的复位与提示已由 _batchStop / 停止分支立即处理）；
@@ -2491,7 +2580,7 @@ const serverBrowser = {
                     if (fused) {
                         ui.toast('⚠️ 连续 ' + fusedN + ' 个网络级失败（超时/不可达）——已自动停止，剩余 ' + rem + ' 个未缓存；网络或服务器恢复后再点本按钮会接着补');
                     } else {
-                        ui.toast('📥 批量缓存完成：成功 ' + ok + ' 个' + (fail ? '、失败 ' + fail + ' 个（已各自动重试 2 次；再点一次本按钮只会补失败的这 ' + fail + ' 个）' : '') + (rem > 0 ? '、剩余 ' + rem + ' 个未缓存' : '，全部离线可用'));
+                        ui.toast('📥 批量缓存完成：成功 ' + ok + ' 个' + (fail ? '、失败 ' + fail + ' 个（网络抖动已自动重试；死链不再空耗重试；再点一次本按钮只会补失败的这 ' + fail + ' 个）' : '') + (rem > 0 ? '、剩余 ' + rem + ' 个未缓存' : '，全部离线可用'));
                     }
                 }
             }
@@ -2499,14 +2588,17 @@ const serverBrowser = {
     },
     // 单个文件入库——与「🚀 极速加载」回写缓存同构：音频 Blob + 三路字幕文本 + 解析好的 segments；
     // 无字幕条目照存音频（segments 空），V98 补拉链路以后会自动补「后来才上传」的字幕
-    async _batchCacheOne(f, token) {
+    // V117: 第 3 参 hooks={onMeta,onProgress} 透传给 net.fetchBlobSmart（流式进度/响应头大小），
+    // 返回 blob.size 供 worker 登记大小表；重试按军规5 分类——超时/不可达/5xx/429/未知才退避重试，
+    // 4xx/网页/空文件立即失败（fetchCommon 错误对象带 .reason 供判定），死链不再空耗两轮退避
+    async _batchCacheOne(f, token, hooks) {
         const base = f.name.substring(0, f.name.lastIndexOf('.'));
         const findSub = (sfx) => { const tryOne = (ext) => { const t = (base + sfx + ext).toLowerCase(); const x = this.allParsedFiles.find(y => !y.isDirectory && y.name.toLowerCase() === t); return x ? x.url : ''; }; return tryOne('.srt') || tryOne('.ass') || tryOne('.lrc'); }; // V114(新格式): 每个槽位依次兑底 .srt→.ass→.lrc
         const s1 = findSub('.eng') || findSub('');
         const s2 = findSub('.engchs');
         const s3 = findSub('.chs');
         // V116.1: 音频是成败关键（字幕失败不致命，lt 返回 null 照存）——单条最多 3 次尝试（0.9s/1.8s 退避），
-        // 每次尝试内部仍走「直连→全部代理」候选链；网络抖动/代理瞬时抽风不再一锤定音。
+        // 每次尝试内部仍走「直连→全部代理」候选链、每次重建 AbortController（军规5：不复用旧 signal）；
         // 退避等待中已被停止（token 作废）直接抛错退出——不再发起下一次尝试
         let blob = null, lastE = null;
         for (let att = 0; att < 3; att++) {
@@ -2514,8 +2606,13 @@ const serverBrowser = {
                 await new Promise((r) => setTimeout(r, 900 * att));
                 if (token != null && token !== this._batchToken) throw new Error('批量缓存已停止');
             }
-            try { blob = await net.fetchBlobSmart(f.url, { quiet: true }); break; }
-            catch (eA) { lastE = eA; }
+            try { blob = await net.fetchBlobSmart(f.url, { quiet: true, onMeta: hooks && hooks.onMeta, onProgress: hooks && hooks.onProgress }); break; }
+            catch (eA) {
+                lastE = eA;
+                // V117(军规5): 4xx/网页/空文件不可重试——立即失败；超时/不可达/5xx/429/未知（瞬时）才重试
+                const rs = String((eA && eA.reason) || '');
+                if (!(rs === 'timeout' || rs === 'offline' || rs === '' || rs === 'http429' || /^http5/.test(rs))) break;
+            }
         }
         if (blob == null) throw (lastE || new Error('下载失败'));
         const lt = async (u) => { if (!u) return null; try { return await net.fetchTextSmart(u, { quiet: true }); } catch(e) { return null; } };
@@ -2542,6 +2639,7 @@ const serverBrowser = {
             createdAt: Date.now()
         };
         await idbCache.put(rec);
+        return blob.size; // V117(军规6): 实际大小回传 worker 登记大小表（chunked 响应无 Content-Length 也能登记）
     },
     renderList() {
         const listEl = document.getElementById('server-browser-list'); listEl.innerHTML = '';
@@ -2634,33 +2732,78 @@ const net = {
         // V100(外审10): opts.quiet——补拉超时后的后台请求不再改加载按钮文案（fetchCommon 会写
         // “尝试直连下载/直连失败”，此时外层早已结束，文案会被永久滞留在按钮上）
         const quiet = !!(opts && opts.quiet);
-        // V89: 单次尝试 15 秒超时——弱网下原直连 fetch 一直挂着：既不报错也走不到代理分支，按钮卡在"尝试直连下载..."。
-        // 超时只限"等响应头"（fetch resolve 即 clearTimeout），大音频正文下载不受限；
-        // AbortController 不存在的老浏览器自动退化为无超时（行为同旧版），不会报错
+        // V117(军规1+2): 空闲看门狗 + 流式读取（源自《离线批量下载引擎》技术总结）——
+        // 旧结构「响应头 15s 超时 + body 读取永不限」：服务器/代理 body 断流时请求永远挂着（表象=「下载很慢/卡死」）；
+        // r.blob() 一次性读入：iOS 多路并发内存峰值=文件总大小，会被 jetsam 杀进程（表象=「下载失败」）。
+        // 现改为：首包 20s + 每收到一块数据续期 20s + 总上限 15min 兜底防僵尸——再慢只要数据在流动就不会被
+        // 掐断，真断流 20s 即中止走下一候选；getReader() 逐块泵取→chunks→new Blob（Safari 大 Blob 自动换页磁盘）
+        const onMeta = opts && opts.onMeta;     // V117(军规6): 响应头到达即上报 Content-Length（大文件互斥动态登记用）
+        const onProg = opts && opts.onProgress; // V117(军规10): 流式真实进度 (received/Content-Length, received)
+        const IDLE_MS = 20000, TOTAL_MS = 15 * 60 * 1000; // 军规1 参数：空闲 20s / 总上限 15min
         const tryFetch = async (u) => {
             const AC = window.AbortController;
             const ac = AC ? new AC() : null;
-            const t = ac ? setTimeout(() => { try { ac.abort(); } catch(e) {} }, 15000) : null;
+            let idleT = null;
+            const t0 = Date.now();
+            const kill = () => { if (ac) { try { ac.abort(); } catch(e) {} } };
+            const stopT = () => { if (idleT) { clearTimeout(idleT); idleT = null; } };
+            const feed = () => { // 每收到一块数据续期看门狗；总上限兜底（超 15min 的僵尸任务强制中止）
+                stopT();
+                if (Date.now() - t0 > TOTAL_MS) { kill(); return; }
+                idleT = setTimeout(kill, IDLE_MS);
+            };
+            if (type === 'blob') feed(); // 首包看门狗（覆盖响应头+首块数据，取代 V89 的 15s 头超时并放宽到 20s）
+            else if (ac) idleT = setTimeout(kill, 15000); // 文本路径（字幕 KB 级）维持 V89 15s 头超时，body 不流式
             try {
                 const opt = { cache: 'no-store' }; // 强制禁用浏览器缓存
                 if (ac) opt.signal = ac.signal;
                 const r = await fetch(u, opt);
-                if (t) clearTimeout(t);
+                if (type !== 'blob') stopT(); // 文本：响应头已到，清 15s 定时器（V89 原语义）
                 if (!r.ok) { lastFail = 'http' + r.status; return null; } // V115.1(修复3): 记录失败原因供最终提示
-                const res = type === 'blob' ? await r.blob() : await r.text();
-                // V115.1(修复3): 代理返回 HTTP 200 的 HTML 错误/验证页或 0 字节空包——按失败丢弃，
-                // 继续尝试下一候选（原样返回会让后续 decodeAudioData/字幕解析报晦涩错误）
-                if (!res) { lastFail = 'empty'; return null; }
+                const len = parseInt(r.headers.get('Content-Length') || '0', 10) || 0;
+                if (len > 0 && onMeta) { try { onMeta(len); } catch(e0) {} } // 军规6: 响应头一到就上报大小
                 if (type === 'blob') {
+                    const ct = (r.headers.get('Content-Type') || '').toLowerCase();
+                    // V117: 头一到位就识别代理假 200 错误页——不必等整个 HTML 下载完才识破（V115.1 检查 res.type 的快速版）
+                    if (ct.indexOf('text/html') === 0) { lastFail = 'html'; return null; }
+                    if (r.body && typeof r.body.getReader === 'function') {
+                        // 军规2: 流式泵取——峰值内存只有「块大小×并发数」，顺带拿到真实进度与截断检测
+                        const reader = r.body.getReader();
+                        const chunks = []; let received = 0;
+                        const pump = () => reader.read().then((rd) => {
+                            if (rd.done) return;
+                            feed(); // 军规1: 每块数据续期看门狗
+                            chunks.push(rd.value);
+                            received += rd.value.byteLength;
+                            if (onProg) { try { onProg(len > 0 ? received / len : 0, received); } catch(e0) {} }
+                            return pump();
+                        });
+                        await pump();
+                        stopT();
+                        if (len > 0 && received < len) { lastFail = 'offline'; return null; } // V117: 截断检测——流提前结束但字节不足，按网络失败走下候选（可重试）
+                        const res = new Blob(chunks, { type: ct || 'application/octet-stream' });
+                        if (!res.size) { lastFail = 'empty'; return null; } // V115.1(修复3): 0 字节空包
+                        return res;
+                    }
+                    // 回退：老浏览器无 body.getReader 才一次性读入——超时按大小放宽 max(60s, 大小÷200KB/s)（军规2 回退），上限 15min
+                    stopT();
+                    const fbMs = len > 0 ? Math.min(TOTAL_MS, Math.max(60000, len / 200 * 1000)) : 60000;
+                    if (ac) idleT = setTimeout(kill, fbMs);
+                    const res = await r.blob();
+                    stopT();
                     if (!res.size) { lastFail = 'empty'; return null; } // 0 字节空包
                     if (res.type && String(res.type).indexOf('text/html') === 0) { lastFail = 'html'; return null; } // 假 200 HTML 错误/验证页
+                    return res;
                 }
+                const res = await r.text();
+                // V115.1(修复3): 0 字节空文本按失败丢弃，继续尝试下一候选
+                if (!res) { lastFail = 'empty'; return null; }
                 return res;
             } catch(e) {
-                if (t) clearTimeout(t);
-                lastFail = (e && e.name === 'AbortError') ? 'timeout' : 'offline'; // V115.1(修复3): 区分超时与网络不可达
-                return null; // 超时 abort / 网络错误 → 统一按失败处理，走下一个候选
-            }
+                stopT();
+                lastFail = (e && e.name === 'AbortError') ? 'timeout' : 'offline'; // V115.1(修复3): 区分超时与网络不可达（看门狗中止/网络错误 → 走下一个候选）
+                return null;
+            } finally { stopT(); }
         };
         let lastFail = ''; // V115.1(修复3): 最后一次失败的原因（timeout/offline/html/empty/httpXXX）
         if (!quiet) ui.setLoadBtnText("尝试直连下载...");
@@ -2672,12 +2815,15 @@ const net = {
             if (res !== null) return res;
         }
         // V115.1(修复3): 全部候选失败——按最后失败原因给出明确提示（不再是一句笼统的"请检查链接或网络"）
-        const why = lastFail === 'timeout' ? '连接超时（15 秒无响应，请检查网络后重试）'
-            : lastFail === 'offline' ? '网络不可达（设备可能离线，或服务器/代理拒绝连接）'
+        const why = lastFail === 'timeout' ? (type === 'blob' ? '连接超时（20 秒无数据流动，请检查网络后重试）' : '连接超时（15 秒无响应，请检查网络后重试）')
+            : lastFail === 'offline' ? '网络不可达（设备可能离线，或服务器/代理拒绝连接、传输中断）'
             : lastFail === 'html' ? '返回的是网页不是音频文件（链接可能已失效）'
             : lastFail === 'empty' ? '服务器返回了空文件'
             : (lastFail ? ('HTTP 状态异常 ' + lastFail) : '未知原因');
-        throw new Error('下载失败：' + why + '（已依次尝试直连和全部代理）');
+        // V117(军规5): 错误对象附机器可读 .reason 供重试分类——超时/不可达/5xx/429 可重试，4xx/html/empty 不重试
+        const err = new Error('下载失败：' + why + '（已依次尝试直连和全部代理）');
+        err.reason = lastFail;
+        throw err;
     },
     async fetchBlobSmart(url, opts) { return this.fetchCommon(url, 'blob', opts); },
     async fetchTextSmart(url, opts) { return this.fetchCommon(url, 'text', opts); },
@@ -6633,9 +6779,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 116.1, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V116.1: 116→116.1（批量缓存 3 路并行+重试+熔断）
+        const data = { version: 117, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V117: 116.1→117（离线下载引擎按技术总结军规重构：流式+看门狗+重试分类+大文件互斥）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v116_1.json'; // V116.1: 116→116_1（下载名随版本）
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v117.json'; // V117: 下载名随版本
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -6669,9 +6815,10 @@ const app = {
                 'shadow_v115_sb_hist', // V115(六): 服务器目录记忆（上次文件夹+文件名表，「下一集」用）
                 'shadow_v115_cache_sort', // V115(六): 离线缓存页排序方式
                 'shadow_v115_2_ll_zh', // V115.2(功能A): 串烧连播中文释义播报方式（0不报/1词前/2词后）
-                'shadow_v115_2_mask' // V115.2(功能C2): 列表遮释义自测开关
+                'shadow_v115_2_mask', // V115.2(功能C2): 列表遮释义自测开关
+                'shadow_v117_dl_sizes' // V117(军规6): 批量下载文件大小表（键=hashUrl 短 id）——大文件互斥预判用，丢失只降级为下批次乐观启动无实害
             ];
-            var data = { type: 'shadow_full_backup', version: 116.1, exportedAt: new Date().toISOString(), items: {} }; // V116.1: 116→116.1（导入侧只校验 type，不影响兼容；无新增 localStorage 键）
+            var data = { type: 'shadow_full_backup', version: 117, exportedAt: new Date().toISOString(), items: {} }; // V117: 116.1→117（导入侧只校验 type，不影响兼容；新增 localStorage 键 shadow_v117_dl_sizes 并入 keys）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -9535,7 +9682,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 116.1, exportedAt: new Date().toISOString(), vocab: list }; // V116.1: 116→116.1（ph/cn/def/pin 随词条对象整体携带）
+        const data = { type: 'shadow_vocab_backup', version: 117, exportedAt: new Date().toISOString(), vocab: list }; // V117: 116.1→117（ph/cn/def/pin 随词条对象整体携带）
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
