@@ -135,6 +135,18 @@
 //         now serializes fresh.put() calls and dedupes by normalized key - parallel puts of the
 //         same normalized key (old entries differing only in query params) could hit write-lock
 //         conflicts on some Cache API implementations.
+// V119: Cache name bumped to v42. Bugfix release for the V119 offline-playback root causes, with one
+//      real SW logic change in install: the old-cache migration loop marked a normalized key as
+//      "seen" BEFORE checking resp && resp.ok - if the first old entry for a normalized key happened
+//      to be invalid (missing or non-ok response), later valid old entries for the same key were
+//      skipped and lost. Now seenKeys is marked only after a valid response is confirmed, plus a
+//      run-time re-check before each put (two same-key old entries both chain up since validity is
+//      unknowable at chain-build time). Everything else (V119 root-cause fixes) lives in index.html:
+//      offline silence-detection fallback when a cached entry has empty segments, fake-200 HTML
+//      rejection on the text fetch path, subtitle-URL recovery for legacy broken entries, s2/s3
+//      subtitle tracks preserved when slot-1 fetch fails, selDel scope narrowed to visible list,
+//      stopped reason outranking earlier timeout/offline in fetchCommon aggregation, subtitle retry
+//      now classified by err.reason, and the 1s bigWaiter self-check now removes itself.
 // V117: Cache name bumped to v40. Offline-download engine rework in index.html per the "browser PWA
 //         batch offline download engine" playbook: streaming body reads with an idle watchdog (20s
 //         no-data abort, renewed per chunk, 15min total cap) instead of an unbounded body read; Blob
@@ -147,7 +159,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v118_offline_v41';
+var CACHE_NAME = 'shadow_v119_offline_v42';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -179,10 +191,17 @@ self.addEventListener('install', function(event) {
                             reqs.forEach(function(r) {
                                 var k = keyOf(r.url);
                                 if (seenKeys[k]) return; // same normalized key already handled
-                                seenKeys[k] = true;
+                                // V119: do NOT mark seen at chain-build time - validity is only known
+                                // after oc.match(r) resolves. Marking early meant: if the FIRST old
+                                // entry for a normalized key happened to be invalid (!resp or !resp.ok),
+                                // a LATER valid old entry for the same key was silently skipped and lost.
+                                // Both same-key entries still chain up (unavoidable - build time cannot
+                                // know validity); the run-time re-check below makes the loser a no-op.
                                 inner = inner.then(function() {
+                                    if (seenKeys[k]) return null; // an earlier same-key entry already migrated
                                     return oc.match(r).then(function(resp) {
                                         if (!resp || !resp.ok) return null;
+                                        seenKeys[k] = true; // valid - later entries for this key can be skipped
                                         // V115: redirected responses must not be stored as-is - respondWith()
                                         // rejects them as network errors on some engines. Rebuild a clean
                                         // Response (same body/status/headers) before putting, same as the
