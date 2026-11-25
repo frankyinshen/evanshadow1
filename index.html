@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V119 | build:20261125 | 离线缓存播放「请先加载内容」根因 4 条全部落地 + 外审次级 6 项。用户实测：批量下载完成、离线点「▶ 加载使用」仍报「请先加载内容」且死锁在编辑页。根因1·两条缓存命中分支（cacheUI.load 与 loadFromUrl 缓存命中）无「无字幕断句兜底」——网络分支没字幕时会 detectSilenceAsync 智能断句（连空都兜 1 条占位句）所以 segments 永不为空；缓存分支读出 segments=[] 后只试 _fetchSubsIfMissing（离线/无字幕来源/6s 超时/1h 节流全都会直接 false），然后没有用已解码的 state.audioBuffer 兜底断句就进 _enterAfterLoad→switchView('practice')→「请先加载内容」。修：新增 app._ensureCacheSegments(cachedRec,seq)——audioBuffer 走 detectSilenceAsync（阈值读 #threshold-range）、连断句都空再兜 1 条「(自动断句失败)」占位（音频就绪取 a.duration）、回写缓存（仅当 fresh.segments 仍空，与后台补拉字幕版互让）、代数守卫；cacheUI.load 与 loadFromUrl 缓存分支在 _fetchSubsIfMissing 之后接入，断句 text='' 与 isBlank() 口径一致（联网且有来源时以后照样自动补拉升级真字幕）。根因2·net.fetchCommon 文本路径不拦代理假 200 HTML——blob 路径早有 text/html 检查，文本路径只查空串：代理返 Cloudflare 验证页（HTTP 200+text/html）被当"有效字幕"返回，parseSRT 解析 0 条、srts 存整页 HTML（缓存列表虚报「1 条字幕」）、hasSubs 为真连补拉都短路。修：文本路径加 Content-Type text/html 拒绝（r.body.cancel 同步释放连接槽位）+ 内容嗅 sniff（<!doctype html/<html/<!-- 开头定性 html，SRT/ASS/LRC/VTT 无一以 '<' 开头零误伤）。根因3·V117 残缺遗留条目（srts 全 null 连 URL 都没存）既不重抓（toggleBatchCache 过滤已存在条目）又补不到（无来源可拉）。修：cacheUI.load 输入框与缓存都无字幕来源时按目录记忆 shadow_v115_sb_hist（须与本音频同目录，防同名串目录）以 findSub 口径（.eng/.engchs/.chs × .srt→.ass→.lrc）自动救回字幕 URL 填进输入框并 saveInput——联网即自动补拉；离线时 _ensureCacheSegments 照常兜底可播。根因4·_batchCacheOne 主字幕失败丢弃已成功的 s2/s3——(s1&&!g1.length)?[] 把 .engchs 双语/.chs 纯中文解析出的几百句强行清空。修：改走 _buildSegsFromParsed 的 p2/p3 兜底轨（离线既有句子可跟读可切轨），「字幕1 恢复后自动补拉整轨替换」防线由 srts[0]={url,text:null} 占位+_fetchSubsIfMissing 新增 slot1Pending 信号承担（hasSubs/手敲字幕两道闸门均放行 slot1Pending；补拉成功 _applyNewSegments 整轨替换+重点句重映射；applyResults 某槽瞬时拉挂回退缓存旧文本——字幕1 恢复重建时不再丢字幕2/3 轨）。外审次级6项：1·selDel 删除集合限定 _selShown 可见快照（顶栏计数与实际删除一致，隐藏的勾选保留不误删）；2·render 空列表分支复位 _selMode/_selIds/_selShown；3·fetchCommon 聚合尾部 outerSig.aborted 优先定性 stopped（前序 timeout 不再淹没停止信号）；4·_batchCacheOne 字幕重试按 .reason 分类（4xx/html/empty/stopped 不再空耗 450ms 退避，stopped 直接终止）；5·1s 兜底自检 setTimeout 回调里从 bigWaiters 剔除自身（大文件 3 分钟不再积累约 180 个空函数引用）；6·sw.js 旧缓存迁移 seenKeys 移到确认 resp&&resp.ok 之后才标记（同归一化键前一条无效旧缓存不再连带跳过后面的有效条目；迁移 put 前增加运行期二次查重）。升版：sw.js 缓存名 shadow_v118_offline_v41→shadow_v119_offline_v42（含迁移 seenKeys 真实逻辑改动）；exportProject version 119+下载名 shadow_v119.json；全量备份/生词本 JSON version 119；无新增 localStorage 键（_ensureCacheSegments 只写 IDB 缓存记录；slot1Pending 由 srts 占位推导非新字段）；<title>/nav-title 统一 V119 -->
 <!-- V118 | build:20261125 | 用户三大需求 + 外部审查 9 项全部落地。用户1·批量下载内容播放不了（显示「请先加载内容」）根因修复：V117 3 路并行池每 worker 下载音频（长连接流）后并发拉 3 路字幕，同主机 HTTP/1.1 连接上限约 6——9 路字幕请求排队 15s 头超时成片失败，字幕失败不致命照存音频，但 srts 失败槽位存 null 连字幕 URL 都丢——播放侧 V98 补拉「没有字幕来源可拉」直接放弃，segments 永远空，点播放即「请先加载内容」。修三层：a) _batchCacheOne 字幕拉取改串行（峰值=3 音频流+3 字幕请求恰好卡住不超）+每路 1 次重试（450ms 退避，仅 timeout/offline/5xx/429/未知重试，批次停止即中止）；b) 失败槽位保留 {url, text:null} 占位——V98 补拉/「↻ 刷新字幕→重新下载」/输入框回填从此都有来源可拉（与 V98 修复 2/5 同思路闭环）；c) 缓存列表「N 条字幕」只数有文本的槽位不再虚报。用户2·下载文件边上实时百分比：服务器目录列表每个音频行内嵌进度徽章 span#sb-dl-<hid>（renderList 预建、worker 派发即亮「⬇ 0%」），流式回调就地刷新「⬇ 43%」——无 Content-Length 的 chunked 响应显「⬇ 1.8MB」，成功 ✅ 失败 ❌（250ms/文件 DOM 节流+批次进度行 400ms 节流并行）；重试/切代理进度归零不再从 80% 跳回 1%（审5d）；renderList 重绘（搜索/筛选/收尾 _loadBadges）后徽章自然回收。用户3·离线缓存部分删除：「☑ 选择删除」进入多选模式（统计行变「已选 N/M 项·约 X MB + 🗑 删除选中(N) + 全选/全不选 + ↩ 退出」，点行切换选中就地更新 DOM 不重拉整库 getAll，删除顺带清 _sizeMap 体积残留），配合既有「单个 ✕ 删除」「🗑 清空全部」三档齐全。审查1(高)·大文件互斥池重写：原「cursor-- 退回+bigQ 存 worker 函数+setTimeout(w,50) 拉起」三连锁缺陷——a) 排队 worker 直接 return 使 Promise.all 提前 resolve，野 worker 下完只默默写库不计入汇总（整批「完成」toast 在小文件还在下载时就弹）；b) 线头阻塞：两个 worker 撞大文件把 cursor 退回后退出，big1 下载期间后面小文件全部无法派发并发跌成 1 路；c) bigActive>1 时 releaseBig 无条件 wakeBig 误唤醒。现改「bigPending 下标队列+worker 内部 await 待命（1s 兜底自检防唤醒遗漏）」——所有下载都在 Promise.all 监管内、小文件不被阻塞、bigActive 归零才唤醒、熔断/停止/worker 退出三路都唤醒待命者（_batchWake 钩子供 _batchStop 即时解除）。审查2(高)·停止/切目录/关弹窗后的污染与在途空耗：dlProg 改 toggleBatchCache 局部变量（原 finally 无条件 self._dlProg={} 会清掉紧跟着开的第 2 批正在用的进度表）；upd()/onProgress 开头加 token 校验（在途 chunk 不再把已清空的进度行刷出来/盖到新目录）；新增批次级 AbortController（self._batchAC 透传 fetchCommon opts.signal，tryFetch 内部监听转发 abort——军规5「每次尝试重建内部控制器」不变），_batchStop 时 abort+wake——毫秒级回收连接与内存，不再空耗流量与 Safari 6 连接槽位。审查3(高)·fetchCommon 候选失败原因聚合：原 lastFail 被最后一个代理覆写——直连+首代理都明确 404 而末代理超时会让死链空耗 3 轮退避重试（死链误重试），直连真超时而末代理返回风控页 403/html 会误判不可重试+熔断永失灵（断网漏熔断）。现按候选序聚合 fails[]：直连死链（4xx 非 429/html/empty/stopped）优先定性不可重试；全候选死链→不可重试；任一网络级（timeout/offline）→可重试+熔断计数；_batchCacheOne 重试分类与 toggleBatchCache isNetErr 熔断全部改按 err.reason 机器可读判定（不再匹配中文文案）。审查4(中)·r.blob() 回退路径超时单位 1024 倍错：len 是 Bytes，原 len/200*1000 按 200B/s 算（200KB 文件直接顶满 15min）→ len/(200*1024)*1000。审查5(中)·流式边界五处：a) 响应头到达即 feed() 续满看门狗（慢响应头后首 chunk 只剩 2s 不再被 20s 定时器误杀）；b) onMeta 上报移到 text/html 校验之后（代理假 200 错误页的 Content-Length 不再误登记 _sizeMap 占 dynBig 槽位）；c) !r.ok/html 早退补 r.body.cancel()（同主机 6 连接限制下未消费响应体不再占位到 GC）；d) 重试/切代理进度归零（p===0 且 received===0 清旧进度）+chunked 无百分比时展示已接收 MB；e) 文本路径 onMeta 对齐。审查6(中)·串烧两处遗漏：a) _mergeVocab（📋 粘贴更新/iPad 拖放导入）置顶分区重排同样打乱 _list 下标——开头补 listenLoopStop（与 togglePin/moveUp/remove 同源）；b) 串烧 Level 2 跨音频例句：hearSentence 的 engine.stopAll 停掉保活音后、_hearFallback 异步 IDB 读/解码/等元数据期间无任何 <audio> 在播——iOS 锁屏在这一间隙冻结页面（例句永远播不出来）；现在 hearSentence 内串烧进行中即时重挂 engine.kaStart 填补空窗。审查7(低)·sw.js 旧缓存迁移并发 put 竞态：install 的 Promise.all(reqs.map(...fresh.put)) 改串行链+keyOf 归一去重（同路径不同 query 的旧键并行写同一缓存键在部分引擎报写锁冲突）。审查8(低)·_dlKaEl 与 iOS 锁屏媒体焦点为平台特性取舍——知悉不改（不写 mediaSession 的口径维持）。审查9(低)·jumpSentence 第 1 句 toast 文案：seg0.start<=0.5 无有效断点按钮保持「🎧 全文磨耳朵」时，提示跟着实际按钮走（「点 🎧 全文磨耳朵（会从本句开头连播）」），不再指着界面上不存在的橙色「▶ 继续磨耳朵」。升版：sw.js 缓存名 shadow_v117_offline_v40→shadow_v118_offline_v41（含 install 迁移串行化真实逻辑改动）；exportProject version 118+下载名 shadow_v118.json；全量备份/生词本 JSON version 118；localStorage 键 shadow_v117_dl_sizes 沿用不换名（数据结构不变，_batchAC/_batchWake/_selIds 均为瞬态运行态不入备份）；<title>/nav-title 统一 V118 -->
 <!-- V117 | build:20261125 | 学习用户提供的《浏览器 PWA 批量离线下载引擎-技术总结》并按其十条军规重构离线下载模块（net.fetchCommon + serverBrowser 批量缓存）。军规1·空闲看门狗替代固定/无限超时：blob 路径原「响应头 15s + body 读取永不限」——服务器/代理 body 断流时请求永远挂着（表象=「下载很慢/卡死」）；现改首包 20s + 每收到一块数据续期 20s + 总上限 15min 兜底防僵尸——再慢只要数据在流动就不会被掐断，真断流 20s 即中止走下一候选；文本路径（字幕 KB 级）维持 V89 15s 头超时不变。军规2·流式读取+Blob 组装替代一次性读入：getReader() 逐块泵取→chunks→new Blob（Safari 大 Blob 自动换页磁盘），iOS 多路并发内存峰值从「文件总大小」降到「块大小×并发」不再被 jetsam 杀进程；顺带得到真实下载进度 received/Content-Length（一次性 arrayBuffer/blob 拿不到）+ 截断检测（流提前结束但字节不足→按网络失败走下候选可重试）；无 body.getReader 的老浏览器回退 r.blob() 且超时按 max(60s, 大小÷200KB/s) 放宽（上限 15min）；响应头一到位先判 Content-Type text/html——代理假 200 错误页不必等整个 HTML 下载完才识别（V115.1 检查 res.type 的快速版）。军规5·重试分类：fetchCommon 错误对象附机器可读 .reason（timeout/offline/html/empty/httpXXX），_batchCacheOne 3 次尝试只对 超时/不可达/5xx/429/未知 退避重试（0.9s/1.8s，每次尝试 fetchCommon 内部重建 AbortController 不复用旧 signal）——4xx/网页/空文件立即失败不再空耗两轮退避与流量（死链重试也没用）。军规6·大文件（>15MB）事件驱动互斥：新增 _sizeMap 大小表（键=hashUrl 短 id，'shadow_v117_dl_sizes' localStorage 防抖 3s 落盘+批次结束 flush，并入全量备份 keys）——已知大文件派发前排队（cursor-- 退回游标+bigQ 挂起 worker），未知大小乐观启动、响应头 onMeta 到达瞬间动态补登记（不预发 HEAD 省一个请求往返、!isBig&&!dynBig 防重复登记守卫）；大文件完成释放槽位并 setTimeout(50ms) 错峰唤醒下一个排队者，晚归/作废路径也释放；全程事件驱动零轮询。军规10·双层进度+400ms 节流：进度行「⬇ 5/18 · 失败 1 · ep03 43% · 大文件串行 · 网络不稳」——批次级计数+单文件级真实百分比（取进度最高的在途文件；就地改字段不新建对象防高频 GC），DOM 刷新 400ms 时间戳节流防流式高频回调抖动。军规(降并发克制)·仅 slow-2g/2g/saveData 降为 2 路（navigator.connection），3g/4g/wifi 照旧 3 路——过度保守的降级正是「下载慢得像失败」的元凶之一。军规(3.10.1 本地化)·批量期间防休眠：iOS 锁屏后无媒体播放的页面被整个冻结、fetch 停摆（表象=「下载不动」）——复用 V93 的 -81dB 静音保活 WAV（同一 blob URL）但用独立 audio 元素：共享 engine 元素会被 kaStop 连带停掉用户练习链条正依赖的保活音（V93 修复回归），且不写 mediaSession（锁屏不该显示「播放中」误导锁屏 ▶ 走 resumePaused）；遵循「🔋 息屏续航」同一开关口径，_batchResetUi（停止/收尾两路）停。军规(3.10.7)·开始 toast 设定预期：「N 路并行 · 大文件自动串行 · 失败自动重试 · 锁屏不断」。军规3/4（游标+完成回调链并发、_batchToken 批次代数隔离）V116.1 已满足原样保留；军规7（下载完成 postMessage 通知 SW 键集合）不适用——本应用音频播放走 IndexedDB+blob URL 不经 SW、sw.js 从不拦截媒体请求，无键集合需要同步；军规8（存储键与网络 URL 两条编码 lane）已满足——idbCache 键统一走 net.fixUrl 规范化、fetch 走原始 URL，全应用同口径不变；军规9（播放让路）不适用——本应用播放永远是先下完整 Blob 再播本地 blob URL（state._audioObjectUrl），从不网络边下边播，无带宽争抢。升版：sw.js 缓存名 shadow_v116_offline_v39→shadow_v117_offline_v40（无 SW 逻辑改动，仅强制刷新）；exportProject version 117+下载名 shadow_v117.json；全量备份/生词本 JSON version 117；新增 localStorage 键 shadow_v117_dl_sizes 并入全量备份 keys；<title>/nav-title 统一 V117 -->
 <!-- V116.1 | build:20261124 | 用户实测痛点专项修复：服务器目录「📥 批量缓存本目录」批量下载又慢又经常失败。根因三条：1) toggleBatchCache 用 for 循环逐条 await——一个音频（几~几十 MB）下完才下一个，30 个文件总时长≈30×(音频+3字幕) 全串行；2) 失败一个要先耗完「直连 15s 超时→代理1 15s→代理2 15s」（约 45s）才作废——失败越多整批越慢；3) 音频下载单次尝试定生死——网络抖一下/代理瞬时抽风即永久 fail++，无任何重试（字幕失败不致命，lt 返回 null 照存）。修复五件套：a) 3 路并行下载池——共享 cursor 游标 + 3 个 worker 同时拉，纯 fetch 不碰音频元素、_cachedIds.push 单线程无竞态、浏览器同主机连接上限约 6 路（音频+字幕错峰在途排队不报错），整体提速约 3 倍；b) _batchCacheOne 音频下载单条自动重试 2 次（0.9s/1.8s 退避，每次尝试内部仍走「直连→全部代理」候选链；退避等待中已被停止直接抛错不再发下一次尝试）——瞬时抖动自愈；c) 网络级熔断——连续 4 个「超时/不可达」失败（按 fetchCommon 抛错文案判定）自动停止整批并 toast 明说原因与剩余数（死管道下每条要等满 3 候选×15s×3 次重试=分钟级，不再十几分钟爬行；非网络级失败如链接失效/空文件/HTTP 异常不熔断照常过完）；d) 进度文本改聚合式「正在缓存 5/18 · 失败 1 · 3 路并行 · 网络不稳」；e) 完成汇总 toast 失败时明确「已各自动重试 2 次；再点一次本按钮只会补失败的这 N 个」（失败项不登记 _cachedIds，再点自动只补失败项——原有语义如今写明给用户看）。不变量全保留：_batchToken 代数「再点即停/切目录/关弹窗」三路作废、晚归不计数不登记不向新目录弹提示（V108 外审3 三条规则逐条移植进 worker 结构）、字幕失败不致命照存音频+V98 补拉、字幕1 失败不顶替主轨、_loadBadges 收尾刷新。升版：sw.js 缓存名 shadow_v116_offline_v38→v39（无 SW 逻辑改动，仅强制刷新）；exportProject version 116.1+下载名 shadow_v116_1.json；全量备份/生词本 JSON version 116.1；无新增 localStorage 键；<title>/nav-title 统一 V116.1 -->
@@ -66,7 +67,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V118</title>
+<title>影子跟读 Pro V119</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -799,7 +800,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
     <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-        <div class="nav-title">🎧 影子跟读 V118</div>
+        <div class="nav-title">🎧 影子跟读 V119</div>
         <button class="nav-help-btn" onclick="helpPage.open()" title="常用功能说明：保存/备份区别 · 完整学习流程 · 生词本 AI 补全闭环 · 字幕编辑技巧 · iPhone/iPad 贴士">❓ 说明</button>
     </div>
     <div class="mode-switch">
@@ -1982,6 +1983,7 @@ const cacheUI = {
         try {
             const all = await idbCache.getAll();
             if (!all || !all.length) {
+                this._selMode = false; this._selIds = null; this._selShown = null; // V119(审2): 缓存清空后选择态复位——残留的 _selMode 会让统计行仍渲染成多选顶栏
                 statsEl.innerHTML = '📭 暂无离线缓存。在「🌍 网络链接」中点"🚀 极速加载"会自动保存到本地，下次使用同链接时即可离线秒开。';
                 listEl.innerHTML = '';
                 return;
@@ -2127,6 +2129,36 @@ const cacheUI = {
             document.getElementById('url-srt-1').value = (p.srts && p.srts[0] && p.srts[0].url) || _keepSrt(0);
             document.getElementById('url-srt-2').value = (p.srts && p.srts[1] && p.srts[1].url) || _keepSrt(1);
             document.getElementById('url-srt-3').value = (p.srts && p.srts[2] && p.srts[2].url) || _keepSrt(2);
+            // V119(根因3): V117 残缺遗留条目自动救回字幕 URL——当年失败槽位存 null 连 URL 都没存下来，
+            // srts 里没有来源、输入框也没有来源时（「↻ 刷新字幕」同样无来源可拉），按目录记忆
+            // shadow_v115_sb_hist 的文件表（须与本音频同目录才可信，防同名文件串目录）以 findSub 口径
+            // （.eng/.engchs/.chs × .srt→.ass→.lrc 兑底，与服务器目录/下一集同一配对规则）补齐字幕 URL
+            // 填进输入框——下方 _fetchSubsIfMissing 联网即自动补拉；离线时下方兜底断句照常可播
+            try {
+                const _hasSrc = [1, 2, 3].some(function(n) { const e0 = document.getElementById('url-srt-' + n); return e0 && String(e0.value || '').trim(); });
+                const _hasCachedUrl = (p.srts || []).some(function(sc) { return sc && sc.url; });
+                if (!_hasSrc && !_hasCachedUrl && p.audioUrl && /^https?:/i.test(p.audioUrl)) {
+                    const mem = safeParse(localStorage.getItem('shadow_v115_sb_hist'), null);
+                    const dirU = String(p.audioUrl).substring(0, String(p.audioUrl).lastIndexOf('/') + 1);
+                    if (mem && typeof mem.url === 'string' && net.fixUrl(mem.url) === net.fixUrl(dirU) && Array.isArray(mem.files) && mem.files.length) {
+                        const nm = String(p.name || decodeURIComponent(String(p.audioUrl).split('/').pop() || ''));
+                        const dot = nm.lastIndexOf('.');
+                        const base = dot > 0 ? nm.substring(0, dot) : '';
+                        if (base) {
+                            const findSub = function(sfx) {
+                                const tryOne = function(ext) { const t = (base + sfx + ext).toLowerCase(); const x = mem.files.find(function(y) { return String(y.name || '').toLowerCase() === t; }); return x ? x.url : ''; };
+                                return tryOne('.srt') || tryOne('.ass') || tryOne('.lrc');
+                            };
+                            const _r1 = findSub('.eng') || findSub('');
+                            const _r2 = findSub('.engchs');
+                            const _r3 = findSub('.chs');
+                            if (_r1) document.getElementById('url-srt-1').value = _r1;
+                            if (_r2) document.getElementById('url-srt-2').value = _r2;
+                            if (_r3) document.getElementById('url-srt-3').value = _r3;
+                        }
+                    }
+                }
+            } catch(eRec) {}
             app.saveInput();
             localStorage.setItem(CONST.SESSION, p.audioUrl || '');
             app.addHistory(p.audioUrl || '');
@@ -2142,6 +2174,14 @@ const cacheUI = {
                 _gotSubs = await app._fetchSubsIfMissing(p, _bs(0), _bs(1), _bs(2), _seq);
             } catch(eSub) {}
             if (state._audioLoadSeq !== _seq) return; // 补拉等待期间用户又加载了别的——本任务作废
+            // V119(根因1): 补拉之后 segments 仍为空（无配套字幕/字幕文件名不匹配/字幕下载或解析失败/
+            // V117 残缺遗留/6 秒补拉超时先离线打开）——用已解码的 audioBuffer 走智能断句兜底并回写缓存：
+            // 离线点「▶ 加载使用」必定能播、能进练习/预习，绝不再撞「请先加载内容」死锁在编辑页
+            let _autoSegs = false;
+            if (!state.segments.length) {
+                _autoSegs = await app._ensureCacheSegments(p, _seq);
+                if (state._audioLoadSeq !== _seq) return; // 兜底断句耗时较长——完成后再查代数，防旧断句覆盖新工程
+            }
             state._loadedAudioUrl = p.audioUrl || ''; // V81: 缓存加载成功，记录用于统计
             try { engine._fullResetForNewAudio(); } catch(eFp) {} // V115.2(审查1中高): 漏调——离线缓存加载/「▶ 继续上次」（_restoreMode==='cache' 走这里）不恢复磨耳朵断点、音频 A→B 内存旧断点不重置；与 loadFromUrl 两分支/restoreProgress/loadProject/#audio-file/ui.init 对齐（头部注释声称统一走它，实际这里漏了）
             state._loadedAudioName = ''; // V83.1: 清空本地文件名，防锁屏标题残留
@@ -2155,7 +2195,7 @@ const cacheUI = {
             // 加载成功：revoke 旧音频 objectURL（避免内存泄漏，commitAudioSwap 模式）
             if (backupAudioObjectUrl && backupAudioObjectUrl !== state._audioObjectUrl) { try { URL.revokeObjectURL(backupAudioObjectUrl); } catch(e) {} }
             ui.updatePractice(state.currIndex); // V94: 用恢复后的句号刷新练习页（原固定 0）
-            if (!_gotSubs) ui.toast('✅ 已从离线缓存加载（0 网络请求）'); // 补拉成功时 _applyNewSegments 已弹过详细提示
+            if (!_gotSubs && !_autoSegs) ui.toast('✅ 已从离线缓存加载（0 网络请求）'); // 补拉成功时 _applyNewSegments 已弹过详细提示；兜底断句时 _ensureCacheSegments 已单独提示
             app._enterAfterLoad(!!resume); // V99(功能一): 自动判定进预习/跟读（resume=true 时永远跟读）
         } catch(e) {
             // V84.3: 代数已过期（有更新的加载在途/已完成）时不回滚——旧任务的失败不该覆盖新任务已提交的状态
@@ -2238,10 +2278,15 @@ const cacheUI = {
     },
     async selDel() {
         if (!this._selMode || !this._selIds || !this._selIds.size) return ui.toast('先点选要删除的条目（点行切换选中）');
-        const n = this._selIds.size;
+        // V119(审1): 删除集合限定在当前可见列表（_selShown 快照）——顶栏「已选 N/M」与
+        // 「🗑 删除选中(N)」的计数只统计搜索过滤后可见条目里被勾选的；原实现会把搜索前勾选但已被
+        // 过滤隐藏的条目也一并删掉（按钮写 3 删 8）。不可见残留勾选保留，清空搜索后仍可删
+        const shownSet = (this._selShown && this._selShown.length) ? new Set(this._selShown.map(function(p) { return p.id; })) : null;
+        const ids = Array.from(this._selIds).filter(function(id) { return !shownSet || shownSet.has(id); });
+        if (!ids.length) return ui.toast('当前过滤列表中没有已选条目（请清空搜索或重新勾选）');
+        const n = ids.length;
         if (!confirm('确认删除选中的 ' + n + ' 个离线缓存？删除后无法恢复，需要重新下载。')) return;
         let done = 0, errs = 0;
-        const ids = Array.from(this._selIds);
         for (const id of ids) {
             try { await idbCache.delete(id); done++; } catch(e) { errs++; }
         }
@@ -2651,7 +2696,16 @@ const serverBrowser = {
                             }
                         } else if (bigPending.length > 0) {
                             // V118(审1): 游标已尽仍有挂起大文件——在 Promise.all 监管内 await 待命（1s 兜底自检防唤醒遗漏路径死锁）
-                            await new Promise(function(r) { bigWaiters.push(r); setTimeout(r, 1000); });
+                            // V119(审5): setTimeout 回调里把自己从 bigWaiters 剔除——大文件长耗时期间不再
+                            // 累积已触发的空函数引用（3 分钟约 180 个），唤醒队列始终只装真正待命者
+                            await new Promise(function(r) {
+                                bigWaiters.push(r);
+                                setTimeout(function() {
+                                    const ix = bigWaiters.indexOf(r);
+                                    if (ix >= 0) bigWaiters.splice(ix, 1);
+                                    r();
+                                }, 1000);
+                            });
                             continue;
                         } else {
                             return; // V118(审1): 全部派发完且无挂起——正常退出（野任务从此不可能出现，整批收尾必然等齐所有下载）
@@ -2782,23 +2836,33 @@ const serverBrowser = {
         // 重试仅对 timeout/offline/5xx/429/未知（与音频同款军规5 分类）；批次停止（token 变/AC abort）即中止不重试
         const lt = async (u) => {
             if (!u) return null;
+            let lastE = null;
             for (let attS = 0; attS < 2; attS++) {
                 if (attS > 0) {
+                    // V119(审4): 字幕重试同款军规5 分类——原 catch 吞掉错误对象，4xx/html/empty/stopped
+                    // 也会先睡 450ms 再试第 2 次；现按 .reason 判定，死链立即放弃、stopped 直接终止
+                    const rsL = String((lastE && lastE.reason) || '');
+                    if (rsL === 'stopped') return null;
+                    if (rsL && !(rsL === 'timeout' || rsL === 'offline' || rsL === 'http429' || /^http5/.test(rsL))) return null;
                     await new Promise((r) => setTimeout(r, 450));
                     if (token != null && token !== this._batchToken) return null; // 批次已停止——字幕重试就此打住
                 }
                 try {
                     const t = await net.fetchTextSmart(u, { quiet: true, signal: hooks && hooks.signal });
                     if (t) return t; // 空文本/null 按失败处理走重试
-                } catch(e) {}
+                } catch(eS) { lastE = eS; }
             }
             return null;
         };
         const t1 = await lt(s1), t2 = await lt(s2), t3 = await lt(s3);
         const g1 = t1 ? parseSRT(t1) : [], g2 = t2 ? parseSRT(t2) : [], g3 = t3 ? parseSRT(t3) : [];
-        // V108(外审6): 字幕1 有链接却解析为空（下载失败/格式坏）时不让字幕2 顶成主字幕——与 V100
-        // 在 _fetchSubsIfMissing 补齐的同款保护：segments 留空（V98 补拉链路以后会自动补），srts 里字幕1 的 URL 仍保留
-        const segs = (s1 && !g1.length) ? [] : app._buildSegsFromParsed(g1, g2, g3);
+        // V119(根因4b): 字幕1 失败不再整轨丢弃已成功的字幕2/3——原 (s1 && !g1.length) ? [] 会把已下载
+        // 解析出几百句的 .engchs 双语/.chs 纯中文强行清空，离线打开时报「请先加载内容」。现照常走
+        // _buildSegsFromParsed 的 p2/p3 兜底轨（离线既有句子可跟读可切轨显示）；V108(外审6)/V100(外审5)
+        // 「字幕2 顶成主轨后字幕1 永不再自动补拉」的防线改由 srts[0]={url,text:null} 占位 +
+        // _fetchSubsIfMissing 的 slot1Pending 重拉信号承担：字幕1 联网恢复后自动补拉整轨替换
+        // （_applyNewSegments：重点句/练熟勾按开始时间重映射），不再需要牺牲离线可播性
+        const segs = app._buildSegsFromParsed(g1, g2, g3);
         const rec = {
             id: idbCache.hashUrl(f.url),
             name: f.name,
@@ -2994,9 +3058,23 @@ const net = {
                     if (res.type && String(res.type).indexOf('text/html') === 0) { fails.push('html'); return null; } // 假 200 HTML 错误/验证页
                     return res;
                 }
+                // V119(根因2): 文本路径（字幕）同款假 200 HTML 拦截——直连失败切 CORS 代理后，代理对
+                // 风控/被墙 URL 常返回 HTTP 200 的 Cloudflare 验证页/错误 HTML；原文本路径只查空串，
+                // HTML 会被当成"有效字幕"返回：parseSRT 解析出 0 条、srts 存进整页 HTML 文本（缓存
+                // 列表还虚报「1 条字幕」）；离线点「▶ 加载使用」时 segments 空——hasSubs 却为真（HTML
+                // 非空文本），补拉也被短路，直接「请先加载内容」。字幕全部走 fetchTextSmart，全在此修
+                const ctText = (r.headers.get('Content-Type') || '').toLowerCase();
+                if (ctText.indexOf('text/html') === 0) {
+                    try { if (r.body && r.body.cancel) r.body.cancel(); } catch(e0) {} // 同 V118(审5c)：未消费响应体不占连接槽位到 GC
+                    fails.push('html');
+                    return null;
+                }
                 const res = await r.text();
                 // V115.1(修复3): 0 字节空文本按失败丢弃，继续尝试下一候选
                 if (!res) { fails.push('empty'); return null; }
+                // 内容嗅探兜底（无 Content-Type 头/或 text/plain 时）：<!doctype html/<html/<!-- 开头按
+                // HTML 定性——本应用支持的字幕格式（SRT/ASS/LRC/VTT）没有一种以 '<' 开头，零误伤
+                if (/^\s*<(?:!doctype\s+html|html)[\s>]/i.test(res) || /^\s*<!--/.test(res)) { fails.push('html'); return null; }
                 return res;
             } catch(e) {
                 stopT();
@@ -3027,6 +3105,7 @@ const net = {
             if (nn) reason = nn;
             else { const other = fails.find(function(r) { return r && r !== 'stopped'; }); if (other) reason = other; }
         }
+        if (outerSig && outerSig.aborted) reason = 'stopped'; // V119(审3): 停止定性最优先——前序候选已记 timeout/offline 时用户点停止，聚合不得再按网络级定性（否则 _batchCacheOne 还会进 900ms 退避空等才在 att>0 的 token 检查里退出）
         const why = reason === 'timeout' ? (type === 'blob' ? '连接超时（20 秒无数据流动，请检查网络后重试）' : '连接超时（15 秒无响应，请检查网络后重试）')
             : reason === 'offline' ? '网络不可达（设备可能离线，或服务器/代理拒绝连接、传输中断）'
             : reason === 'html' ? '返回的是网页不是音频文件（链接可能已失效）'
@@ -5432,6 +5511,13 @@ const app = {
                     try { _fetchedSubs = await this._fetchSubsIfMissing(cached, s1, s2, s3, _seq); } catch(eSub) {}
                     if (state._audioLoadSeq !== _seq) return; // 补拉等待期间用户又加载了别的——本任务作废
                 }
+                // V119(根因1): 同 cacheUI.load——缓存命中 segments 为空时（无字幕/下载失败/解析空/V117
+                // 残缺）智能断句兜底并回写缓存，不再撞「请先加载内容」；localModified 空备份场景同样覆盖
+                let _autoSegsC = false;
+                if (!state.segments.length) {
+                    _autoSegsC = await this._ensureCacheSegments(cached, _seq);
+                    if (state._audioLoadSeq !== _seq) return; // 兜底断句期间被新加载取代——本任务作废
+                }
                 state._loadedAudioUrl = mp3; // V81: 缓存命中加载成功，记录用于统计
                 try { engine._fullResetForNewAudio(); } catch(eFp) {} // V115(一): 换音频——磨耳朵断点内存清零后按新音频 lib_meta 恢复（跨会话续播）
                 // V79: 重置会话统计（新音频开始，重新计次播放）
@@ -5443,7 +5529,7 @@ const app = {
                 this.save();
                 ui.updatePractice(state.currIndex); // V94: 用恢复后的句号（原固定 0）
                 commitAudioSwap(); // 加载成功：revoke 旧音频 objectURL
-                if (!_fetchedSubs) ui.toast("✅ 已从离线缓存加载（0 网络请求）"); // 补拉成功时 _applyNewSegments 已弹过更详细的提示
+                if (!_fetchedSubs && !_autoSegsC) ui.toast("✅ 已从离线缓存加载（0 网络请求）"); // 补拉成功时 _applyNewSegments 已弹过更详细的提示；兜底断句时 _ensureCacheSegments 已单独提示
                 this._enterAfterLoad(); // V99(功能一): 自动判定进预习/跟读
                 return;
             }
@@ -5765,14 +5851,19 @@ const app = {
             // 工作只能删缓存重来。segments 为空照样尝试补拉（有 V99 节流，1 小时一次）
             const cs0 = Array.isArray(cached && cached.segments) ? cached.segments : [];
             const hasSubs = ((cached && cached.srts) || []).some(function(sc) { return sc && sc.text; });
-            if (hasSubs && cs0.length) return false;
+            // V119(根因4a): slot1Pending=字幕1 槽位有 URL 却始终没拉到文本（V118 起失败槽位存 {url,text:null}
+            // 占位）——此时哪怕 hasSubs（字幕2/3 已有文本）+ segments 已有 s2/s3 兜底轨也放行补拉：字幕1
+            // 联网恢复后 applyResults 整轨重建。V108(外审6)/V100(外审5)「字幕2 顶成主轨后永不再自动补拉
+            // 字幕1」的防线由这个更精细的可感知信号替代原「整轨丢弃」（V119 根因4b 已把丢弃改为保留）
+            const slot1Pending = !!(cached && cached.srts && cached.srts[0] && cached.srts[0].url && !cached.srts[0].text);
+            if (hasSubs && cs0.length && !slot1Pending) return false;
             if (!(s1 || s2 || s3)) return false; // 没有字幕来源可拉
             if (typeof navigator.onLine === 'boolean' && !navigator.onLine) return false; // 离线不白等 15s 超时
             // V99(外审3): 手敲字幕保护——缓存 segments 里有非空文本（上个会话编辑过并已同步进来）说明
             // 用户有自己的版本，不自动替换（想换走「↻ 刷新字幕」）。当初只有音频的下载，segments 里只会有"(自动断句失败)"占位或空
             const cs = Array.isArray(cached && cached.segments) ? cached.segments : [];
             const isBlank = function(g) { return !(((g && g.text) || '').trim().replace(/[(（]自动断句失败[)）]/, '') || ((g && g.text2) || '').trim() || ((g && g.text3) || '').trim()); };
-            if (cs.length && !cs.every(isBlank)) return false;
+            if (cs.length && !cs.every(isBlank) && !slot1Pending) return false; // V119(根因4a): slot1Pending 条目上的 s2/s3 兜底轨不算手敲版本——补拉放行（字幕1 恢复才有整轨替换机会）
             // V99(外审3): 节流——同一条缓存 1 小时内只自动试一次（失败也计入，404 的音频不必每次加载都重试
             // 最坏 45s）；想立即重试用「↻ 刷新字幕」（它不走节流）。纯瞬态标记，不进全量备份
             const cid = (cached && cached.id) || '';
@@ -5795,7 +5886,11 @@ const app = {
                 // V100(外审5): 字幕1 有链接却没拉下来/解析为空——整体放弃（防字幕2 顶成主字幕写进缓存，
                 // 之后 hasSubs=true 哪怕字幕1 恢复也永不再自动补拉）；与 refreshSubs 下载分支同款保护对齐
                 if (s1 && !(r1 && parseSRT(r1).length)) return false;
-                const g1 = r1 ? parseSRT(r1) : [], g2 = r2 ? parseSRT(r2) : [], g3 = r3 ? parseSRT(r3) : [];
+                // V119: 某槽位本次补拉失败时回退缓存里已有的旧文本（URL 相同才算）——字幕1 恢复触发
+                // 整轨重建时，字幕2/3 不再因这次瞬时拉挂而丢轨（离线→弱网重连场景常见；修时间轴不改内容）
+                const oldSlot = function(i, u) { const o = (cached && cached.srts && cached.srts[i]) || null; return (o && o.url && u && net.fixUrl(o.url) === net.fixUrl(u) && o.text) ? o.text : null; };
+                const r2u = r2 || oldSlot(1, s2), r3u = r3 || oldSlot(2, s3);
+                const g1 = r1 ? parseSRT(r1) : [], g2 = r2u ? parseSRT(r2u) : [], g3 = r3u ? parseSRT(r3u) : [];
                 const newSegs = this._buildSegsFromParsed(g1, g2, g3);
                 if (!newSegs.length) return false; // 服务器上还是没有字幕/解析为空——保持原样
                 try {
@@ -5803,8 +5898,8 @@ const app = {
                     if (fresh && fresh.audioBlob) {
                         fresh.srts = [
                             r1 ? { url: s1, text: r1, size: r1.length } : (fresh.srts && fresh.srts[0]) || null,
-                            r2 ? { url: s2, text: r2, size: r2.length } : (fresh.srts && fresh.srts[1]) || null,
-                            r3 ? { url: s3, text: r3, size: r3.length } : (fresh.srts && fresh.srts[2]) || null
+                            r2u ? { url: s2, text: r2u, size: r2u.length } : (fresh.srts && fresh.srts[1]) || null,
+                            r3u ? { url: s3, text: r3u, size: r3u.length } : (fresh.srts && fresh.srts[2]) || null
                         ];
                         fresh.segments = newSegs;
                         await idbCache.put(fresh);
@@ -5826,6 +5921,51 @@ const app = {
             ui.setLoadBtnText('default'); // V99(外审1): fetchCommon 写过按钮文案，用完复位（cacheUI.load 路径没有 finally 兜底）
             return await applyResults(pick(rsS[0]), pick(rsS[1]), pick(rsS[2]), true);
         } catch(eSub) { console.warn('补拉字幕失败(离线或链接无效):', eSub); try { ui.setLoadBtnText('default'); } catch(e0) {} return false; }
+    },
+    // V119(根因1/3): 缓存命中但 segments 为空时的离线兜底——用已解码的 audioBuffer 智能断句并回写缓存。
+    // 覆盖：无配套字幕/字幕文件名不匹配（.en.srt/.mp3.srt 等非标准命名）/字幕下载失败或解析为空/
+    // V117 残缺遗留（srts 全 null）/补拉 6s 超时先离线打开——只要音频 Blob 在本地，「▶ 加载使用」
+    // 必定能播、能进练习/预习，绝不再弹「请先加载内容」。网络分支（loadFromUrl 未命中）本来就有
+    // detectSilenceAsync 兜底（连空都兜 1 条占位句），本方法把同款兜底补齐到两条缓存命中分支。
+    // 断句结果 text 为 ''（或"(自动断句失败)"占位）——与 _fetchSubsIfMissing 的 isBlank() 口径一致，
+    // 之后联网且字幕来源可得时依然会自动补拉替换（本次不阻断播放、以后能升级成真字幕，两头不误）
+    async _ensureCacheSegments(cachedRec, seq) {
+        try {
+            if (state.segments && state.segments.length) return false;
+            let newSegs = [];
+            if (state.audioBuffer) {
+                try {
+                    ui.toast('🔕 缓存无字幕，正在自动智能断句...');
+                    const thEl = document.getElementById('threshold-range');
+                    const th = thEl ? parseFloat(thEl.value) : 0.02;
+                    const segs = await detectSilenceAsync(state.audioBuffer, isFinite(th) ? th : 0.02);
+                    if (seq != null && state._audioLoadSeq !== seq) return false; // 断句耗时较长——完成后再查代数，防旧断句覆盖新工程
+                    newSegs = (segs && segs.length)
+                        ? segs
+                        : [{ start: 0, end: state.audioBuffer.duration || 60, text: '(自动断句失败)' }];
+                } catch(eD) {}
+            }
+            // 即使 WebAudio decodeAudioData 失败（audioBuffer 为空），只要 <audio> 已就绪也给出整段兜底——绝不报「请先加载内容」
+            if (!newSegs.length) {
+                const a = document.getElementById('main-audio');
+                const dur = (a && isFinite(a.duration) && a.duration > 0) ? a.duration : 60;
+                newSegs = [{ start: 0, end: dur, text: '(自动断句失败)' }];
+            }
+            state.segments = newSegs;
+            state.currIndex = 0;
+            // 回写缓存（仅当缓存条目 segments 仍为空）——下次加载直接命中不再重复断句；
+            // 期间若 _fetchSubsIfMissing 的后台补拉已落新字幕，fresh.segments 非空则跳过（字幕版优先）
+            try {
+                if (cachedRec && cachedRec.id && idbCache.isAvailable()) {
+                    const fresh = await idbCache.get(cachedRec.id);
+                    if (fresh && (!Array.isArray(fresh.segments) || !fresh.segments.length)) {
+                        fresh.segments = newSegs;
+                        await idbCache.put(fresh);
+                    }
+                }
+            } catch(eW) {}
+            return true;
+        } catch(eA) { console.warn('离线兜底断句失败:', eA); return false; }
     },
     // 换字幕后统一落点：重映射 starred/done → 替换 segments → 全量刷新 + 回写缓存
     _applyNewSegments(newSegs, okMsg) {
@@ -6992,9 +7132,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 118, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V118: 117→118（批量下载播放修复+行内进度+多选删除+审查9项）
+        const data = { version: 119, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V119: 118→119（离线播放兜底断句+假200HTML拦截+残缺条目救回+审查6项）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v118.json'; // V118: 下载名随版本
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v119.json'; // V119: 下载名随版本
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -7031,7 +7171,7 @@ const app = {
                 'shadow_v115_2_mask', // V115.2(功能C2): 列表遮释义自测开关
                 'shadow_v117_dl_sizes' // V117(军规6): 批量下载文件大小表（键=hashUrl 短 id）——大文件互斥预判用，丢失只降级为下批次乐观启动无实害
             ];
-            var data = { type: 'shadow_full_backup', version: 118, exportedAt: new Date().toISOString(), items: {} }; // V118: 117→118（localStorage 键 shadow_v117_dl_sizes 沿用不换名）
+            var data = { type: 'shadow_full_backup', version: 119, exportedAt: new Date().toISOString(), items: {} }; // V119: 118→119（无新增 localStorage 键，_ensureCacheSegments 只写 IndexedDB 缓存记录本身）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -9898,7 +10038,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 118, exportedAt: new Date().toISOString(), vocab: list }; // V118: 117→118
+        const data = { type: 'shadow_vocab_backup', version: 119, exportedAt: new Date().toISOString(), vocab: list }; // V119: 118→119
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
