@@ -126,6 +126,15 @@
 //         (4 consecutive timeout/unreachable failures stop the batch with a clear message instead
 //         of crawling for minutes). Aggregate progress text and an end-of-batch toast that says
 //         re-clicking only re-downloads the failed items. No SW fetch/install logic change.
+// V118: Cache name bumped to v41. Batch-download rework in index.html (subtitle fetch serialized
+//         with per-slot retry and URL preserved on failure - the root cause of "downloaded items
+//         won't play"; per-file inline progress badges; big-file mutex rewritten as a pending-index
+//         queue with in-pool waiters so Promise.all always covers every download; batch-level
+//         AbortController so stop/switch truly aborts in-flight fetches; candidate failure-reason
+//         aggregation for retry classification). SW logic change here: install old-cache migration
+//         now serializes fresh.put() calls and dedupes by normalized key - parallel puts of the
+//         same normalized key (old entries differing only in query params) could hit write-lock
+//         conflicts on some Cache API implementations.
 // V117: Cache name bumped to v40. Offline-download engine rework in index.html per the "browser PWA
 //         batch offline download engine" playbook: streaming body reads with an idle watchdog (20s
 //         no-data abort, renewed per chunk, 15min total cap) instead of an unbounded body read; Blob
@@ -138,7 +147,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v117_offline_v40';
+var CACHE_NAME = 'shadow_v118_offline_v41';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -161,23 +170,35 @@ self.addEventListener('install', function(event) {
                 oldCaches.forEach(function(oc) {
                     chain = chain.then(function() {
                         return oc.keys().then(function(reqs) {
-                            return Promise.all(reqs.map(function(r) {
-                                return oc.match(r).then(function(resp) {
-                                    if (!resp || !resp.ok) return null;
-                                    // V115: redirected responses must not be stored as-is - respondWith()
-                                    // rejects them as network errors on some engines. Rebuild a clean
-                                    // Response (same body/status/headers) before putting, same as the
-                                    // V112 fetch precache path.
-                                    if (resp.redirected) {
-                                        return fresh.put(keyOf(r.url), new Response(resp.body, {
-                                            status: resp.status,
-                                            statusText: resp.statusText,
-                                            headers: resp.headers
-                                        }));
-                                    }
-                                    return fresh.put(keyOf(r.url), resp); // V94: normalize key on migration
+                            // V118: serialize migration puts and dedupe by normalized key - parallel
+                            // fresh.put() of the same normalized key (old entries differing only in
+                            // query params, e.g. ?mp3=a and ?mp3=b both normalizing to one pathname)
+                            // can hit write-lock conflicts on some Cache API implementations.
+                            var seenKeys = {};
+                            var inner = Promise.resolve();
+                            reqs.forEach(function(r) {
+                                var k = keyOf(r.url);
+                                if (seenKeys[k]) return; // same normalized key already handled
+                                seenKeys[k] = true;
+                                inner = inner.then(function() {
+                                    return oc.match(r).then(function(resp) {
+                                        if (!resp || !resp.ok) return null;
+                                        // V115: redirected responses must not be stored as-is - respondWith()
+                                        // rejects them as network errors on some engines. Rebuild a clean
+                                        // Response (same body/status/headers) before putting, same as the
+                                        // V112 fetch precache path.
+                                        if (resp.redirected) {
+                                            return fresh.put(k, new Response(resp.body, {
+                                                status: resp.status,
+                                                statusText: resp.statusText,
+                                                headers: resp.headers
+                                            }));
+                                        }
+                                        return fresh.put(k, resp); // V94: normalize key on migration
+                                    });
                                 });
-                            }));
+                            });
+                            return inner;
                         });
                     });
                 });
