@@ -1,5 +1,11 @@
-// Shadow Reading Pro V123 Service Worker
-// V123: Cache name bumped to v46. Real SW logic change in install: the old-cache migration now sorts
+// Shadow Reading Pro V126 Service Worker
+// V126: Cache name bumped to v49 (no SW logic change, refresh only). All V126 fixes live in index.html
+//      (focus-read round-wrap display sync: highlight/now-playing/scroll return to first sentence).
+// V125: Cache name bumped to v48 (no SW logic change, refresh only). All V125 fixes live in index.html
+//      (V124 second-pass review: 1 medium SESSION normalization + 2 low fixes).
+// V124: Cache name bumped to v47 (no SW logic change, refresh only). All V124 fixes live in index.html
+//      (1 regression + 4 medium + 4 low review fixes).
+// V123: Real SW logic change in install: the old-cache migration now sorts
 //       same-prefix old caches by version number (highest first) and the seenKeys dedupe table is
 //       hoisted to a scope shared across ALL old caches - abnormal multi-old-cache states can no
 //       longer let a lower-version cache overwrite newer migrated entries. Everything else in this
@@ -183,7 +189,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v123_offline_v46';
+var CACHE_NAME = 'shadow_v126_offline_v49';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
