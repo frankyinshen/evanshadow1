@@ -135,6 +135,9 @@
 //         now serializes fresh.put() calls and dedupes by normalized key - parallel puts of the
 //         same normalized key (old entries differing only in query params) could hit write-lock
 //         conflicts on some Cache API implementations.
+// V120: Cache name bumped to v43. Lock-screen pause -> play-resume rework in index.html
+// (chain-mode precise resume ctx for FOCUS_READ/SEQ_READ/LOOP_ONE/LOOP_RANGE + listen-loop
+// real pause + external-interrupt capture). No SW logic change — bump only forces refresh.
 // V119: Cache name bumped to v42. Bugfix release for the V119 offline-playback root causes, with one
 //      real SW logic change in install: the old-cache migration loop marked a normalized key as
 //      "seen" BEFORE checking resp && resp.ok - if the first old entry for a normalized key happened
@@ -159,7 +162,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v119_offline_v42';
+var CACHE_NAME = 'shadow_v120_offline_v43';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
