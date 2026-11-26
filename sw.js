@@ -1,4 +1,4 @@
-// Shadow Reading Pro V100 Service Worker
+// Shadow Reading Pro V122 Service Worker
 // Offline strategy: same-origin navigate requests only, "network-first + 3s timeout fallback to cache".
 // V88: previous "network-first, fallback only when offline" hung on weak networks and pages never opened,
 //      while the whole app is fully usable offline. Now: if network does not respond in 3s, open from cache;
@@ -136,8 +136,24 @@
 //         same normalized key (old entries differing only in query params) could hit write-lock
 //         conflicts on some Cache API implementations.
 // V120: Cache name bumped to v43. Lock-screen pause -> play-resume rework in index.html
+// V121: Cache name bumped to v44. Bugfix release for the V120 review findings - no SW
+// fetch/install logic change, bump only forces refresh. All fixes live in index.html:
+// gap-period detection for chain modes now keyed on pending gap timers (plus a one-shot
+// _selfPausing flag in _playSegmentTimed) instead of the keep-alive element's paused flag,
+// which was permanently "playing" from the 2nd rep/sentence on; SEQ_READ inter-rep resume
+// no longer skips remaining reps; FOCUS_READ gap resume scans past mastered sentences;
+// batch-cache stop guards keep half-written entries out of IndexedDB; lock-screen resume
+// ctx is invalidated on navigation/edit and re-validated against the current range inputs;
+// per-candidate attempt resets the streaming progress to zero; vocab dedup normalization
+// unified (_normWord); listen-loop resume failure writes the ctx back; editor isFinite
+// guards; full-backup restore accepts only shadow_-prefixed localStorage keys.
 // (chain-mode precise resume ctx for FOCUS_READ/SEQ_READ/LOOP_ONE/LOOP_RANGE + listen-loop
 // real pause + external-interrupt capture). No SW logic change — bump only forces refresh.
+// V122: Cache name bumped to v45. Feature release in index.html: global focus-loop toggle
+//       (default on, localStorage shadow_v122_focus_loop) - focus-sentence continuous read
+//       now restarts from the first unmastered starred sentence after finishing a pass instead
+//       of stopping (aligned with full-play looping); the round gap reuses the loop-gap
+//       setting plus the keep-alive audio. No SW logic change - bump only forces refresh.
 // V119: Cache name bumped to v42. Bugfix release for the V119 offline-playback root causes, with one
 //      real SW logic change in install: the old-cache migration loop marked a normalized key as
 //      "seen" BEFORE checking resp && resp.ok - if the first old entry for a normalized key happened
@@ -162,7 +178,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v120_offline_v43';
+var CACHE_NAME = 'shadow_v122_offline_v45';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
