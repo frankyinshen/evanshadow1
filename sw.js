@@ -1,4 +1,9 @@
-// Shadow Reading Pro V122 Service Worker
+// Shadow Reading Pro V123 Service Worker
+// V123: Cache name bumped to v46. Real SW logic change in install: the old-cache migration now sorts
+//       same-prefix old caches by version number (highest first) and the seenKeys dedupe table is
+//       hoisted to a scope shared across ALL old caches - abnormal multi-old-cache states can no
+//       longer let a lower-version cache overwrite newer migrated entries. Everything else in this
+//       release lives in index.html (2 high + 4 medium + 7 low review fixes).
 // Offline strategy: same-origin navigate requests only, "network-first + 3s timeout fallback to cache".
 // V88: previous "network-first, fallback only when offline" hung on weak networks and pages never opened,
 //      while the whole app is fully usable offline. Now: if network does not respond in 3s, open from cache;
@@ -178,7 +183,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v122_offline_v45';
+var CACHE_NAME = 'shadow_v123_offline_v46';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -194,10 +199,20 @@ self.addEventListener('install', function(event) {
             // after activation deletes the old cache we still have a page available offline -
             // no need for the conservative "keep old SW if install fails" strategy.
             var olds = names.filter(function(n) { return /^shadow_v\d+_offline_/.test(n) && n !== CACHE_NAME; });
+            // V123: sort old caches by version number, highest first - if several same-prefix old
+            // caches coexist (abnormal states) and caches.keys() returns them out of order, a
+            // lower-version cache migrated later would overwrite newer migrated entries. Online this
+            // self-heals via the './' precache put; offline standalone-name deploys keep the newest.
+            var verOf = function(n) { var m = /_v(\d+)$/.exec(n); return m ? parseInt(m[1], 10) : 0; };
+            olds.sort(function(x, y) { return verOf(y) - verOf(x); });
             return Promise.all(olds.map(function(n) { return caches.open(n); }));
         }).then(function(oldCaches) {
             return caches.open(CACHE_NAME).then(function(fresh) {
                 var chain = Promise.resolve();
+                // V123: seenKeys hoisted to the shared outer scope - dedupe now also covers the same
+                // normalized key coming from DIFFERENT old caches (was per-cache scope); combined with
+                // the highest-version-first order above the freshest entry always wins.
+                var seenKeys = {};
                 oldCaches.forEach(function(oc) {
                     chain = chain.then(function() {
                         return oc.keys().then(function(reqs) {
@@ -205,7 +220,6 @@ self.addEventListener('install', function(event) {
                             // fresh.put() of the same normalized key (old entries differing only in
                             // query params, e.g. ?mp3=a and ?mp3=b both normalizing to one pathname)
                             // can hit write-lock conflicts on some Cache API implementations.
-                            var seenKeys = {};
                             var inner = Promise.resolve();
                             reqs.forEach(function(r) {
                                 var k = keyOf(r.url);
