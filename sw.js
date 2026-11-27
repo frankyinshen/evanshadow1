@@ -1,4 +1,15 @@
-// Shadow Reading Pro V126 Service Worker
+// Shadow Reading Pro V127 Service Worker
+// V127: Real SW logic changes: 1) the fetch-event online cache write now strips resp.redirected by
+//       rebuilding a clean Response before cache.put (aligned with the V112 install precache and V115
+//       migration paths) - a host 301/302 (http->https, dir slash, language gate) used to overwrite
+//       the clean precached entry with a redirected:true response, which then broke the weak-network
+//       3s fallback and offline open on engines that reject redirected responses from respondWith().
+//       2) The install old-cache migration is now fault-isolated per entry and per old cache - a
+//       single failing oc.match()/fresh.put()/oc.keys() (write-lock conflict, quota, engine glitch)
+//       no longer aborts the remaining migrations nor rejects the whole install; lost entries
+//       self-heal online via the './' fetch precache put. All other V127 fixes live in index.html
+//       (focus-read round-wrap blind-state sync + wake-lock during focus read + 1 medium editor-undo
+//       bar remnant + 5 low review fixes).
 // V126: Cache name bumped to v49 (no SW logic change, refresh only). All V126 fixes live in index.html
 //      (focus-read round-wrap display sync: highlight/now-playing/scroll return to first sentence).
 // V125: Cache name bumped to v48 (no SW logic change, refresh only). All V125 fixes live in index.html
@@ -189,7 +200,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v126_offline_v49';
+var CACHE_NAME = 'shadow_v127_offline_v50';
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -236,6 +247,11 @@ self.addEventListener('install', function(event) {
                                 // a LATER valid old entry for the same key was silently skipped and lost.
                                 // Both same-key entries still chain up (unavoidable - build time cannot
                                 // know validity); the run-time re-check below makes the loser a no-op.
+                                // V127: per-entry .catch - a single failing oc.match()/fresh.put()
+                                // (write-lock conflict, quota, engine glitch) used to abort every remaining
+                                // migration in this and later old caches and reject the whole install
+                                // (event.waitUntil), so the new SW never activated. A lost entry self-heals
+                                // online via the './' fetch precache put.
                                 inner = inner.then(function() {
                                     if (seenKeys[k]) return null; // an earlier same-key entry already migrated
                                     return oc.match(r).then(function(resp) {
@@ -254,11 +270,11 @@ self.addEventListener('install', function(event) {
                                         }
                                         return fresh.put(k, resp); // V94: normalize key on migration
                                     });
-                                });
+                                }).catch(function() { return null; });
                             });
                             return inner;
-                        });
-                    });
+                        }).catch(function() { return null; }); // V127: oc.keys() failing for THIS old cache must not abort later ones
+                    }).catch(function() { return null; }); // V127: per-old-cache isolation for the outer step
                 });
                 return chain.then(function() { return fresh; });
             });
@@ -357,8 +373,15 @@ self.addEventListener('fetch', function(event) {
                 // V84.3: putTask is built once - the same Response body can only be consumed once,
                 // so cache write happens exactly once whether we timed out or not; V94: put key is the
                 // normalized pathname.
+                // V127: redirected responses must not be stored as-is - respondWith() rejects them as
+                // network errors on some engines (same as the V112 install precache and V115 migration
+                // paths). Visiting a redirected page online used to overwrite the clean precached entry,
+                // breaking the weak-network 3s fallback and offline open after just one online visit.
+                var toPut = resp.redirected
+                    ? new Response(clone.body, { status: resp.status, statusText: resp.statusText, headers: resp.headers })
+                    : clone;
                 putTask = caches.open(CACHE_NAME).then(function(cache) {
-                    return cache.put(pageKey, clone);
+                    return cache.put(pageKey, toPut);
                 }).catch(function() {});
             }
             return resp;
