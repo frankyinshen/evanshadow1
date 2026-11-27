@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V127 | build:20261127 | 用户需求 1 项 + 外部审查主 Bug（4 缺陷）+ 1 中 SW + 1 中 SW + 1 中编辑器 + 5 低危全部修复。新需求·重点句连读保持屏幕常亮：wakeLock 对象新增 autoRequest()/autoRelease() 自动持锁对（_auto 标记与用户手动 enabled 分离——手动开着的锁连读结束绝不释放；_visHandler 回前台重获条件扩含 _auto；_reacquire 守卫放宽；release() 清 _auto——用户明确关掉常亮后连读不再自动亮屏）——toggleFocusRead 启动分支与 _resumeFocusFromCtx 锁屏恢复入口调 autoRequest（静默不弹 toast、页面不可见时先挂 handler 亮屏补锁、不支持 Wake Lock 的浏览器静默降级保活音机制不受影响），_stopFocusRead 全部终止路径（手动停/自然完成/onError/stopAll 联动/删句/锁屏自动暂停）调 autoRelease。主Bug·重点句连读第二轮第一句轮间留白期「字幕一开始就显示」（V126 回绕显示同步的遗漏面，4 缺陷叠加）：①核心场景（开「末遍显字」+遍数≥2+未开静态「🙈 盲听」）——回绕分支只同步了高亮/滚动/now-playing，_applyFocusReadBlind 仍要等留白结束 _readOneSegRepeat 才挂 .force-blind，整个留白期（默认 1.5s、倍速模式=末句句长 5~15s）首句字幕明晃晃显示而文案写着「（盲听中）」，起播才突然变模糊；②.revealed 残留——上轮末遍自动显字/用户偷看挂的 .revealed 回绕不清，CSS :not(.revealed) 不生效，开了静态盲听也照样显示；③单句同句轮转（静态盲听+末遍显字关+第一轮偷看过）——prev===cur.segIdx 不触发换句清理+末遍显字关提前 return，从第二轮起即使起播也永不恢复模糊；④留白期点「🙈 盲听/末遍显字」开关——toggleFocusBlind/toggleFocusLastReveal 读 _focusReadCur（仍指上轮末句），now-playing 从「🔁 下一轮 · 第 1 句」倒退回显上轮末句原文。修法（审查方案 4 处小改动，零破坏）：a) _applyFocusReadBlind 增可选 targetCur/forceClear 参（无参调用行为不变）——回绕传 (gapCur,true) 强制清场+末遍显字开且≥2 遍时立刻给首句挂 .force-blind；b) 新增 _focusGapCur 显示专用状态（回绕分支设置、_readOneSegRepeat 实播开头置 null、_stopFocusRead 收尾清 null）——绝不动 _focusReadCur：_collectChainCtx 的 interGap 判据 (repsLeft<=1)||(atCursor!==segIdx) 依赖「轮间留白期 _focusReadCur 停在本轮末句且 repsLeft=1」，提前改成下一轮首句会让锁屏恢复误走遍间留白分支跳过第 1 遍；c) toggleFocusBlind/toggleFocusLastReveal/_renderFocusList 统一读 _focusGapCur||_focusReadCur 刷 now-playing（gap 态带「🔁 下一轮」lead），toggleFocusLastReveal 开启时对当前显示态立即 _applyFocusReadBlind（连读中途开末遍显字当前遍立即生效，不用等下一遍起播）；d) toggleFocusRead 启动分支 _applyFocusReadBlind(null,true) 预清场——上次连读残留/启动前手动偷看的 .revealed 一并清，单句连读同句轮转的缺陷③被回绕+启动两处 forceClear 全覆盖。中1·sw.js fetch 在线缓存写入未剥离 resp.redirected（与 install 预缓存 V112/迁移 V115 口径不一致）——宿主 301/302 重定向（http→https/目录斜杠/语言门）的页面被在线访问一次就覆写干净预缓存，弱网 3 秒回退/离线打不开；写入前 resp.redirected 重建干净 Response。中2·sw.js install 迁移链无单条容错——任一旧缓存条目 oc.match()/fresh.put() 抛异常（写锁冲突/配额）即中断同缓存及后续全部迁移且 event.waitUntil reject 导致新 SW 安装失败；每条迁移 Promise 末尾补 .catch(return null)+oc.keys() 层同款（丢失条目在线访问 './' fetch 自愈）。中3·app.edUndo() 撤销回「未选中微调条」态 #ed-tune-bar 残留显示——snap.edSelIdx===null 时 _edTuneRefresh 开头 if(_edSelIdx==null) 早退未隐藏；null 分支改调 _edBarHide() 统一收口（幂等）。低危 5 项：①toggleFocusRead 停止分支轮间留白期三件套——V126 只拉回 .playing 高亮，滚动仍停在顶部首句/now-playing 仍显「🔁 下一轮」预告；补 _scrollFocusItem+now-playing 恢复显示最后实际播过句（文案与 _jumpToFocusSentence 同款，盲听口径自动适配——_stopFocusRead 已清 .revealed 静态盲听句不剧透）；②vocabBook._formatCopyBlocks 字符上限截断失效——room 只按句数算 lines.slice(0,room) 不看字符，≤2500 句但 >80000 字符的整块照常全输出；改双预算（句数+字符）逐行累加截断（join 分隔符计入预算）；③cacheUI.load() 的 addHistory 未过 net.fixUrl（loadFromUrl 过了）——文件名含空格/中文/+&,= 时去重匹配不上，历史下拉框出现同一文件两条；统一 net.fixUrl(p.audioUrl||'')；④vocabBook._resumeLlFromCtx() 的 kaP.catch 写回竞态——reject 前用户已停掉/重开串烧或切走模式时，无条件把 _pausedFrom/_lockPauseCtx 覆盖成陈旧 'LISTEN_LOOP' 污染新模式断点；写回前校验当次 _ll.tk 代数快照；⑤_processVocabFile 导入 .csv/.tsv/.txt 写死 utf-8——Windows Excel「Unicode 文本 (*.txt)」实为 UTF-16LE 必乱码；改 readAsArrayBuffer+BOM 检测解码（FF FE→utf-16le / FE FF→utf-16be / 其余 utf-8 fatal→gbk 兜底，对齐 importSub）。升版：sw.js 缓存名 shadow_v126_offline_v49→shadow_v127_offline_v50（fetch redirected 剥离+install 迁移容错为真实 SW 逻辑改动）；exportProject version 127+下载名 shadow_v127.json；全量备份/生词本 JSON version 127；<title>/nav-title 统一 V127；无新增 localStorage 键（_focusGapCur/_auto/llTk0 均瞬态运行态） -->
 <!-- V126 | build:20261126 | 用户实测反馈修复：重点句连读（FOCUS_READ）播完一轮最后一句后「字幕不回第一句、无法看下一轮首句字幕」。根因（Playwright 长列表复现实锤）：V122 重点句循环回绕只回绕了 focusCursor（锁屏断点采集口径，_collectChainCtx 用），屏幕显示三件套——.playing 高亮 / #focus-now-playing 正在播行 / .focus-list 滚动位置——仍停在本轮末句：①轮间留白（默认 1.5s、倍速模式=末句句长）期间显示末句，下一轮首句字幕无从预读；②下一轮首句起播才触发回滚，且 scrollIntoView 恒 smooth——30 句列表从底部爬回顶部实测 ~0.6s+，首句（往往最短）播完了字幕还在半路，用户看到的正是「音频回第一句、字幕没回去」。修法（回绕瞬间同步显示，不动任何 ctx/断点字段——_focusReadCur/_focusPlayed/_lastPlayedFocusIdx 保持 V122/V123 口径，锁屏断点采集零变化）：a) _readNextStarred 回绕分支挂轮间留白定时器前补三件套同步——高亮挪到下一轮首句 pending0、_scrollFocusItem 瞬移滚到可见（留白期内完成，起播时 _readNextStarred 按句再刷同款显示无叠加）、_updateFocusNow 预告「🔁 下一轮 · 第 N 句 · 第 1/t 遍：text」（盲听/末遍显字口径自动适配不剧透——_focusNowBlind 判定照常生效）；b) _updateFocusNow 增可选 lead 前缀参（缺省 ▶ 行为不变，旧调用零变化）；c) 新增 _scrollFocusItem 滚动统一入口——短距离（相邻句推进 <240px≈3 行）保持 smooth 原手感，长距离瞬移；接入三处：_readNextStarred 逐句滚动（完成后再点「▶ 连读」从头重播=底部→顶部长跳）、_resumeFocusFromCtx 锁屏恢复跳位、_jumpToFocusSentence 手动导航（focusNext 末句绕回首句同为长跳）；d) toggleFocusRead 停止分支——回绕预告把高亮提前挪到下一轮首句后，留白期手动停止时高亮拉回最后实际播过的那句（与 V91 focusCursor 口径保持一致；播放中停止两者本就相等无变化）。升版：sw.js 缓存名 shadow_v125_offline_v48→shadow_v126_offline_v49（无 SW 逻辑改动，仅强制刷新）；exportProject version 126+下载名 shadow_v126.json；全量备份/生词本 JSON version 126；无新增 localStorage 键（_scrollFocusItem 纯函数）；<title>/nav-title 统一 V126 -->
 <!-- V125 | build:20261126 | V124 二次深查 1 中危 + 2 低危全部修复。中危1·离线缓存加载后 SESSION 未归一——含特殊字符的音频字幕修改无法回写缓存：serverBrowser._batchCacheOne 写入缓存条目的 audioUrl 是 new URL().href（路径中 + , & = @ ; 等字符不做百分号编码），loadFromUrl 两个分支写 SESSION/state._loadedAudioUrl 用的都是 net.fixUrl 后的 mp3（逐段 encodeURIComponent），cacheUI.load 却把原始 p.audioUrl 直接写入——文件名含特殊字符（或旧缓存存未编码中文/空格/GitHub blob 链接）时，_syncCacheSegments 的 SESSION 校验（sessionMp3 !== mp3）恒成立静默跳过，编辑页/预习页微调时间轴、就地改句、「↻ 刷新字幕」永远写不回 IndexedDB；loadFromUrl 缓存命中分支的 sameAudio（本地已改字幕判定）同源恒失配，「用本地/用缓存」选择弹窗失效。修法（读写全归一）：a) cacheUI.load 写 SESSION 与 state._loadedAudioUrl 先过 net.fixUrl（对齐 loadFromUrl 两分支；消费侧 lib_meta 键/判重/统计/复制AI 全部先过 fixUrl 或 extractFilename 解码，归一化零行为差）；b) _syncCacheSegments 两处 SESSION 校验、loadFromUrl 的 sameAudio、ui.init 的「继续上次」比对（savedSessionId===currentMp3）读侧同包 net.fixUrl——兼容旧版本已落盘的未归一 SESSION 值；缓存键无虞：idbCache.hashUrl 内部自带 fixUrl，条目键不受写侧归一与否影响。低危1·resumeFullPlay 在 NotAllowedError 起播被拒时未写回 _pausedFrom='FULL_PLAY'：resumePaused 进入时已把它一次性消费置空，不写回则用户再按一次耳机/锁屏 ▶ 退化成 playOnce（播一句即停、断点链失效）——非静默分支补写回（对齐五个链式 _resume*FromCtx 失败写回「失败不断点、可重试」语义；断点本身经 _fullInterrupted/_fullResumeTime 保留、橙色「▶ 继续磨耳朵」照常有效）；静默路径（回前台自动续播 resumeFullPlay(true)）不经 resumePaused，维持锁屏暂停时写下的值不写。低危2·editWord 判重跨形态口径不一致：nmOf 直接 extractFilename，local://lesson01.mp3_12345 得到带 _大小 尾缀的文件名（与 _isCurrentAudio/_audioNameFromUrl 剥尾缀口径不一致——本地导入词条改词名与同音频老词条撞车漏判）；!v.a && !x.a 分支未 toLowerCase——nmOf 补 local:// 剥 _大小 尾缀（同 _isCurrentAudio 内联口径）、双无 a 分支补小写归一。升版：sw.js 缓存名 shadow_v124_offline_v47→shadow_v125_offline_v48（无 SW 逻辑改动，仅强制刷新）；exportProject version 125+下载名 shadow_v125.json；全量备份/生词本 JSON version 125；无新增 localStorage 键；<title>/nav-title 统一 V125 -->
 <!-- V124 | build:20261126 | 外部审查 1 中高危回归 + 4 中危 + 4 低危共 10 项全部修复。中高危1·listenLoopStop 无条件清空所有模式的锁屏断点（V123 中危6 引入的回归）：V123 为清理陈旧 LISTEN_LOOP 断点把 engine._lockPauseCtx/_pausedFrom 的清理改成无条件、并把 close/tabReview/remove/togglePin/moveUp/setFilterAudio/_clearCurAudio/_clearGlobal/_mergeVocab/tabList 等入口改成无条件调用 listenLoopStop——叠加后果：磨耳朵（FULL_PLAY）或任一链式模式（FOCUS_READ/SEQ_READ/LOOP_ONE/LOOP_RANGE）处于锁屏暂停态时，用户只要开关一次生词本/切翻卡/删词/改筛选，断点即被一并清空，锁屏 ▶ 失去 _pausedFrom 退化成 playOnce 播一句即停、屏幕按钮失去 ctx 无法句内精确续播。修法：清 ctx/_pausedFrom 改按 mode==='LISTEN_LOOP' 过滤（串烧自己暂停留下的才清）；三处锁屏暂停路径（#main-audio pause/mediaSession pause/visibilitychange）都是先调本函数再写回新 LISTEN_LOOP ctx——先清后写回不受影响，V123 原目标仍被覆盖。中危2·engine.startTicker 只监听 timeupdate 未监听 ended：LOOP_RANGE/FULL_PLAY 回跳依赖 ticker 驱动 _checkLoopBoundaries，息屏 RAF 挂起后全靠 audio 事件；区间含末句且末句 end>=duration（Whisper 时间戳越界常见）时播到物理结尾 timeupdate 停发，a.ended 兜底条件缺触发源，区间循环第一轮结束即卡死不回跳——startTicker 成对监听 ended，stopAll/toggleFullPlay 暂停分支/_onExternalFullPause 三处解绑同步补 ended（_checkLoopBoundaries 幂等，非循环模式直接 return）。中危3·预习全部完成后点「稍后再说」cursorIdx 停在越界值 segments.length：_gotoSentence 越界早退分支已把游标设为 length，closeDoneModal 只隐藏弹窗——越界游标让「🔄 再听一次/▶ 试听」误报音频未就绪、「⭐ 加入重点」把越界下标持久化进 starredIndices、✏️ 提示还没有句子、微调滚轮/点词入本丢例句文本与时间戳——closeDoneModal(keepCursor) 区分：留在逐句听时回退游标到最后一句（不动 previewedCount/previewDone），去重点句/去跟读传 true。中危4·vocabBook._stopAllAudio 未递增 _hearTk：_hearFallback 的 Level 2 多次 await 靠 tk 代数中止，但 tabList/tabReview 空池/reviewMark 进战报/reviewUndo/listenLoopStop/setFilterAudio/togglePin/moveUp 调用 _stopAllAudio 时不递增（只有 close/speak/hearSentence 递增）——例句加载窗口内切 Tab/进战报后突然出声——开头统一递增（play 后的 tk 校验会立即 pause，与函数语义一致）。中危5·cacheUI.selDel 搜索过滤 0 条时 shownSet 退化 null 误删被隐藏的已勾选项：_selShown=[] 长度 0 falsy → !shownSet 全放行——改 Array.isArray 判定（[] 是合法空集，过滤成 0 条走专门提示）。中/低危6·5 个链式模式 toggle 启动分支仅消费自身模式的 _lockPauseCtx，跨模式切换残留旧断点：toggleLoop/toggleRangeLoop/toggleSeqRead/toggleFocusRead/toggleListenLoop 读取 ctx0 后立即无条件置空（匹配自身模式时恢复被拒由各 _resume*FromCtx 的失败路径写回供重试，不受影响）；previewMode._playCurrentSentence 开头补清 ctx/_pausedFrom（对齐 playOnce 的 V121 口径）。低危 4 项：1) #vocab-paste-pop 的重复 id="dict-head" 移除（样式改全内联，与 #dict-head CSS 规则等价）；2) _xlsxRowsDom 的 inlineStr 分支补跳过父节点为 <rPh> 的 <t>（与 sharedStrings/正则兜底三口径一致，Excel 拼音指南注音不再混进正文）；3) LOOP_RANGE 非法/倒序区间防护——stepInMode 与 _checkLoopBoundaries 两处对 #loop-start/#loop-end 补 [0,末句] clamp 与 start>end 交换（输 0 时 startSeg=undefined 使回跳分支恒 false、区间循环永不回跳）；4) _getCopySubBlocks 的 allCur 借 _isCurrentAudio 跨形态文件名兜底（local:// 与网络 URL 同一音频先本地导入后网络加载时不再漏附内存 state.segments；保持 every 语义防混合词表错附单一字幕）。升版：sw.js 缓存名 shadow_v123_offline_v46→shadow_v124_offline_v47（无 SW 逻辑改动，仅强制刷新）；exportProject version 124+下载名 shadow_v124.json；全量备份/生词本 JSON version 124；无新增 localStorage 键（_hearTk 等均为瞬态运行态）；<title>/nav-title 统一 V124 -->
@@ -74,7 +75,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V126</title>
+<title>影子跟读 Pro V127</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -807,7 +808,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
     <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-        <div class="nav-title">🎧 影子跟读 V126</div>
+        <div class="nav-title">🎧 影子跟读 V127</div>
         <button class="nav-help-btn" onclick="helpPage.open()" title="常用功能说明：保存/备份区别 · 完整学习流程 · 生词本 AI 补全闭环 · 字幕编辑技巧 · iPhone/iPad 贴士">❓ 说明</button>
     </div>
     <div class="mode-switch">
@@ -2176,7 +2177,7 @@ const cacheUI = {
             } catch(eRec) {}
             app.saveInput();
             localStorage.setItem(CONST.SESSION, net.fixUrl(p.audioUrl || '')); // V125(中危1): 写侧归一化——缓存条目 audioUrl 是 new URL().href（+ , & = @ ; 等不百分号编码），不归一化则与 _syncCacheSegments/loadFromUrl 里 fixUrl 后的 mp3 恒不等，字幕修改静默跳过回写缓存
-            app.addHistory(p.audioUrl || '');
+            app.addHistory(net.fixUrl(p.audioUrl || '')); // V127(低3): 与 loadFromUrl 同口径归一化——文件名含空格/中文/+&,= 时未归一条目去重匹配不上，历史下拉框出现同一文件两条
             previewMode.clearForNewAudio(p.audioUrl || '');
             // 加载成功后从 localStorage 恢复该音频的预习进度，让 badge 显示正确数字
             previewMode.loadFromStorage();
@@ -2329,6 +2330,7 @@ const cacheUI = {
 const wakeLock = {
     sentinel: null,    // 当前持有的 WakeLockSentinel
     enabled: false,    // 用户意图（开启还是关闭）—— 与 sentinel 分离
+    _auto: false,      // V127: 重点句连读自动常亮——链式练习期间自动持锁（用户手动 enabled 优先；连读结束只释放自动获取的锁）
     _visHandler: null,
     isSupported() { return !!(navigator.wakeLock && navigator.wakeLock.request); },
     async toggle() {
@@ -2353,16 +2355,7 @@ const wakeLock = {
                 this.sentinel = null;
                 this._updateUI();
             });
-            // 监听 visibilitychange：回前台时按用户意图自动重新获取
-            if (!this._visHandler) {
-                this._visHandler = () => {
-                    // P3-7: 前台且用户意图仍是开启但当前没持锁，重新获取
-                    if (document.visibilityState === 'visible' && this.enabled && !this.sentinel) {
-                        this._reacquire();
-                    }
-                };
-                document.addEventListener('visibilitychange', this._visHandler);
-            }
+            this._ensureVisHandler(); // V127: 挂载逻辑抽为 _ensureVisHandler（autoRequest 持锁后同样需要回前台重获）
             this._updateUI();
             ui.toast('💡 屏幕已常亮（息屏也不会停）');
         } catch(e) {
@@ -2371,7 +2364,7 @@ const wakeLock = {
         }
     },
     async _reacquire() {
-        if (!this.isSupported() || !this.enabled) return;
+        if (!this.isSupported() || (!this.enabled && !this._auto)) return; // V127: 连读自动锁在期同样允许重获
         try {
             this.sentinel = await navigator.wakeLock.request('screen');
             this.sentinel.addEventListener('release', () => {
@@ -2384,6 +2377,7 @@ const wakeLock = {
     async release() {
         // P3-7: release 是用户主动关闭——清 enabled（用户意图）+ 释放 sentinel
         this.enabled = false;
+        this._auto = false; // V127: 用户明确关闭常亮——连读自动锁意图一并作废（连读继续但不自动亮屏）
         if (this.sentinel) {
             try { await this.sentinel.release(); } catch(e) {}
             this.sentinel = null;
@@ -2394,6 +2388,44 @@ const wakeLock = {
         }
         this._updateUI();
         ui.toast('屏幕常亮已关闭');
+    },
+    // V127: 挂载/复用 visibilitychange 回前台自动重获（原逻辑内联在 request() 里，抽出供手动/自动两条路径共用）；
+    // 条件扩含 _auto——自动锁被系统释放（如息屏）后回前台同样要补锁，连读才不因屏幕熄灭断链
+    _ensureVisHandler() {
+        if (this._visHandler) return;
+        this._visHandler = () => {
+            // P3-7: 前台且（用户意图开启或连读自动锁在期）但当前没持锁，重新获取
+            if (document.visibilityState === 'visible' && (this.enabled || this._auto) && !this.sentinel) {
+                this._reacquire();
+            }
+        };
+        document.addEventListener('visibilitychange', this._visHandler);
+    },
+    // V127: 重点句连读期间自动保持屏幕常亮——静默持锁（不弹 toast 不打扰）；
+    // 用户已手动开「💡 常亮」时只记 _auto 账、不动锁（释放交给用户）；不支持 Wake Lock 时静默降级
+    // （连读本身有 🔋 息屏续航保活音兜底）。锁屏恢复场景页面不可见时先挂 _visHandler 返回，亮屏解锁自动补锁。
+    async autoRequest() {
+        if (this._auto) return;
+        this._auto = true;
+        if (!this.isSupported() || this.enabled) { this._ensureVisHandler(); return; }
+        if (document.visibilityState !== 'visible') { this._ensureVisHandler(); return; }
+        try {
+            this.sentinel = await navigator.wakeLock.request('screen');
+            this.sentinel.addEventListener('release', () => { this.sentinel = null; this._updateUI(); });
+            this._ensureVisHandler();
+            this._updateUI();
+        } catch(e) { console.warn('wakeLock autoRequest failed:', e); }
+    },
+    // V127: 连读停止——只在锁是自动获取且用户没手动常亮时释放（用户手动开的优先保留）
+    async autoRelease() {
+        if (!this._auto) return;
+        this._auto = false;
+        if (this.enabled) return;
+        if (this.sentinel) {
+            try { await this.sentinel.release(); } catch(e) {}
+            this.sentinel = null;
+        }
+        this._updateUI();
     },
     _updateUI() {
         const btn = document.getElementById('btn-wakelock');
@@ -5340,7 +5372,7 @@ const app = {
         this._edWheelsBuilt = true;
     },
     _edTuneRefresh() {
-        if (this._edSelIdx == null) return;
+        if (this._edSelIdx == null) { this._edBarHide(); return; } // V127(中3): 撤销回到未选中态（snap.edSelIdx===null）时统一收口——隐藏残留的 #ed-tune-bar + 清选中样式（幂等：正常渲染路径条子本就收起，重复隐藏无副作用）
         const seg = state.segments[this._edSelIdx];
         if (!seg) { this._edBarHide(); return; }
         this._edBuildWheels();
@@ -7590,9 +7622,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 126, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V126: 125→126（重点句连读回绕显示同步修复）
+        const data = { version: 127, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V127: 126→127（轮间回绕盲听同步+连读常亮+审查 3 中 5 低）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v126.json'; // V126: 下载名随版本
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v127.json'; // V127: 下载名随版本
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -7628,7 +7660,7 @@ const app = {
                 'shadow_v117_dl_sizes', // V117(军规6): 批量下载文件大小表（键=hashUrl 短 id）——大文件互斥预判用，丢失只降级为下批次乐观启动无实害
                 'shadow_v122_focus_loop' // V122: 重点句循环开关（默认开，'0'=关）——连读播完一轮自动续下一轮
             ];
-            var data = { type: 'shadow_full_backup', version: 126, exportedAt: new Date().toISOString(), items: {} }; // V126: 125→126（无新增键）
+            var data = { type: 'shadow_full_backup', version: 127, exportedAt: new Date().toISOString(), items: {} }; // V127: 126→127（无新增键）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -8444,9 +8476,12 @@ const previewMode = {
         const on = !this._focusBlindOn();
         try { localStorage.setItem('shadow_v115_focus_blind', on ? '1' : '0'); } catch(e) {}
         this._syncFocusPhaseBlind();
-        // 列表模糊由 CSS 类立即生效（.revealed 偷看态保留）；正在连读时刷新当前句 now-playing 文案
-        if (this._focusReadCur) {
-            try { this._updateFocusNow(this._focusReadCur.segIdx, this._focusReadCur.repsLeft, this._focusReadCur.repsTotal); } catch(eN) {}
+        // 列表模糊由 CSS 类立即生效（.revealed 偷看态保留）；正在连读时刷新当前句 now-playing 文案。
+        // V127: 读 _focusGapCur||_focusReadCur——轮间留白期 _focusReadCur 仍指上一轮末句，直接读会让
+        // 「🔁 下一轮 · 第 1 句」倒退回显上轮末句原文
+        const dispB = this._focusGapCur || this._focusReadCur;
+        if (dispB) {
+            try { this._updateFocusNow(dispB.segIdx, dispB.repsLeft, dispB.repsTotal, this._focusGapCur ? '🔁 下一轮' : undefined); } catch(eN) {}
         }
         ui.toast(on ? '🙈 盲听已开：列表英文模糊，点单句可临时偷看；连读可配「末遍显字」' : '🙈 盲听已关');
     },
@@ -8463,10 +8498,17 @@ const previewMode = {
         const on = !this._focusLastRevealOn();
         try { localStorage.setItem('shadow_v115_focus_last_reveal', on ? '1' : '0'); } catch(e) {}
         try { const b = document.getElementById('focus-last-reveal-btn'); if (b) b.classList.toggle('on', on); } catch(e0) {}
-        // 连读进行中关掉——立即解除当前句强制模糊（末遍自动显的 .revealed 保留，只把文本亮出来）
+        // 连读进行中关掉——立即解除当前句强制模糊（末遍自动显的 .revealed 保留，只把文本亮出来）；
+        // V127: 读 _focusGapCur||_focusReadCur（轮间留白期不倒退回显上轮末句）；【开启】时对当前
+        // 显示状态立即重算 .force-blind/.revealed——连读中途开「末遍显字」当前遍立即模糊，不用等
+        // 下一遍起播才生效
+        const dispR = this._focusGapCur || this._focusReadCur;
         if (!on) {
             try { document.querySelectorAll('#focus-list .focus-item.force-blind').forEach(function(el) { el.classList.remove('force-blind'); }); } catch(e1) {}
-            if (this._focusReadCur) { try { this._updateFocusNow(this._focusReadCur.segIdx, this._focusReadCur.repsLeft, this._focusReadCur.repsTotal); } catch(eN) {} }
+            if (dispR) { try { this._updateFocusNow(dispR.segIdx, dispR.repsLeft, dispR.repsTotal, this._focusGapCur ? '🔁 下一轮' : undefined); } catch(eN) {} }
+        } else if (dispR && this._focusReadActive) {
+            try { this._applyFocusReadBlind(dispR); } catch(eA2) {}
+            try { this._updateFocusNow(dispR.segIdx, dispR.repsLeft, dispR.repsTotal, this._focusGapCur ? '🔁 下一轮' : undefined); } catch(eN3) {}
         }
         ui.toast(on ? '末遍显字（重点句连读）：≥2 遍时前 N-1 遍模糊盲听、末遍自动显字核对' : '末遍显字（重点句连读）：已关');
     },
@@ -8485,12 +8527,17 @@ const previewMode = {
         return false;
     },
     // V115(三): 连读末遍显字联动——按 _focusReadCur 给当前句挂/摘 .force-blind/.revealed；
-    // 换句时清上一句痕迹（含用户偷看的 .revealed——偷看是临时的）；列表重渲后（删句）也调本函数重挂
-    _applyFocusReadBlind() {
+    // 换句时清上一句痕迹（含用户偷看的 .revealed——偷看是临时的）；列表重渲后（删句）也调本函数重挂。
+    // V127: 增可选 targetCur（轮间留白期传入下一轮首句的显示状态——此时 _focusReadCur 仍指上一轮
+    // 末句，绝不能改它：_collectChainCtx 的 interGap 判据 (repsLeft<=1)||(atCursor!==segIdx) 依赖
+    // 「轮间留白期 _focusReadCur 停在本轮末句且 repsLeft=1」，提前改成下一轮首句会让锁屏恢复误走
+    // 遍间留白分支跳过第 1 遍）与 forceClear（强制清场——回绕/新一轮开始时清上一轮残留的 .revealed，
+    // 含末遍自动显字与用户偷看的，否则 CSS :not(.revealed) 不生效、首句整个留白期显示字幕）
+    _applyFocusReadBlind(targetCur, forceClear) {
         try {
-            const cur = this._focusReadCur;
+            const cur = targetCur || this._focusReadCur;
             const prev = this._focusReadPrevSeg;
-            if (prev !== undefined && prev !== (cur && cur.segIdx)) {
+            if (forceClear || (prev !== undefined && prev !== (cur && cur.segIdx))) {
                 document.querySelectorAll('#focus-list .focus-item.force-blind, #focus-list .focus-item.revealed').forEach(function(el) { el.classList.remove('force-blind', 'revealed'); });
             }
             this._focusReadPrevSeg = cur ? cur.segIdx : undefined;
@@ -8568,8 +8615,9 @@ const previewMode = {
             item.onclick = () => { this.focusCursor = i; this._jumpToFocusSentence(segIdx); };
             list.appendChild(item);
         });
-        // V115(三): 列表重渲（进入阶段/删句/改句）会丢掉 .force-blind/.revealed——连读中按当前句/遍数重挂
-        if (this._focusReadActive && this._focusReadCur) { try { this._applyFocusReadBlind(); } catch(eRb) {} }
+        // V115(三): 列表重渲（进入阶段/删句/改句）会丢掉 .force-blind/.revealed——连读中按当前句/遍数重挂；
+        // V127: 轮间留白期改用 _focusGapCur（下一轮首句）重挂——回绕时挂上的盲听态删句重渲后不丢
+        if (this._focusReadActive && (this._focusGapCur || this._focusReadCur)) { try { this._applyFocusReadBlind(this._focusGapCur || this._focusReadCur); } catch(eRb) {} }
     },
     _toggleFocusDone(i, checkEl, itemEl) {
         const segIdx = this.starredIndices[i];
@@ -9219,6 +9267,22 @@ const previewMode = {
             if (this._lastPlayedFocusIdx != null) {
                 this.focusCursor = Math.min(this._lastPlayedFocusIdx, this.starredIndices.length - 1);
                 try { document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', i === this.focusCursor); }); } catch(eD) {}
+                // V127: 三件套同步补全——V126 只拉回了 .playing 高亮：轮间留白期停止时滚动仍停在
+                // 顶部下一轮首句、#focus-now-playing 仍显示「🔁 下一轮」预告，与高亮句对不上；现在
+                // 滚动与文案也拉回最后实际播过的那句（文案格式与 _jumpToFocusSentence 一致，盲听
+                // 口径自动适配——_stopFocusRead 已清 .revealed，静态盲听开着的句子不剧透）
+                try { const li = document.getElementById('focus-item-' + this.focusCursor); if (li) this._scrollFocusItem(li, 'center'); } catch(eS2) {}
+                try {
+                    const segIdxL = this.starredIndices[this.focusCursor];
+                    if (segIdxL != null && state.segments[segIdxL]) {
+                        const mainKeyL = state.activeSub === 1 ? 'text2' : (state.activeSub === 2 ? 'text3' : 'text');
+                        const textL = state.segments[segIdxL][mainKeyL] || state.segments[segIdxL].text || '';
+                        const nowElL = document.getElementById('focus-now-playing');
+                        if (nowElL) nowElL.innerText = this._focusNowBlind(segIdxL, 1, 1)
+                            ? ('▶ 第 ' + (segIdxL+1) + ' 句（盲听中）')
+                            : ('▶ 第 ' + (segIdxL+1) + ' 句：' + (textL.length > 40 ? textL.substring(0, 40) + '...' : textL));
+                    }
+                } catch(eN2) {}
             }
             try { engine._lockPauseCtx = null; engine._pausedFrom = null; } catch(eLc) {} // V120: 手动停止——锁屏暂停恢复上下文作废（想从头重播）
             ui.toast('已停止连读'); return;
@@ -9252,6 +9316,8 @@ const previewMode = {
         engine.stopAll(); // 起点清场（含连读联动，此时未激活，无碍）
         this._focusReadActive = true;
         this._focusPlayed = 0; // V88: 记录本轮实际播过的句子数
+        try { this._applyFocusReadBlind(null, true); } catch(eB0) {} // V127: 预清场——上次连读残留/启动前手动偷看的 .revealed 一并清，新一轮从干净的盲听态开始（单句连读同句轮转时换句判定清不掉同句残留）
+        try { wakeLock.autoRequest(); } catch(eW) {} // V127: 连读期间保持屏幕常亮（不支持 Wake Lock 的浏览器静默降级，保活音机制不受影响）
         // V86: 连读占用非 IDLE 模式（同 PREVIEW_PLAY 先例）——两个直接收益：
         // 1) 设置里「锁屏自动暂停」对连读也生效（visibilitychange 判 mode!=='IDLE' 才 stopAll，原来恒 IDLE 不停）；
         // 2) 锁屏/耳机"播放"键恢复当前句而非误走 playOnce 打断连读（Media Session play 判 IDLE 才 playOnce）。
@@ -9309,11 +9375,21 @@ const previewMode = {
                     // 起播时 _readNextStarred 按句再刷一遍同款显示，无叠加影响；_focusReadCur/
                     // _focusPlayed 等 ctx 字段不动，锁屏断点采集（V123 中危3 口径）零变化。
                     const segIdx0 = this.starredIndices[pending0];
+                    const reps0 = this._focusReps;
+                    // V127: 轮间留白期显示专用状态——只喂给 _updateFocusNow/_applyFocusReadBlind/开关实时
+                    // 刷新；_focusReadCur 保持指向上轮末句（锁屏断点口径，详见 _applyFocusReadBlind 注释）
+                    const gapCur = { segIdx: segIdx0, repsLeft: reps0, repsTotal: reps0 };
+                    this._focusGapCur = gapCur;
                     try {
                         document.querySelectorAll('.focus-item').forEach((el, i) => { el.classList.toggle('playing', i === pending0); });
                         this._scrollFocusItem(document.getElementById('focus-item-' + pending0), 'center');
                     } catch(eD) {}
-                    try { this._updateFocusNow(segIdx0, this._focusReps, this._focusReps, '🔁 下一轮'); } catch(eN) {}
+                    // V127: 盲听态同步——forceClear 清上一轮残留的 .revealed（末遍显字自动挂/偷看挂），
+                    // 且「末遍显字」开着且 ≥2 遍时立刻给下一轮首句挂 .force-blind：否则整个轮间留白期
+                    // （默认 1.5s、倍速模式=末句句长 5~15s）首句字幕明晃晃显示、now-playing 却写着
+                    // 「（盲听中）」，留白结束起播才突然变模糊（V126 只同步了高亮/滚动/文案，漏了盲听态）
+                    try { this._applyFocusReadBlind(gapCur, true); } catch(eB) {}
+                    try { this._updateFocusNow(segIdx0, reps0, reps0, '🔁 下一轮'); } catch(eN) {}
                     this._focusReadTimer = setTimeout(() => { this._focusReadTimer = null; this._readNextStarred(); }, calcLoopGapMs(state.segments[this.starredIndices[gi]])); // V121(高危1): 触发即清 id——inGap 判据
                     return;
                 }
@@ -9380,6 +9456,7 @@ const previewMode = {
         if (!this._focusReadActive) return;
         if (!repsTotal || repsTotal < repsLeft) repsTotal = repsLeft; // V106(功能3a): 防御——不传/异常按本句起始遍数显示
         this._focusReadCur = { segIdx: segIdx, repsLeft: repsLeft, repsTotal: repsTotal }; // V115(三): 当前句/遍数——末遍显字联动与 now-playing 盲听判定共用
+        this._focusGapCur = null; // V127: 离开轮间留白进入实际播放——留白期显示状态作废（读取处 _focusGapCur||_focusReadCur 自动切到实播值）
         this._applyFocusReadBlind(); // V115(三): 新句清上一句痕迹/新遍重算 .force-blind/.revealed
         this._updateFocusNow(segIdx, repsLeft, repsTotal); // V106(功能3a): 每遍起播刷新「第 r/t 遍」
         const win = engine.getPaddedWindow(segIdx);
@@ -9413,6 +9490,7 @@ const previewMode = {
             engine.stopAll(); // 清场（ctx 已消费到局部变量，stopAll 联动清链无碍）
             this._focusReadActive = true;
             this._focusPlayed = 1;
+            try { wakeLock.autoRequest(); } catch(eW) {} // V127: 恢复连读同样保持屏幕常亮（锁屏恢复页面不可见时由 _visHandler 亮屏补锁）
             this._focusFinished = false;
             this.focusCursor = si; // 光标对齐恢复句（后续链式推进从它往后走）
             this._lastPlayedFocusIdx = si;
@@ -9459,11 +9537,12 @@ const previewMode = {
         if (this._focusReadTimer) { clearTimeout(this._focusReadTimer); this._focusReadTimer = null; }
         this._setFocusReadBtn(false);
         engine.kaStop(); // V93: 自然完成/onError 路径不经过 stopAll，这里独立停保活音
+        try { wakeLock.autoRelease(); } catch(eW) {} // V127: 连读结束——自动常亮锁释放（用户手动开着的保留）
         // V115(三): 收尾清理所有连读痕迹（.force-blind 与自动/偷看的 .revealed），
         // 恢复静态「🙈 盲听」开关状态（开着则列表回到全模糊，关着则全亮）
         try {
             document.querySelectorAll('#focus-list .focus-item.force-blind, #focus-list .focus-item.revealed').forEach(function(el) { el.classList.remove('force-blind', 'revealed'); });
-            this._focusReadCur = null; this._focusReadPrevSeg = undefined;
+            this._focusReadCur = null; this._focusReadPrevSeg = undefined; this._focusGapCur = null; // V127: 留白期显示状态一并清
         } catch(eB) {}
         // V86: 复位连读占用的模式——自然完成/onError 终止路径没有 stopAll 参与，mode 会残留 'FOCUS_READ'
         // （残留会让锁屏"播放"键走恢复播放而非 playOnce、锁屏暂停开关空触发一次 stopAll）；
@@ -10264,6 +10343,7 @@ const vocabBook = {
             try { if (aiMode.active) aiMode.stop(); } catch(eA) {}
             try { engine.stopAll(); } catch(eE) {}
             this._ll = { queue: pool, pos: pos, on: true, tk: ++this._llTk };
+            const llTk0 = this._ll.tk; // V127(低4): 当次恢复链的代数快照——kaP 晚到 reject 时校验链还是不是这一代
             var kaP = null;
             try { kaP = engine.kaStart(); } catch(eK) {} // 息屏/锁屏保活音（V121: 取起播 Promise 判被拒）
             this._syncLlBtns();
@@ -10273,7 +10353,11 @@ const vocabBook = {
                 // V121(中危8): 锁屏后台起播被拒（NotAllowedError）——保活音起不来息屏必断链，而恢复
                 // 上下文已在 resumePaused 里一次性消费掉、锁屏 ▶ 无 ctx 可续；对齐其余四个链式恢复函数
                 // 的「失败不断点」语义：停链 + 写回 _lockPauseCtx/_pausedFrom，再点锁屏 ▶ 或屏幕「🎧 串烧」
-                // 都能从暂停词位重试（listenLoopStop 会清 ctx，故先停链再写回）
+                // 都能从暂停词位重试（listenLoopStop 会清 ctx，故先停链再写回）。
+                // V127(低4): 写回前先校验代数——kaP reject 前用户已停止/重开串烧或切走模式（磨耳朵/
+                // 连读等）时，无条件写回会把新模式的 _pausedFrom/_lockPauseCtx 覆盖成陈旧的
+                // 'LISTEN_LOOP'，再点锁屏 ▶ 会误走串烧恢复污染新链
+                try { if (!vocabBook._ll || vocabBook._ll.tk !== llTk0) return; } catch(eTk) { return; }
                 try { if (vocabBook._ll && vocabBook._ll.on) vocabBook.listenLoopStop(); } catch(eS) {}
                 try { engine._pausedFrom = 'LISTEN_LOOP'; } catch(ePf) {}
                 try { engine._lockPauseCtx = ctx; } catch(eCw) {}
@@ -10713,7 +10797,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 126, exportedAt: new Date().toISOString(), vocab: list }; // V126: 125→126
+        const data = { type: 'shadow_vocab_backup', version: 127, exportedAt: new Date().toISOString(), vocab: list }; // V127: 126→127
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
@@ -10752,7 +10836,18 @@ const vocabBook = {
                     // V123(中危4): .tsv / 制表符分隔的 .txt 走 tab 解析（与 <input accept> 和粘贴解析同口径）——
                     // 原只认 .csv/.txt 且 .txt 写死逗号：.tsv 全落 JSON 分支报"不是有效的生词本文件"、
                     // Numbers/Excel 导出的制表符 .txt 解析失败
-                    const text = String(e.target.result || '');
+                    // V127(低5): BOM 检测解码（对齐 importSub）——Windows Excel 导出的「Unicode 文本 (*.txt)」
+                    // 实为 UTF-16LE，写死 utf-8 解码必乱码；顺带补 GBK 兜底（老 CSV 也不乱码）
+                    const uint8 = new Uint8Array(e.target.result);
+                    let text;
+                    if (uint8.length >= 2 && uint8[0] === 0xFF && uint8[1] === 0xFE) {
+                        try { text = new TextDecoder('utf-16le').decode(uint8); } catch(err16) { text = new TextDecoder('gbk').decode(uint8); }
+                    } else if (uint8.length >= 2 && uint8[0] === 0xFE && uint8[1] === 0xFF) {
+                        try { text = new TextDecoder('utf-16be').decode(uint8); } catch(err16b) { text = new TextDecoder('gbk').decode(uint8); }
+                    } else {
+                        try { text = new TextDecoder('utf-8', { fatal: true }).decode(uint8); } catch(err) { text = new TextDecoder('gbk').decode(uint8); }
+                    }
+                    text = text.replace(/^\uFEFF/, '');
                     if (/\.tsv$/.test(name) || (text.indexOf('\t') >= 0 && !/\.csv$/.test(name))) {
                         finish(this._rowsToVocab(this._parseDelimited(text, '\t')), ' TSV');
                     } else {
@@ -10762,7 +10857,7 @@ const vocabBook = {
                 catch(e1) { ui.toast('❌ CSV 解析失败：' + (e1.message || e1)); }
             };
             r.onerror = function() { ui.toast('❌ 文件读取失败'); };
-            r.readAsText(file, 'utf-8');
+            r.readAsArrayBuffer(file); // V127: 改读原始字节——BOM 检测需要（readAsText 写死 utf-8 时 UTF-16 文件已解成乱码）
             return;
         }
         // JSON（原路径）：本功能导出 / 全量备份（只取生词本，不覆盖其他设置）/ 纯数组
@@ -12700,9 +12795,17 @@ const vocabBook = {
             const lines = this._formatSegLines(blocks[b].segs);
             if (!lines.length) continue;
             if (usedSegs + lines.length > MAX_SEGS || usedChars + lines.join('\n').length > MAX_CHARS) {
+                // V127(低2): 双预算逐行累加截断——原 room 只按句数算、lines.slice(0, room) 不看字符数：
+                // 单块 ≤2500 句但总字符 >80000（每句 60 字 × 2000 句）时整块照常全部输出，字符上限形同虚设
                 const room = Math.max(0, MAX_SEGS - usedSegs);
-                if (room > 0) {
-                    const cut = lines.slice(0, room);
+                const charRoom = Math.max(0, MAX_CHARS - usedChars);
+                const cut = []; let cLen = 0;
+                for (let li = 0; li < lines.length && cut.length < room; li++) {
+                    const add = lines[li].length + (cut.length ? 1 : 0); // join('\n') 分隔符计入预算
+                    if (cLen + add > charRoom) break;
+                    cut.push(lines[li]); cLen += add;
+                }
+                if (cut.length) {
                     parts.push((single && b === 0 ? '【当前音频完整字幕（《' : '【完整字幕（《') + blocks[b].name + '》，共 ' + lines.length + ' 句，截取前 ' + cut.length + ' 句）】\n' + cut.join('\n'));
                     usedSegs += cut.length; usedChars += cut.join('\n').length;
                 }
