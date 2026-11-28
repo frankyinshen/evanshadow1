@@ -1,4 +1,13 @@
-// Shadow Reading Pro V128 Service Worker
+// Shadow Reading Pro V129 Service Worker
+// V129: Real SW logic change (review #7): all THREE redirected-Response rebuild sites (install migration,
+//       install './' precache, fetch online path) now guard against 204/205 - the spec forbids constructing
+//       a 204 No Content / 205 Reset Content Response WITH a body argument, and strict engines throw
+//       TypeError (which the V127 per-entry catch would silently swallow, losing the entry). A redirected
+//       204/205 (rare but legal) is now rebuilt with a null body; all other redirected statuses keep the
+//       original body. Cache name bumped to force the new SW logic to activate.
+//       All other V129 fixes live in index.html (wakeLock _reqSeq + preview tuneWheel undo + Esc layering
+//       + loadFromUrl/cacheUI.load restore widening + _batchStop badge refresh + 3 more review fixes +
+//       4 feature upgrades: AI word-diff / turtle slow-play / medley due-filter + TTS rate / smart merge restore).
 // V128: Real SW logic changes: 1) The fetch-event online path now ALSO strips resp.redirected from
 //       the response handed to respondWith() - V127 only cleaned the cached copy while still
 //       returning the original redirected:true response to the page, so engines that reject
@@ -212,7 +221,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v128_offline_v51'; // V128: fetch redirected live-return strip + install seenKeys-after-put (real SW logic changes)
+var CACHE_NAME = 'shadow_v129_offline_v52'; // V129: 204/205 null-body guard on redirected Response rebuilds (real SW logic change)
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -273,8 +282,11 @@ self.addEventListener('install', function(event) {
                                         // by the per-entry .catch below) still burned the key, and a valid
                                         // copy of the same key in a LOWER-version old cache was then
                                         // skipped at the two seenKeys checks above, losing the entry.
+                                        // V129: 204/205 MUST NOT be constructed with a body (spec;
+                                        // strict engines throw TypeError) - pass null for those two.
+                                        var body4r = (resp.status === 204 || resp.status === 205) ? null : resp.body;
                                         var putP = (resp.redirected)
-                                            ? fresh.put(k, new Response(resp.body, {
+                                            ? fresh.put(k, new Response(body4r, {
                                                 status: resp.status,
                                                 statusText: resp.statusText,
                                                 headers: resp.headers
@@ -309,7 +321,9 @@ self.addEventListener('install', function(event) {
             return fetch(homeReq).then(function(resp) {
                 if (!resp || !resp.ok) return null;
                 if (!resp.redirected) return fresh.put(homeReq, resp);
-                return fresh.put(homeReq, new Response(resp.body, {
+                // V129: 204/205 must not carry a body (spec) - pass null for those two.
+                var body4h = (resp.status === 204 || resp.status === 205) ? null : resp.body;
+                return fresh.put(homeReq, new Response(body4h, {
                     status: resp.status,
                     statusText: resp.statusText,
                     headers: resp.headers
@@ -387,7 +401,9 @@ self.addEventListener('fetch', function(event) {
                 // redirected:true). Build ONE clean Response, clone it for the cache, return the
                 // clean one to the page.
                 if (resp.redirected) {
-                    var clean = new Response(resp.body, {
+                    // V129: 204/205 must not carry a body (spec) - pass null for those two.
+                    var body4f = (resp.status === 204 || resp.status === 205) ? null : resp.body;
+                    var clean = new Response(body4f, {
                         status: resp.status,
                         statusText: resp.statusText,
                         headers: resp.headers
