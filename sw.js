@@ -1,4 +1,16 @@
-// Shadow Reading Pro V131 Service Worker
+// Shadow Reading Pro V132 Service Worker
+// V132: Real SW logic change: all three redirected-Response rebuild sites (install old-cache migration,
+//       install './' precache, fetch online path) now go through one shared rebuildCleanResponse() helper
+//       that deletes Content-Encoding and Content-Length from the cloned headers before constructing the
+//       new Response. fetch() transparently decodes gzip/br bodies but still exposes those headers on the
+//       response object - rebuilding a Response that CLAIMS gzip/br over an already-decoded body makes the
+//       browser (and the Cache API copy, where it also lands) try to decode it a second time, failing
+//       navigation with ERR_CONTENT_DECODING_FAILED on hosts that combine redirects (http->https, './' ->
+//       './index.html', CDN gates) with compression. The V129 204/205 null-body guard moved into the helper.
+//       All other V132 fixes live in index.html (URL-input percent-decode on the two cache-load fill paths,
+//       tuneWheel undo-snapshot ordering, aiMode raw-transcript word diff, _llSent rate for non-current
+//       audio, loadFromUrl rollback full-reset, restoreProgress blob: filter, editWord cross-form dedup,
+//       exportJSON toast wording).
 // V131: No SW logic change - cache-name-only bump to force refresh (all V131 fixes live in index.html:
 //       vocab-book filter row split into two semantic rows + medley trio evenly distributed row; toolbar split
 //       into two semantic sub-rows (export quartet / AI-loop+import trio) so no lone button stretches full-row
@@ -239,11 +251,28 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v131_offline_v54'; // V131: name-only bump (no SW logic change this version)
+var CACHE_NAME = 'shadow_v132_offline_v55'; // V132: redirected-response rebuild strips content-encoding/length (real logic change, see header)
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
     try { return new URL(u, self.location.href).pathname; } catch(e) { return u; }
+};
+
+// V132: rebuild a redirected response without the redirected flag AND without Content-Encoding /
+// Content-Length. fetch() transparently decodes gzip/br bodies but keeps those headers on the response
+// object; copying them onto a new Response whose body is already PLAIN text makes the browser (and the
+// Cache API copy) attempt a second decode pass -> ERR_CONTENT_DECODING_FAILED. Clone the headers, delete
+// the two mismatched ones, keep everything else. The V129 204/205 null-body guard lives here too.
+var rebuildCleanResponse = function(resp) {
+    var body = (resp.status === 204 || resp.status === 205) ? null : resp.body;
+    try {
+        var h = new Headers(resp.headers);
+        h.delete('content-encoding');
+        h.delete('content-length');
+        return new Response(body, { status: resp.status, statusText: resp.statusText, headers: h });
+    } catch(e) {
+        return new Response(body, { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+    }
 };
 
 self.addEventListener('install', function(event) {
@@ -300,15 +329,10 @@ self.addEventListener('install', function(event) {
                                         // by the per-entry .catch below) still burned the key, and a valid
                                         // copy of the same key in a LOWER-version old cache was then
                                         // skipped at the two seenKeys checks above, losing the entry.
-                                        // V129: 204/205 MUST NOT be constructed with a body (spec;
-                                        // strict engines throw TypeError) - pass null for those two.
-                                        var body4r = (resp.status === 204 || resp.status === 205) ? null : resp.body;
+                                        // V132: rebuild strips redirected flag AND content-encoding/length
+                                        // (204/205 null-body handled inside the helper).
                                         var putP = (resp.redirected)
-                                            ? fresh.put(k, new Response(body4r, {
-                                                status: resp.status,
-                                                statusText: resp.statusText,
-                                                headers: resp.headers
-                                            }))
+                                            ? fresh.put(k, rebuildCleanResponse(resp))
                                             : fresh.put(k, resp); // V94: normalize key on migration
                                         return putP.then(function() { seenKeys[k] = true; });
                                     });
@@ -339,13 +363,8 @@ self.addEventListener('install', function(event) {
             return fetch(homeReq).then(function(resp) {
                 if (!resp || !resp.ok) return null;
                 if (!resp.redirected) return fresh.put(homeReq, resp);
-                // V129: 204/205 must not carry a body (spec) - pass null for those two.
-                var body4h = (resp.status === 204 || resp.status === 205) ? null : resp.body;
-                return fresh.put(homeReq, new Response(body4h, {
-                    status: resp.status,
-                    statusText: resp.statusText,
-                    headers: resp.headers
-                }));
+                // V132: rebuild strips redirected flag AND content-encoding/length (204/205 handled inside).
+                return fresh.put(homeReq, rebuildCleanResponse(resp));
             }).catch(function() {});
         }).then(function() {
             return self.skipWaiting();
@@ -419,13 +438,8 @@ self.addEventListener('fetch', function(event) {
                 // redirected:true). Build ONE clean Response, clone it for the cache, return the
                 // clean one to the page.
                 if (resp.redirected) {
-                    // V129: 204/205 must not carry a body (spec) - pass null for those two.
-                    var body4f = (resp.status === 204 || resp.status === 205) ? null : resp.body;
-                    var clean = new Response(body4f, {
-                        status: resp.status,
-                        statusText: resp.statusText,
-                        headers: resp.headers
-                    });
+                    // V132: rebuild strips redirected flag AND content-encoding/length (204/205 handled inside).
+                    var clean = rebuildCleanResponse(resp);
                     var cleanClone = clean.clone();
                     putTask = caches.open(CACHE_NAME).then(function(cache) {
                         return cache.put(pageKey, cleanClone);
