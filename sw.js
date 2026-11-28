@@ -1,4 +1,13 @@
-// Shadow Reading Pro V130 Service Worker
+// Shadow Reading Pro V131 Service Worker
+// V131: No SW logic change - cache-name-only bump to force refresh (all V131 fixes live in index.html:
+//       vocab-book filter row split into two semantic rows + medley trio evenly distributed row; toolbar split
+//       into two semantic sub-rows (export quartet / AI-loop+import trio) so no lone button stretches full-row
+//       wide; cacheUI.load restoreBackup now restores main-audio dataset.name BEFORE previewMode.loadFromStorage()
+//       so local-MP3 preview keys resolve correctly on rollback; importSub(k=0) no longer double-renders the
+//       editor; smart-merge/confirmImportData validate rec.count as a finite non-negative number; lib_meta and
+//       PREVIEW merge loops add hasOwnProperty symmetry with the stats branch; global keydown intercepts the
+//       open drawer overlay (Esc closes it, other keys no longer leak to the practice page). Also: one legacy
+//       em-dash in a V121 comment normalized to ASCII per the ASCII-only policy below.)
 // V130: No SW logic change - cache-name-only bump to force refresh (all V130 fixes live in index.html:
 //       user bug 1 = restoreBackup now rolls back previewMode in-memory state after a failed load so a
 //       later star/vocab write cannot overwrite the restored audio's PREVIEW key with the failed
@@ -200,7 +209,7 @@
 // unified (_normWord); listen-loop resume failure writes the ctx back; editor isFinite
 // guards; full-backup restore accepts only shadow_-prefixed localStorage keys.
 // (chain-mode precise resume ctx for FOCUS_READ/SEQ_READ/LOOP_ONE/LOOP_RANGE + listen-loop
-// real pause + external-interrupt capture). No SW logic change — bump only forces refresh.
+// real pause + external-interrupt capture). No SW logic change - bump only forces refresh.
 // V122: Cache name bumped to v45. Feature release in index.html: global focus-loop toggle
 //       (default on, localStorage shadow_v122_focus_loop) - focus-sentence continuous read
 //       now restarts from the first unmastered starred sentence after finishing a pass instead
@@ -230,7 +239,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v130_offline_v53'; // V130: name-only bump (no SW logic change this version)
+var CACHE_NAME = 'shadow_v131_offline_v54'; // V131: name-only bump (no SW logic change this version)
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
