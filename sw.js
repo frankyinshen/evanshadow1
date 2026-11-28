@@ -1,4 +1,16 @@
-// Shadow Reading Pro V127 Service Worker
+// Shadow Reading Pro V128 Service Worker
+// V128: Real SW logic changes: 1) The fetch-event online path now ALSO strips resp.redirected from
+//       the response handed to respondWith() - V127 only cleaned the cached copy while still
+//       returning the original redirected:true response to the page, so engines that reject
+//       redirected responses (WebKit/Safari) failed the CURRENT online visit with a network
+//       error (only the next visit, served from the clean cache, worked). Now ONE clean
+//       Response is built and used for both the cache put and the live return.
+//       2) The install migration marks a key in seenKeys only AFTER fresh.put() succeeds -
+//       V127's per-entry .catch swallowed put failures silently, but the key was already
+//       marked, so a valid copy of the same key in a LOWER-version old cache was skipped
+//       and the entry was lost (self-heal only via online './' fetch).
+//       All other V128 fixes live in index.html (focus-read blind-all-list subtitles +
+//       allowHtml for loadNextEpisode + wakeLock race fixes + 5 review fixes).
 // V127: Real SW logic changes: 1) the fetch-event online cache write now strips resp.redirected by
 //       rebuilding a clean Response before cache.put (aligned with the V112 install precache and V115
 //       migration paths) - a host 301/302 (http->https, dir slash, language gate) used to overwrite
@@ -200,7 +212,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v127_offline_v50';
+var CACHE_NAME = 'shadow_v128_offline_v51'; // V128: fetch redirected live-return strip + install seenKeys-after-put (real SW logic changes)
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
@@ -256,19 +268,19 @@ self.addEventListener('install', function(event) {
                                     if (seenKeys[k]) return null; // an earlier same-key entry already migrated
                                     return oc.match(r).then(function(resp) {
                                         if (!resp || !resp.ok) return null;
-                                        seenKeys[k] = true; // valid - later entries for this key can be skipped
-                                        // V115: redirected responses must not be stored as-is - respondWith()
-                                        // rejects them as network errors on some engines. Rebuild a clean
-                                        // Response (same body/status/headers) before putting, same as the
-                                        // V112 fetch precache path.
-                                        if (resp.redirected) {
-                                            return fresh.put(k, new Response(resp.body, {
+                                        // V128: mark seenKeys only AFTER the put succeeds - marking right
+                                        // after oc.match() meant a failed fresh.put() (silently swallowed
+                                        // by the per-entry .catch below) still burned the key, and a valid
+                                        // copy of the same key in a LOWER-version old cache was then
+                                        // skipped at the two seenKeys checks above, losing the entry.
+                                        var putP = (resp.redirected)
+                                            ? fresh.put(k, new Response(resp.body, {
                                                 status: resp.status,
                                                 statusText: resp.statusText,
                                                 headers: resp.headers
-                                            }));
-                                        }
-                                        return fresh.put(k, resp); // V94: normalize key on migration
+                                            }))
+                                            : fresh.put(k, resp); // V94: normalize key on migration
+                                        return putP.then(function() { seenKeys[k] = true; });
                                     });
                                 }).catch(function() { return null; });
                             });
@@ -369,19 +381,26 @@ self.addEventListener('fetch', function(event) {
             }
             // Network success - clone the response and cache one copy (same-origin only)
             if (resp && resp.ok) {
+                // V128: redirected responses must ALSO not be RETURNED from respondWith() as-is -
+                // engines like WebKit/Safari reject them as network errors on the CURRENT online
+                // visit (V127 only cleaned the cached copy; the live return still carried
+                // redirected:true). Build ONE clean Response, clone it for the cache, return the
+                // clean one to the page.
+                if (resp.redirected) {
+                    var clean = new Response(resp.body, {
+                        status: resp.status,
+                        statusText: resp.statusText,
+                        headers: resp.headers
+                    });
+                    var cleanClone = clean.clone();
+                    putTask = caches.open(CACHE_NAME).then(function(cache) {
+                        return cache.put(pageKey, cleanClone);
+                    }).catch(function() {});
+                    return clean;
+                }
                 var clone = resp.clone();
-                // V84.3: putTask is built once - the same Response body can only be consumed once,
-                // so cache write happens exactly once whether we timed out or not; V94: put key is the
-                // normalized pathname.
-                // V127: redirected responses must not be stored as-is - respondWith() rejects them as
-                // network errors on some engines (same as the V112 install precache and V115 migration
-                // paths). Visiting a redirected page online used to overwrite the clean precached entry,
-                // breaking the weak-network 3s fallback and offline open after just one online visit.
-                var toPut = resp.redirected
-                    ? new Response(clone.body, { status: resp.status, statusText: resp.statusText, headers: resp.headers })
-                    : clone;
                 putTask = caches.open(CACHE_NAME).then(function(cache) {
-                    return cache.put(pageKey, toPut);
+                    return cache.put(pageKey, clone);
                 }).catch(function() {});
             }
             return resp;
