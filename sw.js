@@ -1,4 +1,13 @@
-// Shadow Reading Pro V129 Service Worker
+// Shadow Reading Pro V130 Service Worker
+// V130: No SW logic change - cache-name-only bump to force refresh (all V130 fixes live in index.html:
+//       user bug 1 = restoreBackup now rolls back previewMode in-memory state after a failed load so a
+//       later star/vocab write cannot overwrite the restored audio's PREVIEW key with the failed
+//       entry's empty starred set; importSub(k=0) now reuses _applyNewSegments remapping instead of
+//       clearing starred/doneIndices; user bug 2 = turtle slow-play target rate capped at 0.75x for
+//       global rates >= 1.0x; plus external review: wakeLock const-seq shadowing, _wordDiff token
+//       unification, toggleRvDue medley stop, vocab-filter-row wrap, flushStats before smart merge,
+//       prototype-key guards, tune-wheel merge window reset, keydown guards for the restore-choice
+//       modal, parseASS vector-drawing regex widening).
 // V129: Real SW logic change (review #7): all THREE redirected-Response rebuild sites (install migration,
 //       install './' precache, fetch online path) now guard against 204/205 - the spec forbids constructing
 //       a 204 No Content / 205 Reset Content Response WITH a body argument, and strict engines throw
@@ -221,7 +230,7 @@
 //       which makes the browser decode the file as GBK on Chinese-locale devices and break SW registration
 //       with a SyntaxError. ASCII-only source is immune to this.
 // Never intercept third-party resources or media requests (including Range) - audio streaming must work.
-var CACHE_NAME = 'shadow_v129_offline_v52'; // V129: 204/205 null-body guard on redirected Response rebuilds (real SW logic change)
+var CACHE_NAME = 'shadow_v130_offline_v53'; // V130: name-only bump (no SW logic change this version)
 
 // V94: key normalization - same-origin page requests use URL pathname as the cache key (query params ignored)
 var keyOf = function(u) {
