@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- V130 | build:20261128 | 用户实测 2 bug 修复 + 第五份外部审查 1 高危 + 3 中危 + 5 低危全部采纳落地。用户Bug1·文件列表 ⭐ 徽章全消失且既有重点句丢失（数据丢失级回归）：根因（V129 审4/审5 放宽回滚条件后暴露）——loadFromUrl/cacheUI.load 的同步块已执行 previewMode.clearForNewAudio(新音频)+loadFromStorage(新音频)（内存重点句集合=新音频的空集合），随后 await _fetchSubsIfMissing/_ensureCacheSegments/prepareAudioFromBlob 任一失败走 restoreBackup()——音频/字幕/SESSION/INPUTS 全部还原成功界面毫无异常，但 previewMode 内存态【仍停留在失败条目的空集合】；用户随后在练习/预习页的任何写路径（点⭐ toggleStar/入生词本自动标⭐/预习推进 markKnow）都会 saveToStorage 按已还原的 INPUTS.mp3=旧音频 key 把空集合覆写进 PREVIEW——旧音频全部重点句永久丢失（表象＝编辑页文件列表 ⭐ 全部消失、进预习/重点句页也找不到），用户根本无法察觉。修法三层：a) 两处 restoreBackup 补 previewMode 回滚（clearForNewAudio(旧音频)+loadFromStorage+updateBadge——INPUTS 已还原，重读即回旧音频正确数据）；b) loadFromUrl 补 backupSession 备份（缓存命中分支在 await 前写 SESSION）+ cacheUI.load 补 DOM 输入框备份还原（原只还原 localStorage 不还原输入框，界面残留失败条目 URL）；c) 防线二：importSub(k=0) 导入主字幕改走 _applyNewSegments 的「按开始时间就近重映射（±1.5s）」语义——原 V81 实现直接 starredIndices=[]/doneIndices=[] 清空重点句，用户换一份时间轴略有出入的字幕（修轴/换版本）既有重点句瞬间全丢，与「↻ 刷新字幕」同一换轴场景早有重映射，此处对齐同一口径，currIndex 也就近映射不再恒回第 1 句；防线三：「♻️ 完全覆盖」加二次确认（备份时点之后的重点句⭐/生词本/统计会被备份内容顶掉且不可恢复，用户实测测试新弹窗时误触完全覆盖是既有重点句消失的最可能路径——弹窗描述同步写明后果，智能合并保留本机数据无需拦截）。用户Bug2·🐢 慢放按钮只对速率 1× 起作用、1.5× 时「不起作用」：实测（Playwright）JS 链路 1.5×→1.13× 在桌面引擎完全生效，问题在产品口径——base×0.75 在全局 1.5× 时得 1.13×（仅慢 25%，听感上依旧是「快」，用户感知不到变化）；且 1.13 不是任何标准速率档，iOS WebKit preservesPitch 对非标速率有忽慢忽不生效的兼容怪癖。修法：playOnceSlow/_slowRate 统一改为 max(0.5, min(round(base×0.75,2), 0.75))——全局 ≥1.0× 一律拉回 0.75× 标准慢速档（1.25×降 40%/1.5×降 50%，听感明显且与 1.0× 用户已验证有效的体验一致），<1.0× 低速档（0.75/0.85/0.9）保持 ×0.75 相对再降一档；三处 title 文案同步。高1·wakeLock.request() 内 try 块的「const seq=++_reqSeq」声明了块级作用域新变量遮蔽外层「let seq=0」——catch 里「seq===this._reqSeq」读到恒为 0 的外层值恒 false，navigator.wakeLock.request 失败 reject（iOS 低电量/系统省电策略）时乐观置位的 enabled=true 永远无法回滚：按钮卡「💡 常亮ON」橙色激活态但实际无锁，再点还会误走 release() 分支；修法去 const 改赋值（seq=++_reqSeq）；顺带 autoRequest() await 后校验补 ||this.sentinel（_reacquire 抢先持锁时后到的自动锁原会覆盖 sentinel 把先到的挤成孤儿锁，request()/_reacquire 早已同款校验唯此处漏）。中2·AI 逐词纠错 _wordDiff 参考串分词口径与 DOM 词元不一致：原「整体 _normalize().split(' ')」把 U.S./3.5/1,000/10:30/and/or 归一成 1 词（us/35/1000/1030/andor），而 DOM 侧 _buildPwSpans/_applyMissMarks 按 [A-Za-z0-9]+ 拆成 2 个词元（U+S、3+5、10+30、and+or）——句中一出现这类词从该位起整句后续所有 .pw 的 p 下标与 d.matched 全部错位（读对的标红/漏读的漏标）；修法两端口径统一：参考串与识别串都先用与 DOM 完全相同的词元正则拆词元、每词元再单独 _normalize（缩写展开 don't→do not 仍占 1~2 词位）。中3·列表 Tab 串烧播放中切「⏰ 只练到期」不停止串烧：toggleRvDue 只调 _stopAllAudio（当场静音掐断）而 _ll 仍 on:true，空等定时器到点后继续按切换前的旧队列快照往下播，开关对进行中的串烧不生效；补 listenLoopStop（对齐 setFilterAudio/togglePin/moveUp/tabReview/_mergeVocab 五处既有口径）。中4·筛选行新增第 7 控件「速·0.9」后 401~440px 屏（iPhone 15 Pro Max 430px）不触发旧 ≤400px 折行查询，下拉框被压到 15~41px 无法辨认所选音频；改默认 flex-wrap:wrap（宽屏单行放得下自然不折）+select min-width 0→120px+vocab-sort-btn white-space:nowrap，移除旧 400px 媒体查询。低危 5 项：①智能合并前补 flushStats（内存统计攒 30 次才落盘，刚跟读几十秒就合并→reload 丢这段时长；exportFullBackup 已同款此处漏）+lib_meta/PREVIEW 合并循环补 __proto__/constructor/prototype 原型键防护（pvL['constructor'] 命中 Object.prototype.constructor 进并集分支会污染原型）；②回滚不完全（=Bug1 修法的 b/c 两项）；③预习滚轮 2.5s 合并窗口跨过重置/撤销——tuneReset/edTuneReset/edUndo 补复位 _tunePushIdx/_tunePushAt（否则同句 2.5s 内再拨滚轮跳过 _edPush，撤销一步跨过重置态丢一步）；④keydown 补拦截 #restore-choice-modal（z-index 9000，V129 新弹窗——练习页抽屉发起恢复时按空格/方向键/R/L 穿透触发底层练习页，Esc 也不关弹窗）+ #ai-round-modal/#preview-done-modal 两个同类顶层弹窗；⑤parseASS 矢量绘图正则 \{\\p[1-9] 改 \{[^}]*\\p[1-9][^}]*\}——覆盖 {\an7\p1}/{\pos(x,y)\p1} 等前置修饰标签（原正则要求 \p1 紧跟 { 后，常见 ASS 特效标签全不命中，矢量坐标串被剥花括号后混进字幕正文）。升版：sw.js 缓存名 shadow_v129_offline_v52→shadow_v130_offline_v53（无 SW 逻辑改动，仅强制刷新）；exportProject version 130+下载名 shadow_v130.json；全量备份/生词本 JSON version 130；<title>/nav-title 统一 V130；无新增 localStorage 键（所有修复均为既有链路修正） -->
 <!-- V129 | build:20261128 | 外部审查 1 高危回归 + 3 中危 + 4 低危全部修复 + 4 项产品功能升级。高危1·wakeLock.request() 100% 必现回归（V128 引入）：V128 为防「await 窗口内用户又点开关走 release()」把意图校验写在 request('screen') resolve 之后，但函数在 await 之前从未置 enabled=true——未持锁手动开启时初始 enabled 必为 false，resolve 后 if (!this.enabled) 必然成立，刚申请到的锁被立即 sent.release() 丢弃并 return，「💡 常亮」在非连读状态下永远点不亮。修法（请求代数 _reqSeq 竞态仲裁，对象新增 _reqSeq:0）：a) request() 开头 let seq 提到 try 外（catch 块可见）；b) const seq=++_reqSeq 后先乐观置 enabled=true（UI 即时 ON）；c) await 后双重校验 !enabled||seq!==_reqSeq——release() 或新请求顶替时迟到锁立即释放让位；d) await 窗口内 _reacquire 抢先持锁——迟到锁直接释放（不覆盖成孤儿锁）；e) catch 回滚乐观 enabled——仅当本代未被顶替且无其它锁在手；f) release() 开头 _reqSeq++ 作废在途请求。中2·previewMode.tuneWheel 不入编辑撤销栈（V128 注释宣称「预习滚轮经 updateSeg 时间分支也入栈」与代码不符）：tuneWheel 直写 seg.start/end 从不经 updateSeg/_edPush（tuneReset V128 已补），只调滚轮不点重置回编辑页「↩ 撤销」救不回直接跨过；确认写入且 changed 前补 _edPush('预习微调第 N 句时间')，同句 2.5s 窗口内合并为一步（快照推在整串拨动前，一次撤销回微调前状态，iOS picker 连环 change 不刷满 25 步栈）。中3·Esc 误关统计主面板残留子浮层：keydown 的 statsSheet.open 分支原直接 closeStats()——正在看「📊 分享长图(shareImageModal 7000)/📤 生成长图(sharePickerSheet 6001)/📤 区间导出(partialExportSheet 5601)/💾 统计备份(backupSheet 5501)」时按 Esc 把下层 statsSheet(5000) 撤掉、上层浮层孤留屏幕；按 z-index 从高到低逐层拦截（shareImageModal 走自带 close——1s 后 revoke blob URL，取不到按钮兜底直删；closeSharePicker/closePartialExport/closeBackupSheet/closeStats 依次），任一子层开着时其余按键同样不透传。中4·loadFromUrl 失败回滚条件漏「已导入但无字幕的本地音频」：catch 里 if (backupSegments && backupSegments.length) 才 restoreBackup——刚本地导入 MP3（segments 空但 backupAudioSrc/backupAudioBuffer 就绪）后点失败的网络加载，本地音频与 _loadedAudioUrl 直接丢失不还原；恢复条件放宽为 (backupSegments&&length)||backupAudioSrc（cacheUI.load 的 catch 同步放宽）。低危 4 项：①cacheUI.load 的 restoreBackup 未还原 SESSION/INPUTS——同步块已写入 localStorage 的 SESSION 与 saveInput(INPUTS) 在失败回滚时不还原，localStorage 残留失败那条的 URL；入口补备份 backupSession/backupInputs，restoreBackup 一并还原（null 则 removeItem 对齐无值态）；②serverBrowser._batchStop 中途停止未刷「💾已缓存」徽章——停止前已入库但正处 await idbCache.put() 最后一步的条目被 _batchToken 拦截跳过 ✅ 标记与 _cachedIds.push()，_batchResetUi 清进度徽章后不重查 idb，刚下完那条在列表上显示不出已缓存（关重开才恢复）；_batchStop 复位 UI 后补 _loadBadges()；③sw.js 重建 Response 对 204/205 空响应体防呆——规范禁止 204 No Content/205 Reset Content 带 body 构造（严格引擎抛 TypeError，install 侧被 per-entry catch 吞掉=条目静默丢失），install 迁移/install './' 预缓存/fetch 在线返回三处统一 (status===204||status===205)?null:resp.body；④末遍显字遍数<2 提示——重点句 toggleFocusLastReveal 与练习页 toggleSeqBlind 在遍数=1 时开启，按钮高亮但 repsTotal>=2 判据不生效（用户疑惑「开了怎么不遮」），toast 补「当前 N 遍不会触发盲听，需改为 2 遍及以上才生效」。功能1·AI 模式逐词 diff 纠错高亮（零成本核心体验）：evaluate 失败时用词级 LCS（_wordDiff：DP 对齐+回渗，识别串多读的词只跳过不标记）算出原句每个词是否被读到存 _lastDiff{idx,refWords,matched}；_enterManualPractice 解除模糊后 _applyMissMarks 按 DOM 全量 token 顺序对齐铺 .ai-miss（.pw 词元归一化消耗 1~2 个 ref 词位——缩写展开 don't→do not，纯数字词元不包 .pw 也占位），没读上的词橙红下划线一眼可见，状态栏「👆 手动复习 · ❌ N 词」+toast 列出前 6 个词；切句/继续AI/停止随重渲染自然清除（内存标记同步置 null）。功能2·🐢 临时慢放（跟读救星）：playOnce 增可选 rate 参（slowR 仅本遍生效，onEnd/onError 恢复 applyPlaybackRate(state.playbackRate)），stopAll 补「元素速率≠全局时回全局」（顺带修复先慢后快中途停止的同类泄漏——磨耳朵 _checkLoopBoundaries 回跳不经 applyPlaybackRate 不再沿用 0.85×）；playOnceSlow=当前速率×0.75（下限 0.5）；入口三处——练习页/重点句页「▶ 播单句」按钮内嵌 🐢 角标（span.slow-chip 不破 grid）、预习页「🔄 再听一次」旁「🐢 慢放」钮（replayCurrentSentence(rate)→_playCurrentSentence 增 rate 参传 _playSegmentTimed）；不改全局 state.playbackRate 与速率滚轮显示，下一句自动原速。功能3·串烧连播「只听没记住的」+语速可调：a) 🎧 串烧联动 Tab 栏「⏰ 只练到期」开关（_llPool 统一供 toggleListenLoop/_resumeLlFromCtx——开着时池=未毕业&&到期（与翻卡同口径），关=全部词原行为；空池 toast 提示可关开关串全部、开始 toast 标注池口径）；b) 新增「速·0.8/0.9/1.0/1.2」四档循环钮（ll-rate-btn，shadow_v129_ll_rate 默认 0.9=原硬编码值）——_speakText 增可选 rate 参（其余调用方维持 0.9 默认），_llSpeak 读词/释义按档播、估算兜底时长按 1/rate 放大不抢拍；例句原声跟随全局速率不受此影响。功能4·全量恢复升级「🔀 智能合并（推荐）/♻️ 完全覆盖」二选一弹窗（_showRestoreChoice z-index 9000，替代原 confirm）：智能合并保留本机数据只并入备份新增——统计按天按记录 sec/count 取大（confirmImportData 同款校验口径+内存 statsDB 刷新防 reload 前 flushStats 回写）、生词本 vocabBook._mergeVocab 双主键无损合并（SRS 档位/到期取优、文本非空覆盖空补全）、lib_meta 每音频 idx/opened/磨耳朵断点取更远其余补缺、预习重点句 starred/doneIndices 取并集+previewedCount 取大+done 取或、其余键本机缺失才补（全新设备全部缺失=等价完全覆盖）；完全覆盖=原逻辑原样保留（V121 白名单+_fullBackupOverwrite）；两者都不动音频 Blob 与 IndexedDB。升版：sw.js 缓存名 shadow_v128_offline_v51→shadow_v129_offline_v52（204/205 空体防呆为真实 SW 逻辑改动）；exportProject version 129+下载名 shadow_v129.json；全量备份 version 129（keys 新增 shadow_v129_ll_rate）；生词本 JSON version 129；<title>/nav-title 统一 V129；新增 localStorage 键仅 shadow_v129_ll_rate（并入全量备份），_reqSeq/_lastDiff/_tunePushAt/slowR 等均瞬态运行态 -->
 <!-- V128 | build:20261128 | 用户主诉 1 项 + 外部审查 1 高危 + 4 中危 + 5 低危全部修复。用户主诉·重点句连读盲听应遮住全部字幕而不是只遮正在读的那句：原实现「末遍显字」只给当前句挂 .force-blind（前 N-1 遍），未读到的重点句全程明文显示可随意偷看，违背盲听训练语义。修法（容器级盲听，零改动链式断点口径）：a) 新增 #preview-focus-phase.focus-read-blind 容器类（CSS 与静态 .focus-blind 同规则——.focus-item:not(.revealed) 的文本全部 blur(8px)）；b) _applyFocusReadBlind 统一挂/摘（判据=末遍显字开+repsTotal>=2+_focusReadActive，放在提前 return 之前——开关中途关闭/遍数 1/无 cur 一律摘除不残留）；c) _stopFocusRead 收尾摘除+toggleFocusLastReveal 关闭分支摘除（末遍自动显的 .revealed 保留——已亮出的字不突然遮回）+_syncFocusPhaseBlind 非连读态兜底摘除；d) 偷看判定 .focus-read-blind 期间同样生效（点任何被遮句切 .revealed 临时偷看，换句/回绕 forceClear 自动重遮）。_focusReadCur/_focusGapCur/_collectChainCtx 断点口径零变化。高1·loadNextEpisode 自动拉父目录被 V119 的 HTML 拦截彻底阻断（功能回归）：V119 为防字幕走代理拿到假 200 Cloudflare 验证页，在 fetchCommon 文本路径无条件拦 Content-Type:text/html 与 <!doctype html/<html/<!-- 嗅探，而 _loadNextEpisodeInner 在目录记忆未命中时按父目录拉服务端目录列表页——目录页天生 text/html 被 100% 拒（直连+全部代理均拦、catch 吞错后弹「找不到目录列表」），从 ?mp3= 链接/历史/离线缓存切集再点「⏭ 加载下一集」无法自动续集；fetchCommon 增 opts.allowHtml（文本路径两处拦截均加 !allowHtml 前置，blob 路径维持全拦）+_loadNextEpisodeInner 传 {quiet:true,allowHtml:true}（serverBrowser.fetchAndRender 走原生 fetch 未受影响）。中1·sw.js fetch 在线返回未剥离 redirected——V127 只清洁了写缓存的副本，return resp 仍带 redirected:true 交 respondWith()，WebKit/Safari 拒收该响应导致当次在线打开直接网络错误（要等缓存写入后下次打开才走缓存成功）；redirected 时构造唯一干净 Response，clone 一份入缓存、干净那份返回页面。中2·wakeLock 自动常亮异步竞态锁泄漏+手动覆盖孤儿锁（V127 新代码）：a) autoRequest 先置 _auto=true 再 await——快速「▶连读→⏹停止」或 _resumeFocusFromCtx 失败路径触发 autoRelease 时 sentinel 仍为 null，resolve 后无条件 this.sentinel=... 把锁挂上但 _auto/enabled 均 false 无人释放（泄漏到系统回收）；b) 连读期间（_auto=true,enabled=false,持锁 S1）用户点「💡 常亮」走 request() 再申请 S2 直接覆盖 this.sentinel——S1 成孤儿锁，且 S1 的 release 事件不校验身份会把 this.sentinel 误清 null 殃及 S2；修法四件套：request() 发现已持锁直接升级 enabled=true 复用（不申新锁）+await 后意图二次校验（request 校验 enabled、autoRequest 校验 _auto&&!enabled、_reacquire 校验 enabled||_auto，迟到锁立即 release()）+_reacquire 开头已持锁直接 return（visibilitychange 双触发不叠锁）+全部 release 事件回调加 sent===this.sentinel 身份校验；autoRelease 末尾无人需要锁时移除 _visHandler（空 handler 不再挂到页面关闭）。中3·loadProject/#audio-file 未清 CONST.SESSION——refreshSubs 只核对 SESSION 判断「当前工程」，加载网络音频 A 后导入无 mp3 工程/本地 MP3，两条路径都清了 _loadedAudioUrl/音频源但 SESSION 残留 A——此时对 A 点「↻ 刷新字幕」会以导入工程的 segments 为基准重映射重点句并覆写进 A 的缓存（数据污染）；loadProject/#audio-file 隔离旧音频处补 removeItem(SESSION)+refreshSubs 判定补第二重校验 net.fixUrl(state._loadedAudioUrl)===want（导入工程/本地 local:// 均拦截）。中4·遮词半盲模式+区间连读末遍显字生词仍被遮：_applySeqBlind 末遍分支只 remove('blur') 未移除 .vocab-blind——「🧩 只遮生词」下开末遍显字，末遍本应显全句核对，生词高斯模糊看不清；末遍改 remove('blur','vocab-blind')（切句/停止时 updatePractice 按 permBlurMode 重挂）。低危 5 项：①sw.js install 迁移 seenKeys 在 fresh.put() 之前置位——put 失败被 per-entry .catch 吞掉后同 key 更低版本旧缓存的完好副本也被跳过，条目丢失；置位移入 put 成功回调；②_parsePastedVocab 单元格清理 .replace(/__/g,'') 无条件删掉所有双下划线——「出处音频」ep__01.mp3 改写成 ep01.mp3，_mergeVocab 双主键失配生成重复词条；只保留整格 __包裹__ 剥离（行内零散 __ 极罕见，误伤文件名代价更高）；③keydown 穿透——统计弹窗 statsSheet.open/服务器目录弹窗 flex 显示时空格/方向键/R/L 仍触发下层练习页快捷键；拦截链开头补两段（Esc 关闭+其余不透传）；④edTuneReset/tuneReset「↺ 重置」直接写回 _os/_oe 并删基准字段不入编辑撤销栈——误点后「↩ 撤销」救不回（编辑页手改/滚轮/合并拆分删除加行均入栈、预习滚轮经 updateSeg 时间分支也入栈，唯重置漏）；确认修改前补 _edPush（预习页同款顺手补）；⑤cacheUI.load 的 _loadedAudioUrl 在 _fetchSubsIfMissing（最长 6 秒）之后才提交——窗口期内指上一个音频（或为空），统计/复制AI 判定/restoreBackup 回滚读到 URL 与音频源不一致；提前到写 SESSION 同一同步块（顺序：先设 URL 再 _fullResetForNewAudio——_fullKey() 读 _loadedAudioUrl，先 reset 会按旧 key 恢复断点），restoreBackup 补备份/还原两字段+按旧 key 重恢复断点。升版：sw.js 缓存名 shadow_v127_offline_v50→shadow_v128_offline_v51（fetch 当次返回剥离 redirected+install seenKeys 移入 put 成功回调为真实 SW 逻辑改动）；exportProject version 128+下载名 shadow_v128.json；全量备份/生词本 JSON version 128；<title>/nav-title 统一 V128；无新增 localStorage 键（focus-read-blind 容器类/bak 备份字段均瞬态运行态） -->
 <!-- V127 | build:20261127 | 用户需求 1 项 + 外部审查主 Bug（4 缺陷）+ 1 中 SW + 1 中 SW + 1 中编辑器 + 5 低危全部修复。新需求·重点句连读保持屏幕常亮：wakeLock 对象新增 autoRequest()/autoRelease() 自动持锁对（_auto 标记与用户手动 enabled 分离——手动开着的锁连读结束绝不释放；_visHandler 回前台重获条件扩含 _auto；_reacquire 守卫放宽；release() 清 _auto——用户明确关掉常亮后连读不再自动亮屏）——toggleFocusRead 启动分支与 _resumeFocusFromCtx 锁屏恢复入口调 autoRequest（静默不弹 toast、页面不可见时先挂 handler 亮屏补锁、不支持 Wake Lock 的浏览器静默降级保活音机制不受影响），_stopFocusRead 全部终止路径（手动停/自然完成/onError/stopAll 联动/删句/锁屏自动暂停）调 autoRelease。主Bug·重点句连读第二轮第一句轮间留白期「字幕一开始就显示」（V126 回绕显示同步的遗漏面，4 缺陷叠加）：①核心场景（开「末遍显字」+遍数≥2+未开静态「🙈 盲听」）——回绕分支只同步了高亮/滚动/now-playing，_applyFocusReadBlind 仍要等留白结束 _readOneSegRepeat 才挂 .force-blind，整个留白期（默认 1.5s、倍速模式=末句句长 5~15s）首句字幕明晃晃显示而文案写着「（盲听中）」，起播才突然变模糊；②.revealed 残留——上轮末遍自动显字/用户偷看挂的 .revealed 回绕不清，CSS :not(.revealed) 不生效，开了静态盲听也照样显示；③单句同句轮转（静态盲听+末遍显字关+第一轮偷看过）——prev===cur.segIdx 不触发换句清理+末遍显字关提前 return，从第二轮起即使起播也永不恢复模糊；④留白期点「🙈 盲听/末遍显字」开关——toggleFocusBlind/toggleFocusLastReveal 读 _focusReadCur（仍指上轮末句），now-playing 从「🔁 下一轮 · 第 1 句」倒退回显上轮末句原文。修法（审查方案 4 处小改动，零破坏）：a) _applyFocusReadBlind 增可选 targetCur/forceClear 参（无参调用行为不变）——回绕传 (gapCur,true) 强制清场+末遍显字开且≥2 遍时立刻给首句挂 .force-blind；b) 新增 _focusGapCur 显示专用状态（回绕分支设置、_readOneSegRepeat 实播开头置 null、_stopFocusRead 收尾清 null）——绝不动 _focusReadCur：_collectChainCtx 的 interGap 判据 (repsLeft<=1)||(atCursor!==segIdx) 依赖「轮间留白期 _focusReadCur 停在本轮末句且 repsLeft=1」，提前改成下一轮首句会让锁屏恢复误走遍间留白分支跳过第 1 遍；c) toggleFocusBlind/toggleFocusLastReveal/_renderFocusList 统一读 _focusGapCur||_focusReadCur 刷 now-playing（gap 态带「🔁 下一轮」lead），toggleFocusLastReveal 开启时对当前显示态立即 _applyFocusReadBlind（连读中途开末遍显字当前遍立即生效，不用等下一遍起播）；d) toggleFocusRead 启动分支 _applyFocusReadBlind(null,true) 预清场——上次连读残留/启动前手动偷看的 .revealed 一并清，单句连读同句轮转的缺陷③被回绕+启动两处 forceClear 全覆盖。中1·sw.js fetch 在线缓存写入未剥离 resp.redirected（与 install 预缓存 V112/迁移 V115 口径不一致）——宿主 301/302 重定向（http→https/目录斜杠/语言门）的页面被在线访问一次就覆写干净预缓存，弱网 3 秒回退/离线打不开；写入前 resp.redirected 重建干净 Response。中2·sw.js install 迁移链无单条容错——任一旧缓存条目 oc.match()/fresh.put() 抛异常（写锁冲突/配额）即中断同缓存及后续全部迁移且 event.waitUntil reject 导致新 SW 安装失败；每条迁移 Promise 末尾补 .catch(return null)+oc.keys() 层同款（丢失条目在线访问 './' fetch 自愈）。中3·app.edUndo() 撤销回「未选中微调条」态 #ed-tune-bar 残留显示——snap.edSelIdx===null 时 _edTuneRefresh 开头 if(_edSelIdx==null) 早退未隐藏；null 分支改调 _edBarHide() 统一收口（幂等）。低危 5 项：①toggleFocusRead 停止分支轮间留白期三件套——V126 只拉回 .playing 高亮，滚动仍停在顶部首句/now-playing 仍显「🔁 下一轮」预告；补 _scrollFocusItem+now-playing 恢复显示最后实际播过句（文案与 _jumpToFocusSentence 同款，盲听口径自动适配——_stopFocusRead 已清 .revealed 静态盲听句不剧透）；②vocabBook._formatCopyBlocks 字符上限截断失效——room 只按句数算 lines.slice(0,room) 不看字符，≤2500 句但 >80000 字符的整块照常全输出；改双预算（句数+字符）逐行累加截断（join 分隔符计入预算）；③cacheUI.load() 的 addHistory 未过 net.fixUrl（loadFromUrl 过了）——文件名含空格/中文/+&,= 时去重匹配不上，历史下拉框出现同一文件两条；统一 net.fixUrl(p.audioUrl||'')；④vocabBook._resumeLlFromCtx() 的 kaP.catch 写回竞态——reject 前用户已停掉/重开串烧或切走模式时，无条件把 _pausedFrom/_lockPauseCtx 覆盖成陈旧 'LISTEN_LOOP' 污染新模式断点；写回前校验当次 _ll.tk 代数快照；⑤_processVocabFile 导入 .csv/.tsv/.txt 写死 utf-8——Windows Excel「Unicode 文本 (*.txt)」实为 UTF-16LE 必乱码；改 readAsArrayBuffer+BOM 检测解码（FF FE→utf-16le / FE FF→utf-16be / 其余 utf-8 fatal→gbk 兜底，对齐 importSub）。升版：sw.js 缓存名 shadow_v126_offline_v49→shadow_v127_offline_v50（fetch redirected 剥离+install 迁移容错为真实 SW 逻辑改动）；exportProject version 127+下载名 shadow_v127.json；全量备份/生词本 JSON version 127；<title>/nav-title 统一 V127；无新增 localStorage 键（_focusGapCur/_auto/llTk0 均瞬态运行态） -->
@@ -77,7 +78,7 @@ sw.js 缓存名升 shadow_v94_offline_v14；exportProject/全量备份 version 9
 <!-- V87 | build:20261116 | iOS 划词入本实操修复 + 375px 小屏两行布局收尾：1) 浮条点空修复（本轮唯一实战 Bug）——iPhone 长按划好短语后手指点「＋入生词本」，系统在 touchstart 阶段就收起蓝色选区，selectionchange 的 30ms 检查先于 click 把浮条藏掉/读到空选区，报"没有选中的词"。三件套修法：① #pv-sel-add 容器加 onmousedown preventDefault（桌面按下按钮瞬间不丢划选）；② checkSelBar 把有效选中文本暂存 _pendingSel，空选区时延迟 180ms 再藏浮条（普通点空白取消只慢 0.18s 肉眼无感，窗口内新选区会刷新暂存）；③ addFromSelection 实时选区优先、暂存值兜底，dismissSelBar/hideSelBar/退出预习同步清暂存+定时器。2) 重点句设置行 375px 一线排齐——原 ~368px 超出 351px 内宽，↺ 被挤到第二行；gap 5→4px、连读钮 padding 9→7px、遍数轮新增 #focus-reps-sel 最小宽 44px、速率轮 56→50px、留白轮 76→68px、秒数框 42→38px、↺ 34→32px，总宽压到 ~324px。3) 跟读界面入口行去掉冗余"⭐N 个重点句"提示——红角标已显示数量，352px 比 351px 内宽多 1px 会把速率滚轮挤换行；updateBadge 移除 hint 逻辑与 span 元素。全量备份 version 86→87；sw.js 缓存名升 shadow_v87_offline_v7；版本号统一到 V87 -->
 <!-- V86 | build:20261116 | 外部审查修复 3 Bug + 2 优化 + 双界面布局收尾：Bug:1) iPhone/iPad 长按划选短语解锁——去掉 .pw 的 user-select:none（原触摸设备禁选锁死系统选词手柄；轻点=入生词本 与 长按拖选=浮条入本 互不干扰，onBoxTap 开头已有划选兜底）；2) 连读占用 engine.mode='FOCUS_READ'（原连读期间 mode 为 IDLE——锁屏自动暂停不生效、锁屏/耳机"播放"键误走 playOnce 打断连读变单句；现锁屏暂停开关对连读生效，锁屏播放键恢复当前句后连读链继续；stopAll 自动复位 IDLE 并联动停连读，同 PREVIEW_PLAY 先例）；3) 预习重点句 key 统一过 net.fixUrl——带中文/空格的音频链接"联网首载存未编码 URL、缓存命中回填编码 URL"导致重点句找不到（界面 0 句但数据还在）；loadFromStorage 逐条 fixUrl 比对找回旧记录，saveToStorage 顺手清理同音频旧 key 防双份漂移。优化:4) 连读最后一句播完不再干等留白直接弹"完成"（后面无未练熟句时跳过 setTimeout）；5) engine._playSeq 播放代数——快速连点"下一句/播单句"时旧 play() 晚到 resolve 不再抢注 _pendingPlayCleanup 提前暂停新句（stopAll/playSegment/_playSegmentTimed 三处接入，catch 里非 AbortError 也查代数）。布局:6) 重点句设置合并一行——连读按钮再缩小(文案缩短为"▶ 连读"/"⏹ 停止")与留白同行，去掉"遍数/速率"文字标签(滚轮选项自说明)，秒数输入框仅固定模式显示；7) 跟读界面速率滚轮选项去掉"速率 "前缀+"查看重点句"缩为"⭐ 重点句"+预习提示缩为"⭐N 个重点句"——iPhone 上速率不再被挤换行成"单独角落"，与预习模式真正同行。sw.js v6:8) install 先把旧版本缓存里的页面响应迁移进新缓存再尝试 './'（404 静默）——独立文件名部署(目录无默认首页)时 SW 也能安装成功，升级后断网仍有旧页面兜底；全量备份 version 85→86；版本号统一到 V86 -->
 <!-- V85 | build:20261116 | 跟读/重点句交互升级（预习句首尾微调机制不变）：锁屏重启修复：1) 区间循环/磨耳朵推进句时 app.saveIndex() 轻量持久化 INDEX（原只更新内存，锁屏期间页面被 iOS 回收重载后 restoreProgress 会回退到旧 INDEX——"听到50句回来又从第1句播"的主因）；2) toggleRangeLoop 改"从当前句继续"——currIndex 已在区间内时从该句起播（锁屏暂停→再点循环不再跳回区间第一句），toast 提示；3) 设置新增「锁屏自动暂停」开关（默认关，'shadow_v85_lock_pause'，hidden 且开启时 stopAll——挂机磨耳朵请保持关闭）。跟读界面：4) 速率 6 按钮条改滚轮 select（iOS 弹原生 picker）移到预习模式入口行右侧（省一整行）；5) iPhone/iPad 页码输入框点按即清空+失焦空值还原（Windows 保持原样，_isIOSDevice 含 iPadOS 伪装 Mac 检测）。重点句练习：6) 连读按钮宽度约减 30%；7) 遍数 1/2/3 与速率改滚轮 select；8) 留白设置行——「单句循环跟读留白」升级为「循环跟读留白（单句/连读）」统一控制：固定模式秒数可自定义（0.2~20s，默认 1.5s，'shadow_v85_loop_gap_sec'），连读句间/遍间隔从固定 600ms 改为跟随留白设置（calcLoopGapMs 统一计算，要回 0.6s 把秒数改成 0.6 即可），单句循环最短留白从 1s 放宽到 0.2s；9) ↺ 一键重置（遍数1/速率1.0×/留白固定1.5s，resetFocusSettings）。文案：10) 生词本提示补"长按划选短语"（iOS 划词入口此前不可发现）。全量备份 keys 并入 'shadow_v85_loop_gap_sec'/'shadow_v85_lock_pause'，version 84→85；sw.js 缓存名升 shadow_v85_offline_v5；版本号统一到 V85 -->
-<title>影子跟读 Pro V129</title>
+<title>影子跟读 Pro V130</title>
 <meta name="theme-color" content="#15803D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -389,15 +390,14 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 #pr-sel-add.show { display: flex; }
 #pr-sel-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--preview); font-weight: 700; }
 /* 功能B: 生词本筛选行（搜索 + 按音频筛选，翻卡跟随筛选） */
-.vocab-filter-row { display: flex; gap: 5px; padding: 0 12px 8px; flex-shrink: 0; } /* V115.2(功能A/C2): gap 6→5、padding 16→12——筛选行新增 3 钮（🎧 串烧 / 释义播报 / 🙈 遮释义）腾位 */
+.vocab-filter-row { display: flex; gap: 5px; padding: 0 12px 8px; flex-shrink: 0; flex-wrap: wrap; } /* V115.2(功能A/C2): gap 6→5、padding 16→12——筛选行新增 3 钮（🎧 串烧 / 释义播报 / 🙈 遮释义）腾位；V130(中4): 默认 flex-wrap——V129 新增第 7 个控件「速·0.9」后，401px~440px 屏（iPhone 15 Pro Max 430px）不触发旧 ≤400px 折行查询，下拉框被压到 15~41px 无法辨认所选音频；改默认可折行（宽屏单行放得下自然不折，窄屏自动换行）后移除旧查询 */
 #vocab-search { flex: 0 0 64px; } /* V115.2(功能A/C2): 显式声明与 .vocab-filter-row input 同规则（防两处不一致） */
-.vocab-sort-btn { flex-shrink: 0; border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 10px; padding: 6px 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; -webkit-appearance: none; appearance: none; } /* V115(五): 列表排序切换——默认（置顶在前）/ 不熟优先 */
+.vocab-sort-btn { flex-shrink: 0; border: 1px solid #ddd; background: #fff; color: #5F6368; border-radius: 10px; padding: 6px 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; -webkit-appearance: none; appearance: none; white-space: nowrap; } /* V115(五): 列表排序切换——默认（置顶在前）/ 不熟优先；V130(中4): nowrap——折行时按钮文字不再被挤压换行 */
 #ll-btn.on { background: #1A73E8; color: #fff; border-color: #1A73E8; } /* V115.2(功能A): 串烧连播进行中——深蓝实底，一眼可辨正在播 */
 .vocab-sort-btn.on { background: #E8F0FE; border-color: var(--primary); color: var(--primary); }
 .vocab-item.pinned { background: #FFF8EF; border-left: 4px solid #FFB74D; padding-left: 8px; } /* V115(五): 置顶词——浅橙左边框一眼识别（📌 按钮态同步） */
 .vocab-filter-row input { flex: 0 0 64px; width: 64px; min-width: 0; border: 1px solid #DADCE0; border-radius: 10px; padding: 8px 4px; font-size: 12px; font-family: inherit; background: #fff; } /* V110: 搜索框紧凑固定宽（~30%）——长文件名让位给音频下拉；V115.2(功能A/C2): 110→64px——筛选行 5 元素（搜/下拉/排序/遮释义/串烧+译开关）腾位，placeholder 缩「搜词」 */
-.vocab-filter-row select { flex: 1; min-width: 0; max-width: none; border: 1px solid #DADCE0; border-radius: 10px; padding: 8px 2px; font-size: 12px; font-family: inherit; background: #fff; } /* V110: 下拉框 flex:1 占满剩余（~70%）——彻底告别长文件名截断；V115.2: padding 4→2、文字溢出 ellipsis——筛选行 5 元素下保住「当前音频」完整显示 */
-@media (max-width: 400px) { .vocab-filter-row { flex-wrap: wrap; } .vocab-filter-row select { min-width: 128px; } } /* V116(外审4): 375px/360px 窄屏筛选行 6 元素过挤（下拉被压到 21~51px 剧集名看不清）——≤400px 允许折行+下拉保底 128px：搜索/下拉/↕/🙈 首行（下拉撑到 ~174px 可读）、「译·关+🎧 串烧」顺延次行；390~430px（含用户 iPhone 15 Pro Max 430px 实测无恙）单行布局原样保留 */
+.vocab-filter-row select { flex: 1; min-width: 120px; max-width: none; border: 1px solid #DADCE0; border-radius: 10px; padding: 8px 2px; font-size: 12px; font-family: inherit; background: #fff; } /* V110: 下拉框 flex:1 占满剩余（~70%）——彻底告别长文件名截断；V115.2: padding 4→2、文字溢出 ellipsis；V130(中4): min-width 0→120px（默认折行后下拉永保可读宽度，不再被压成窄条） */
 /* 功能C: 服务器目录徽章（💾已缓存 · 练到N/M · ⭐K） */
 .browser-item-badge { flex-shrink: 0; font-size: 11px; color: #1E8E3E; background: #E6F4EA; border-radius: 8px; padding: 2px 6px; white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
 /* 功能D: 预习页已入生词本的词——淡蓝底+虚线下划线 */
@@ -819,7 +819,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 <div id="backup-remind-bar" onclick="app._backupRemindGo()"><span id="backup-remind-text"></span><span id="backup-remind-close" onclick="event.stopPropagation(); app._backupRemindSnooze()" title="今天不再提醒">✕</span></div>
 <div class="navbar">
     <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-        <div class="nav-title">🎧 影子跟读 V129</div>
+        <div class="nav-title">🎧 影子跟读 V130</div>
         <button class="nav-help-btn" onclick="helpPage.open()" title="常用功能说明：保存/备份区别 · 完整学习流程 · 生词本 AI 补全闭环 · 字幕编辑技巧 · iPhone/iPad 贴士">❓ 说明</button>
     </div>
     <div class="mode-switch">
@@ -1195,7 +1195,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
                 <div class="control-grid">
                     <button class="btn-action btn-orange" id="btn-loop" onclick="engine.toggleLoop()">🔁 循环单句</button>
-                    <button class="btn-action btn-blue" id="btn-play-once" style="position:relative;" onclick="engine.playOnce()">▶ 播单句<span class="slow-chip" id="btn-slow-once" onclick="event.stopPropagation(); engine.playOnceSlow()" title="🐢 临时慢放：仅本句按当前速率×0.75 慢放一遍（不改全局速率，下一句自动原速）">🐢</span></button> <!-- V129(功能2): 🐢 临时慢放——跟读听不清连读吞音时一键慢放本句，不用动速率滚轮 -->
+                    <button class="btn-action btn-blue" id="btn-play-once" style="position:relative;" onclick="engine.playOnce()">▶ 播单句<span class="slow-chip" id="btn-slow-once" onclick="event.stopPropagation(); engine.playOnceSlow()" title="🐢 临时慢放：仅本句慢放一遍（速率≥1×时一律拉回 0.75× 标准慢速；更低速率时再降一档；不改全局速率，下一句自动原速）">🐢</span></button> <!-- V129(功能2): 🐢 临时慢放——跟读听不清连读吞音时一键慢放本句，不用动速率滚轮；V130(Bug2): 慢放目标上限 0.75× -->
                     <button class="btn-action btn-nav btn-prev-grid" onclick="app.prev()">← 上一句</button>
                     <button id="btn-next" class="btn-action btn-nav btn-next-grid" onclick="app.next()">下一句 →</button>
                     <button class="btn-record" id="btn-record" onclick="recorder.toggle()">🎤 按下开始录音</button>
@@ -1294,7 +1294,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
 
                 <div class="preview-replay-row">
                     <button class="btn-preview-replay" id="btn-preview-replay" onclick="previewMode.replayCurrentSentence()">🔄 再听一次</button> <!-- V100(用户3): 补 id——_syncReplayLabel 切「▶ 播放/🔄 再听一次」用（原来只有 class，查不到元素，文字永远不切） -->
-                    <button class="btn-preview-skip" id="btn-preview-slow" style="flex:0 0 auto;min-width:66px;padding:10px 8px;" onclick="previewMode.replayCurrentSentence(previewMode._slowRate())" title="🐢 临时慢放：仅本句按当前速率×0.75 慢放一遍（不改全局速率，下一句自动原速）">🐢 慢放</button> <!-- V129(功能2): 跟读/预习听不清连读吞音时一键慢放本句 -->
+                    <button class="btn-preview-skip" id="btn-preview-slow" style="flex:0 0 auto;min-width:66px;padding:10px 8px;" onclick="previewMode.replayCurrentSentence(previewMode._slowRate())" title="🐢 临时慢放：仅本句慢放一遍（速率≥1×时一律拉回 0.75× 标准慢速；更低速率时再降一档；不改全局速率，下一句自动原速）">🐢 慢放</button> <!-- V129(功能2): 跟读/预习听不清连读吞音时一键慢放本句；V130(Bug2): 慢放目标上限 0.75× -->
                     <button class="btn-preview-skip" onclick="previewMode.prevSentence()">⏮ 上一句</button>
                 </div>
                 <!-- V89: 底部行重排——「从头预习」不再独占一整行（缩小与「返回正式跟读」平分），
@@ -1382,7 +1382,7 @@ body { font-family: 'Google Sans', Roboto, sans-serif; margin: 0; padding: 0; ba
                     </div>
                     <div class="control-grid">
                         <button class="btn-action btn-orange" id="focus-btn-loop" onclick="engine.toggleLoop()">🔁 循环单句</button>
-                        <button class="btn-action btn-blue" id="focus-btn-play-once" style="position:relative;" onclick="engine.playOnce()">▶ 播单句<span class="slow-chip" id="btn-slow-once-f" onclick="event.stopPropagation(); engine.playOnceSlow()" title="🐢 临时慢放：仅本句按当前速率×0.75 慢放一遍（不改全局速率，下一句自动原速）">🐢</span></button> <!-- V129(功能2): 重点句页同款 🐢 -->
+                        <button class="btn-action btn-blue" id="focus-btn-play-once" style="position:relative;" onclick="engine.playOnce()">▶ 播单句<span class="slow-chip" id="btn-slow-once-f" onclick="event.stopPropagation(); engine.playOnceSlow()" title="🐢 临时慢放：仅本句慢放一遍（速率≥1×时一律拉回 0.75× 标准慢速；更低速率时再降一档；不改全局速率，下一句自动原速）">🐢</span></button> <!-- V129(功能2): 重点句页同款 🐢；V130(Bug2): 慢放目标上限 0.75× -->
                         <button class="btn-action btn-nav btn-prev-grid" onclick="previewMode.focusPrev()">← 上一重点</button>
                         <button class="btn-action btn-nav btn-next-grid" onclick="previewMode.focusNext()">下一重点 →</button>
                         <button class="btn-record" id="focus-btn-record" onclick="recorder.toggle()">🎤 按下开始录音</button>
@@ -2104,6 +2104,15 @@ const cacheUI = {
         const backupLoadedAudioName = state._loadedAudioName;
         const backupSession = localStorage.getItem(CONST.SESSION); // V129(审5): 下方同步块写 SESSION/saveInput(INPUTS)——失败回滚时一并还原（原只还原 _loadedAudioUrl，极端失败场景 localStorage 会残留失败那条的 URL/输入框）
         const backupInputs = localStorage.getItem(CONST.INPUTS);
+        // V130(低2a/Bug1): DOM 输入框值也备份——下方同步块会把 URL 框改写成缓存条目的链接，
+        // 失败回滚只还原 localStorage 不还原输入框的话，界面上残留失败条目的 URL（loadFromUrl 的
+        // restoreBackup 早已同款还原，此处对齐）
+        const backupUrlInputs = {
+            mp3: document.getElementById('url-audio').value,
+            s1:  document.getElementById('url-srt-1').value,
+            s2:  document.getElementById('url-srt-2').value,
+            s3:  document.getElementById('url-srt-3').value
+        };
         const restoreBackup = () => {
             if (app._cacheSyncTimer) { clearTimeout(app._cacheSyncTimer); app._cacheSyncTimer = null; }
             state.segments = backupSegments;
@@ -2117,6 +2126,20 @@ const cacheUI = {
             else { try { localStorage.removeItem(CONST.SESSION); } catch(eSs) {} }
             if (backupInputs != null) { try { localStorage.setItem(CONST.INPUTS, backupInputs); } catch(eSi) {} }
             else { try { localStorage.removeItem(CONST.INPUTS); } catch(eSi) {} }
+            // V130(低2a): 还原 DOM 输入框（与 loadFromUrl 的 restoreBackup 同款——同步块已把 URL 框改写成本条目的值）
+            try {
+                document.getElementById('url-audio').value = backupUrlInputs.mp3;
+                document.getElementById('url-srt-1').value = backupUrlInputs.s1;
+                document.getElementById('url-srt-2').value = backupUrlInputs.s2;
+                document.getElementById('url-srt-3').value = backupUrlInputs.s3;
+            } catch(eUi) {}
+            // V130(Bug1): 回滚 previewMode 内存态——下方同步块已执行 clearForNewAudio(p.audioUrl)+loadFromStorage(新音频)，
+            // 失败回滚后内存重点句集合停留在失败条目（通常为空），用户随后的任何写路径（点⭐/入生词本自动标⭐/
+            // 预习推进）都会把它按【已还原的 INPUTS = 旧音频】的 key 覆写进 PREVIEW——旧音频重点句永久丢失
+            // （文件列表 ⭐ 消失/预习页找不到，与 loadFromUrl 同源修复）
+            try { previewMode.clearForNewAudio(backupLoadedAudioUrl || ''); } catch(ePv0) {}
+            try { previewMode.loadFromStorage(); } catch(ePv1) {}
+            try { previewMode.updateBadge(); } catch(ePv2) {}
             try { engine._fullResetForNewAudio(); } catch(eFpR) {}
             // 恢复音频：revoke 新创建的 objectURL（如果有且和备份不同），还原旧的
             if (state._audioObjectUrl && state._audioObjectUrl !== backupAudioObjectUrl) {
@@ -2401,7 +2424,11 @@ const wakeLock = {
             // c) await 窗口内 _reacquire 抢先持了锁——本迟到的锁直接释放（不覆盖成孤儿锁）；
             // d) catch 里回滚乐观 enabled——仅当本请求未被顶替且无其它锁在手时。
             // _reacquire 的守卫含 enabled=true，await 期间连读 autoRequest 也只会记账不申锁，不会叠锁
-            const seq = ++this._reqSeq;
+            // V130(高1): 去掉 const——原写法在 try 块内声明了块级 const seq 遮蔽外层 let seq（catch 块
+            // 读到的恒是外层的 0），navigator.wakeLock.request 失败 reject 时「seq===this._reqSeq」
+            // 恒 false，乐观置位的 enabled=true 永远无法回滚——按钮卡 ON 橙色激活态但实际无锁，
+            // 再点还会误走 release() 分支
+            seq = ++this._reqSeq;
             this.enabled = true;
             const sent = await navigator.wakeLock.request('screen');
             if (!this.enabled || seq !== this._reqSeq) { try { sent.release(); } catch(e0) {} return; }
@@ -2488,7 +2515,10 @@ const wakeLock = {
             // V128(审3): await 窗口内连读可能已停（autoRelease 已置 _auto=false）或用户手动开了
             // 常亮（enabled=true 时手动锁自管）——迟到的自动锁立即释放，不再无条件赋值
             //（原 fast-停止后锁挂在屏上却无人释放）
-            if (!this._auto || this.enabled) { try { sent.release(); } catch(e0) {} return; }
+            // V130(高1): 补 || this.sentinel——await 窗口内 _reacquire 抢先持锁（如 visibilitychange
+            // 双触发）时，后到的自动锁原会直接覆盖 this.sentinel 把先到的锁挤成孤儿锁（request()/_reacquire
+            // 早已同款校验，唯独此处漏了）
+            if (!this._auto || this.enabled || this.sentinel) { try { sent.release(); } catch(e0) {} return; }
             this.sentinel = sent;
             sent.addEventListener('release', () => {
                 if (sent !== this.sentinel) return; // V128(审3): 身份校验
@@ -3807,8 +3837,12 @@ const engine = {
             if (this.mode === 'PLAY_ONCE') { this.mode = 'IDLE'; ui.resetButtons(); } if (e && e.name === 'NotAllowedError') ui.toast('自动播放被拦，请再点一次播放按钮'); }, slowR); // V129(功能2): 🐢 第 4 参把慢速传给 _playSegmentTimed（本遍按 slowR 播放）；V84.1r2: 播放被拒时复位按钮，防卡 active；V102(外审一6): 锁屏控制等非手势路径被拦时补轻提示——按钮不再无声弹回熄灭
     },
     playOnceSlow() { // V129(功能2): 🐢 临时慢放入口——当前速率 ×0.75 只慢本遍（下限 0.5×），不改全局速率/速率流轮显示
+        // V130(Bug2): 慢放目标上限 0.75×——原「base×0.75」在全局 1.5× 时得 1.13×（仅慢 25%，听感上
+        // 依旧是“快”，用户实测「不起作用」）；且 1.13 不是任何标准速率档，iOS WebKit preservesPitch
+        // 对非标速率有忽慢忽不生效的兼容怪癖。现统一：全局 ≥1.0× 一律拉回 0.75× 标准档（与 1.0× 用户
+        // 已验证有效的体验完全一致）；全局 <1.0×（0.75/0.85/0.9 低速用户）保持 ×0.75 相对再降一档
         const base = (isFinite(state.playbackRate) && state.playbackRate > 0) ? state.playbackRate : 1;
-        this.playOnce(Math.max(0.5, Math.round(base * 0.75 * 100) / 100));
+        this.playOnce(Math.max(0.5, Math.min(Math.round(base * 0.75 * 100) / 100, 0.75)));
     },
     toggleLoop() {
         if (aiMode.active && !aiMode.manualPracticeMode) aiMode.stop();
@@ -5584,6 +5618,8 @@ const app = {
         if (seg._os === undefined && seg._oe === undefined) return ui.toast('本句没有调整过');
         if (!confirm('恢复本句的原始时间？\n' + (seg._os !== undefined ? (seg._os.toFixed(2) + 's') : (seg.start.toFixed(2) + 's(未调)')) + ' ~ ' + (seg._oe !== undefined ? (seg._oe.toFixed(2) + 's') : (seg.end.toFixed(2) + 's(未调)')))) return;
         this._edPush('重置第 ' + (this._edSelIdx + 1) + ' 句时间', this._edSelIdx); // V128(审9): 重置接入撤销栈——原直接写回 _os/_oe 并删基准字段，误点「↺ 重置」后「↩ 撤销」救不回（编辑页手改/滚轮/合并拆分删除加行均入栈）
+        // V130(低3): 复位滚轮合并窗口——同 previewMode.tuneReset（预习页共用同一条栈，窗口状态也是 previewMode 的）
+        try { previewMode._tunePushIdx = null; previewMode._tunePushAt = 0; } catch(eTw) {}
         if (seg._os !== undefined) seg.start = seg._os;
         if (seg._oe !== undefined) seg.end = seg._oe;
         delete seg._os; delete seg._oe;
@@ -5989,6 +6025,7 @@ const app = {
             s3:  document.getElementById('url-srt-3').value
         };
         const backupLsInputs = localStorage.getItem(CONST.INPUTS);
+        const backupSession = localStorage.getItem(CONST.SESSION); // V130(低2b/Bug1): 缓存命中分支在 await 前写 SESSION——失败回滚时一并还原（原只还原 INPUTS，残留失败条目的 SESSION 会让 refreshSubs/统计判定错位）
         const backupLoadedAudioUrl = state._loadedAudioUrl;
         // V83: 备份 _loadedAudioName（本地导入场景），加载失败时一并还原
         const backupLoadedAudioName = state._loadedAudioName;
@@ -6035,8 +6072,19 @@ const app = {
             document.getElementById('url-srt-3').value = backupUrlInputs.s3;
             if (backupLsInputs != null) { try { localStorage.setItem(CONST.INPUTS, backupLsInputs); } catch(e) {} }
             else { try { localStorage.removeItem(CONST.INPUTS); } catch(e) {} }
+            if (backupSession != null) { try { localStorage.setItem(CONST.SESSION, backupSession); } catch(eSs2) {} }
+            else { try { localStorage.removeItem(CONST.SESSION); } catch(eSs2) {} }
             state._loadedAudioUrl = backupLoadedAudioUrl;
             state._loadedAudioName = backupLoadedAudioName; // V83: 还原本地音频文件名
+            // V130(Bug1): 回滚 previewMode 内存态——同步块已执行 clearForNewAudio(新音频)+loadFromStorage(新音频)，
+            // 失败回滚后内存重点句集合停留在失败条目（通常是空集合），用户随后在练习/预习页的任何
+            // 写路径（点⭐ toggleStar / 入生词本自动标⭐ / 预习推进 markKnow）都会 saveToStorage 把这个
+            // 空集合按【已还原的 INPUTS.mp3 = 旧音频】的 key 覆写进 PREVIEW——旧音频的既有重点句从此
+            // 永久丢失（表象＝文件列表 ⭐ 全部消失、进预习/重点句页也找不到），且界面毫无异常用户根本
+            // 察觉不到。INPUTS 已在上面还原，这里清空+按新 key 重读即回到旧音频的正确数据
+            try { previewMode.clearForNewAudio(backupLoadedAudioUrl || ''); } catch(ePv0) {}
+            try { previewMode.loadFromStorage(); } catch(ePv1) {}
+            try { previewMode.updateBadge(); } catch(ePv2) {}
             ui.renderEditor();
             ui.updatePractice(state.currIndex);
         };
@@ -7363,6 +7411,9 @@ const app = {
         previewMode.previewDone = snap.previewDone;
         this._edSelIdx = snap.edSelIdx;
         state._loopInitialized = snap.loopInit;
+        // V130(低3): 撤销后复位滚轮合并窗口——否则 2.5s 内同句再拨预习滚轮会跳过 _edPush，下一次撤销
+        // 直接跨过本次撤销所恢复的状态回退到更早快照（丢一步）
+        try { previewMode._tunePushIdx = null; previewMode._tunePushAt = 0; } catch(eTw) {}
         try { this._dropShiftSnap(); } catch(eSn) {} // V113(需求6): 平移快照的结构/句数已对不上——作废（撤销后「归零」退化为反向平移，不静默错移）
         try { previewMode.saveToStorage(); } catch(eP) {}
         try { previewMode.updateBadge(); } catch(eP2) {}
@@ -7746,9 +7797,9 @@ const app = {
     },
     exportProject() {
         const inputs = safeParse(localStorage.getItem(CONST.INPUTS), {});
-        const data = { version: 129, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V129: 128→129（wakeLock 高危回归 + 4 新功能：AI 逐词纠错/🐢临时慢放/串烧到期过滤+语速/智能合并恢复）
+        const data = { version: 130, segments: state.segments, idx: state.currIndex, inputs: inputs }; // V130: 129→130（用户 2 bug：回滚 previewMode 内存态丢重点句/🐢慢放高速档无效感 + 外审 1 高 3 中 5 低全采纳）
         const b = new Blob([JSON.stringify(data, null, 2)]);
-        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v129.json'; // V129: 下载名随版本
+        const a = document.createElement('a'); const _url = URL.createObjectURL(b); a.href=_url; a.download='shadow_v130.json'; // V130: 下载名随版本
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => { try { URL.revokeObjectURL(_url); } catch(e) {} }, 1000); // 回收 objectURL 防内存泄漏
     },
@@ -7785,7 +7836,7 @@ const app = {
                 'shadow_v122_focus_loop', // V122: 重点句循环开关（默认开，'0'=关）——连读播完一轮自动续下一轮
                 'shadow_v129_ll_rate' // V129(功能3): 串烧读词/释义 TTS 语速（0.8/0.9/1.0/1.2，默认 0.9）
             ];
-            var data = { type: 'shadow_full_backup', version: 129, exportedAt: new Date().toISOString(), items: {} }; // V129: 128→129（新增 shadow_v129_ll_rate）
+            var data = { type: 'shadow_full_backup', version: 130, exportedAt: new Date().toISOString(), items: {} }; // V130: 129→130（无新增键）
             keys.forEach(function(k) {
                 try {
                     var v = localStorage.getItem(k);
@@ -7905,7 +7956,7 @@ const app = {
             '<p style="margin:0 0 12px;font-size:13px;color:#5F6368;line-height:1.6;">备份包含 ' + cnt + ' 项，导出于 ' + (data.exportedAt || '未知时间') + '。</p>' +
             '<div style="font-size:12px;color:#5F6368;line-height:1.7;margin:0 0 16px;padding:10px 12px;background:#F8F9FA;border-radius:10px;">' +
                 '<b style="color:#1A73E8;">🔀 智能合并</b>：保留本机数据，只把备份里的——统计（按天取大）、生词本（双主键无损合并、SRS 进度取优）、预习重点句/已练熟（取并集）、各音频练到第几句（取更远）、本机没有的设置——合并进来，两台设备互不覆盖。<br>' +
-                '<b style="color:#D93025;">♻️ 完全覆盖</b>：用备份整份替换本机数据（适合全新设备初始化）。<br>' +
+                '<b style="color:#D93025;">♻️ 完全覆盖</b>：用备份整份替换本机数据——<b>本机在备份导出之后新增/变更的重点句⭐、生词本、统计等会被备份时点的内容顶掉（不可恢复，适合全新设备初始化）</b>。<br>' +
                 '两者都不动音频 Blob 与 IndexedDB 离线缓存。' +
             '</div>' +
             '<button id="rc-merge" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;">🔀 智能合并（推荐）</button>' +
@@ -7915,7 +7966,13 @@ const app = {
         document.body.appendChild(modal);
         modal.querySelector('#rc-cancel').onclick = function() { modal.remove(); };
         modal.querySelector('#rc-merge').onclick = function() { modal.remove(); app._mergeFullBackupItems(data); };
-        modal.querySelector('#rc-overwrite').onclick = function() { modal.remove(); app._fullBackupOverwrite(data); };
+        // V130(Bug1 防线三): 完全覆盖加二次确认——备份时点之后的重点句⭐/生词本/统计会被备份内容顶掉且
+        // 不可恢复，用户实测在测试新弹窗时误触完全覆盖导致既有重点句丢失（表象＝文件列表 ⭐ 全部消失）；
+        // 智能合并本就保留本机数据无需拦截，仅对破坏性的完全覆盖补 confirm 最后一道闸
+        modal.querySelector('#rc-overwrite').onclick = function() {
+            if (!confirm('♻️ 完全覆盖：本机现有的重点句⭐、生词本、统计等将被【备份导出时点】的内容整份替换，\n备份导出之后在本机新增/变更的数据会丢失且无法恢复。\n\n确定继续？（想保留两台设备全部数据请改用「🔀 智能合并」）')) return;
+            modal.remove(); app._fullBackupOverwrite(data);
+        };
     },
     // V129(功能4): 完全覆盖——原 confirm 通过后的逻辑原样保留（V121 白名单 + 内存 statsDB 刷新 + reload）
     _fullBackupOverwrite(data) {
@@ -7950,6 +8007,10 @@ const app = {
         try {
             var items = data.items || {};
             var sum = { statRecs: 0, filled: 0, lmKeys: 0, pvKeys: 0, vocabDone: false };
+            // V130(低1): 合并前先把内存里的未落盘统计写下去——统计攒 30 次才 flushStats，用户刚跟读
+            // 几十秒就执行智能合并时 localStorage 还是旧值，合并后 reload 会把这段时长丢弃
+            //（exportFullBackup 已同款，此处漏了）
+            try { flushStats(); } catch(eF0) {}
             // 1) 普通键：本机没有才补（本机为准——不覆盖本机设置/进度）
             Object.keys(items).forEach(function(k) {
                 if (String(k).indexOf('shadow_') !== 0) return; // V121(低3): 白名单
@@ -8003,6 +8064,7 @@ const app = {
                     var lmL = libMetaAll();
                     var lmChanged = 0;
                     Object.keys(lmB).forEach(function(u) {
+                        if (u === '__proto__' || u === 'constructor' || u === 'prototype') return; // V130(低1): 原型键防护——lmL[u] 读原型链拿到函数/对象后进入合并分支会污染原型
                         var b = lmB[u]; if (!b || typeof b !== 'object') return;
                         var l = lmL[u];
                         if (!l) { lmL[u] = b; lmChanged++; return; }
@@ -8025,6 +8087,7 @@ const app = {
                 if (pvB && typeof pvB === 'object') {
                     var pvL = safeParse(localStorage.getItem(CONST.PREVIEW), {}) || {};
                     Object.keys(pvB).forEach(function(au) {
+                        if (au === '__proto__' || au === 'constructor' || au === 'prototype') return; // V130(低1): 原型键防护——pvL[au] 会命中 Object.prototype.constructor（truthy 函数）走并集分支把原型属性改脏
                         var b = pvB[au]; if (!b || typeof b !== 'object') return;
                         var l = pvL[au];
                         if (!l) { pvL[au] = b; sum.pvKeys++; return; }
@@ -8173,19 +8236,14 @@ const app = {
             if(k===0) {
                 this._edPush('导入主字幕 ' + f.name, 0); // V113(需求6): 导入字幕可撤销
                 try { engine._lockPauseCtx = null; engine._pausedFrom = null; } catch(eLc) {} // V121(中危5): 主字幕整体替换——旧锁屏断点作废
-                state.segments = n;
-                // 主字幕整个替换 segments，相当于换新内容：重置进度和重点句
-                state.currIndex = 0;
-                previewMode.starredIndices = [];
-                previewMode.doneIndices = [];
-                previewMode.cursorIdx = 0;
-                previewMode.previewDone = false;
-                previewMode.previewedCount = 0;
-                previewMode.saveToStorage();
-                previewMode.updateBadge();
-                state._loopInitialized = false;
+                // V130(Bug1 防线): 导入主字幕改走 _applyNewSegments 的「按开始时间就近重映射」语义——
+                // 原 V81 实现直接 starredIndices=[]/doneIndices=[] 清空重点句，用户换一份时间轴略有
+                // 出入的字幕（修轴/换版本）时既有重点句瞬间全丢（文件列表 ⭐ 消失、预习页找不回）；
+                // 「↻ 刷新字幕」同一换轴场景早有重映射（±1.5s 内就近映射、超限丢弃），此处对齐同一口径。
+                // currIndex 同步就近映射（不再恒回第 1 句）；previewDone 重置=换轴重新走预习流程
                 state._revealIdx = -1; // V102(外审一5): 换主字幕=新时间轴——“临时看/藏一句”的句号作废
-                try { app._resetShiftForNewTimeline(); } catch(eSh) {} // V99(功能二): 主字幕整个替换=新时间轴
+                previewMode.previewDone = false;
+                this._applyNewSegments(n, '已导入主字幕，重点句/已练熟按时间就近映射（超 1.5s 丢弃）');
             } else { this._edPush('合并副字幕 ' + f.name, 0); app.mergeSub(n, k===1?'text2':'text3'); } // V113(需求6): 副字幕合并可撤销
             state.subFileNames[k+1] = f.name;
             ui.renderEditor();
@@ -8645,9 +8703,9 @@ const previewMode = {
         if (rb) rb.innerText = this._playedOnce ? '🔄 再听一次' : '▶ 播放';
     },
     replayCurrentSentence(rate) { this._playCurrentSentence(rate); },
-    _slowRate() { // V129(功能2): 🐢 临时慢放速率——当前速率×0.75（下限 0.5），与 engine.playOnceSlow 同口径
+    _slowRate() { // V129(功能2): 🐢 临时慢放速率——与 engine.playOnceSlow 同口径；V130(Bug2): 上限 0.75×——全局 ≥1.0× 一律拉回 0.75× 标准档（1.5×时原×0.75=1.13×听感不够慢），<1.0× 低速档保持相对再降
         const base = (isFinite(state.playbackRate) && state.playbackRate > 0) ? state.playbackRate : 1;
-        return Math.max(0.5, Math.round(base * 0.75 * 100) / 100);
+        return Math.max(0.5, Math.min(Math.round(base * 0.75 * 100) / 100, 0.75));
     },
     toggleTempSub2(e) {
         // V84: 阻止冒泡到 box 的 onBoxTap（译文区点击=切换显示，不触发复制/入词）
@@ -9183,6 +9241,9 @@ const previewMode = {
         if (seg._os === undefined && seg._oe === undefined) return ui.toast('本句没有调整过');
         if (!confirm('恢复本句的原始时间？\n' + (seg._os !== undefined ? (seg._os.toFixed(2) + 's') : (seg.start.toFixed(2) + 's(未调)')) + ' ~ ' + (seg._oe !== undefined ? (seg._oe.toFixed(2) + 's') : (seg.end.toFixed(2) + 's(未调)')))) return;
         app._edPush('重置第 ' + (this.cursorIdx + 1) + ' 句时间', this.cursorIdx); // V128(审9): 预习页同款——滚轮经 updateSeg 的时间分支已入栈，重置却直接写回不入栈，误点后撤销救不回
+        // V130(低3): 复位滚轮合并窗口——不置空的话 2.5s 内同句再拨滚轮会因「仍在窗口内」跳过 _edPush，
+        // 撤销一步直接跨过重置态回退到更早快照（edTuneReset/edUndo 同款）
+        this._tunePushIdx = null; this._tunePushAt = 0;
         if (seg._os !== undefined) seg.start = seg._os;
         if (seg._oe !== undefined) seg.end = seg._oe;
         delete seg._os; delete seg._oe;
@@ -10376,6 +10437,11 @@ const vocabBook = {
         this.tabReview();
     },
     toggleRvDue() { // V110(规格二·2): 只练到期按钮化（Tab 行常驻，两 Tab 都可切；.on=开）
+        // V130(中3): 串烧播放中切开关先停串烧——V129 起 🎧 串烧通过 _llPool 联动本开关，但列表 Tab 下切换时
+        // 只调了 _stopAllAudio()（当场静音掐断）而 this._ll 仍 on:true，串烧空等定时器到点后继续按
+        // 【切换前的旧队列快照】往下播，开关状态对进行中的串烧不生效；对齐 setFilterAudio/togglePin/
+        // moveUp/tabReview/_mergeVocab 的既有口径（都已调 listenLoopStop）
+        try { this.listenLoopStop(); } catch(eLs) {}
         const on = !this._rvDueOnly();
         safeSetItem('shadow_v107_rv_due', on ? '1' : '0');
         this._syncDueBtn();
@@ -11146,7 +11212,7 @@ const vocabBook = {
     exportJSON() {
         const list = this.list();
         if (!list.length) return ui.toast('生词本是空的，没有可导出');
-        const data = { type: 'shadow_vocab_backup', version: 129, exportedAt: new Date().toISOString(), vocab: list }; // V129: 128→129
+        const data = { type: 'shadow_vocab_backup', version: 130, exportedAt: new Date().toISOString(), vocab: list }; // V130: 129→130
         try {
             this._download([JSON.stringify(data, null, 2)], 'application/json;charset=utf-8',
                 this._exportBaseName() + '.json', '✅ 已导出生词本 JSON（' + list.length + ' 词，另一台设备「📥 合并」可导入）');
@@ -13885,10 +13951,26 @@ const aiMode = {
     },
     // V129(功能1): 词级 LCS diff——原句与识别串按词对齐，返回每个原句词是否被读到。
     // 识别串多读的词（插入）只跳过不标记；漏读/读错的词 matched=false，供高亮
+    // V130(中2): 参考串分词改与 DOM 词元同口径——原「整体 _normalize().split(' ')」会把 "U.S."/
+    // "3.5"/"1,000"/"10:30"/"and/or" 归一成 1 词（us/35/1000/1030/andor），而练习页 DOM 的
+    // _buildPwSpans/_applyMissMarks 按 [A-Za-z0-9]+ 拆成 2 个词元（U+S、3+5、10+30、and+or）——
+    // 句中一出现这类词，从该位置起整句后续所有 .pw 的 p 下标与 d.matched 全部错位（读对的标红、
+    // 漏读的漏标）。现两侧统一：先用与 DOM 完全相同的词元正则把原文/识别串拆成词元，每个词元再
+    // 单独 _normalize（缩写展开 don't→do not 仍占 1~2 词位）——两端口径逐词元一致
     _wordDiff(refText, hypText, idx) {
         try {
-            const rw = String(refText || '').length ? this._normalize(String(refText)).split(' ').filter(Boolean) : [];
-            const hw = String(hypText || '').length ? this._normalize(String(hypText)).split(' ').filter(Boolean) : [];
+            const tokRe = /[A-Za-z0-9]+(?:['\u2019\-][A-Za-z0-9]+)*/g; // 与 _buildPwSpans/_applyMissMarks 同款词元正则
+            const tokenize = (s) => {
+                const out = [];
+                let m; tokRe.lastIndex = 0;
+                while ((m = tokRe.exec(String(s || ''))) !== null) {
+                    const ws = this._normalize(m[0]).split(' ').filter(Boolean);
+                    for (let q = 0; q < ws.length; q++) out.push(ws[q]);
+                }
+                return out;
+            };
+            const rw = tokenize(refText);
+            const hw = tokenize(hypText);
             const n = rw.length, m = hw.length;
             // DP 表（倒序填）+ 回滲标记 matched
             const dp = [];
@@ -14252,6 +14334,17 @@ document.addEventListener('visibilitychange', () => {
 })();
 
 document.addEventListener('keydown', e => {
+    // V130(低4): 恢复二选一弹窗（z-index 9000 全局最高）开着——Esc 只关它，其余按键不透传。
+    // 原从练习页抽屉发起「📥 恢复备份」打开本弹窗时按空格/方向键/R/L 会穿透触发底层练习页
+    // 播音/切句/录音，Esc 也不关弹窗
+    const _rcm = document.getElementById('restore-choice-modal');
+    if (_rcm) { if (e.code === 'Escape') { e.preventDefault(); try { _rcm.remove(); } catch(errRc) {} } return; }
+    // V130(低4): AI 轮次弹窗开着——Esc 只关它（点背景已可关，键盘同样放行），其余不透传
+    const _arm = document.getElementById('ai-round-modal');
+    if (_arm && _arm.style.display === 'flex') { if (e.code === 'Escape') { e.preventDefault(); try { aiMode.closeRoundModal(); } catch(errAr) {} } return; }
+    // V130(低4): 预习完成弹窗开着——Esc 相当于「稍后再说」（与点背景同款 closeDoneModal 不传参），其余不透传
+    const _pdm = document.getElementById('preview-done-modal');
+    if (_pdm && _pdm.style.display === 'flex') { if (e.code === 'Escape') { e.preventDefault(); try { previewMode.closeDoneModal(); } catch(errPd) {} } return; }
     // V113(需求5): 说明页弹层开着——Esc 只关它，其余按键不透传（它从 navbar/菜单打开时生词本可能在下层，优先关最上层）
     const _hp = document.getElementById('help-pop');
     if (_hp && _hp.classList.contains('show')) {
@@ -14503,7 +14596,7 @@ function parseASS(raw) {
         if (!isFinite(st) || !isFinite(en)) continue;
         if (en <= st) en = st + 1; // 零长/负长句兜底拉成 1 秒（防下游校验/播放异常）
         let txt = String(parts[iText]);
-        txt = txt.replace(/\{\\p[1-9][^}]*\}[\s\S]*?(?:\{\\p0[^}]*\}|$)/g, ''); // 矢量绘图 {\p1}...{\p0} 整段删除
+        txt = txt.replace(/\{[^}]*\\p[1-9][^}]*\}[\s\S]*?(?:\{[^}]*\\p0[^}]*\}|$)/g, ''); // 矢量绘图 {\p1}...{\p0} 整段删除；V130(低5): 正则放宽覆盖 {\an7\p1}/{\pos(x,y)\p1} 等前置修饰标签——原 \{\\p 紧跟 { 要求 "U.S." 之外常见的 ASS 特效标签全不命中，矢量串被剥花括号后混进字幕正文
         txt = txt.replace(/\{[^}]*\}/g, '');                                    // {\...} 特效标签删除
         txt = txt.replace(/\\N|\\n/g, '\n').replace(/\\h/g, ' ');               // 硬换行/硬空格
         txt = txt.trim();
